@@ -73,6 +73,15 @@ pub fn default_keymap() -> Vec<Binding> {
             params: Value::Null,
         },
         Binding {
+            // Distraction-free fullscreen. Blender uses Ctrl+Alt+Space, which
+            // is macOS Input Sources; Mod+Shift+F is free everywhere. See
+            // docs/keymap-web-safety.md.
+            chord: "Mod+Shift+F",
+            action: "fullscreen",
+            description: "Distraction-free fullscreen",
+            params: Value::Null,
+        },
+        Binding {
             // Blender maximizes with Ctrl+Space, but that is macOS Input
             // Sources and Cmd+Space is Spotlight — the OS eats both, so the
             // shortcut is simply dead on a Mac. Mod+Shift+Space is free

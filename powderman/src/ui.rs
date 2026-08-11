@@ -489,6 +489,9 @@ pub fn App() -> Element {
     // Maximize is per-client view state (two browsers may maximize different
     // areas), so it is a local signal, not a command on the shared tree.
     let mut maximized = use_signal(|| None::<AreaId>);
+    // Fullscreen is distraction-free mode: hide all chrome (topbar, headers,
+    // status bar) and show a single area. Per-client, like maximize.
+    let mut fullscreen = use_signal(|| false);
 
     // Keymap actions. Layout commands go to the bus; undo/redo/maximize are
     // host concerns the bus does not own.
@@ -522,6 +525,7 @@ pub fn App() -> Element {
                     adjust_open.set(true);
                 }
             }
+            "fullscreen" => fullscreen.toggle(),
             "maximize" => {
                 // Toggle: maximize the first area if none is, else restore.
                 let cur = maximized();
@@ -704,7 +708,7 @@ pub fn App() -> Element {
         style { "{immersion::theme_css(settings()[\"theme\"].as_str().unwrap_or(\"Blender Dark\"))}" }
         style { "{CSS}" }
         div {
-            class: "app",
+            class: if fullscreen() { "app im-fullscreen" } else { "app" },
             style: "--im-accent: {settings()[\"accent\"].as_str().unwrap_or(\"#5680c2\")}; --accent-live: {settings()[\"accent\"].as_str().unwrap_or(\"#5680c2\")}",
             if splash_open() {
                 Splash {
@@ -766,6 +770,14 @@ pub fn App() -> Element {
                 }
             }
             Chrome { tooltips_enabled: settings()["tooltips_on"].as_bool().unwrap_or(true) }
+            if fullscreen() {
+                button {
+                    class: "fullscreen-exit",
+                    title: "exit fullscreen",
+                    onclick: move |_| fullscreen.set(false),
+                    "⤢ exit"
+                }
+            }
             if palette_open() {
                 Palette {
                     items: palette_items(&ws.read()),
@@ -781,7 +793,13 @@ pub fn App() -> Element {
                     render_toolbar: Some(render_toolbar),
                     render_sidebar: Some(render_sidebar),
                     on_command: cmd,
-                    maximized: maximized(),
+                    maximized: maximized().or_else(|| {
+                        if fullscreen() {
+                            ws.read().current().layout.root.leaves().first().copied()
+                        } else {
+                            None
+                        }
+                    }),
                 }
             }
             StatusBar {
