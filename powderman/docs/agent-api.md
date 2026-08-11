@@ -33,7 +33,8 @@ any tool — no endpoints or param shapes to learn out of band:
 | `workspace_rename` | `index`, `name` |
 | `workspace_close` | `index` |
 | `undo` / `redo` | — |
-| `get_state` | — (the workspace tree, settings, run/fleet snapshot) |
+| `get_state` | — (the workspace tree, settings, box metrics, fleet, and a run summary — step counts only) |
+| `get_run` | `id` (one run in full: every step's result and error) |
 
 `dir` is an enum, so a bad value is refused at the boundary
 (`unknown variant 'diagonal', expected 'row' or 'col'`) rather than failing
@@ -42,6 +43,10 @@ tool error the agent reads, and never half-mutates the live tree.
 
 Read `get_state` for area ids before acting; the ids are what every command
 addresses.
+
+`get_state` is a summary: a run's step logs are large (one 300-step run inlined
+is megabytes), so runs list a step count only. Drill into one run with `get_run`
+when you need its steps.
 
 ## Connecting
 

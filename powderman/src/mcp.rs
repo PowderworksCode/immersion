@@ -24,7 +24,7 @@ use rmcp::{
         StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
     },
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// A split runs along a row or a column — the same two the command bus takes,
 /// as an enum so the tool schema offers the agent the choice rather than a
@@ -121,6 +121,12 @@ pub struct RenameArgs {
     pub index: u64,
     /// The new name.
     pub name: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RunArgs {
+    /// The run id, as listed by `get_state`.
+    pub id: String,
 }
 
 /// The MCP handler. Holds no workbench state of its own — every tool reaches
@@ -274,17 +280,64 @@ impl Workbench {
     }
 
     #[tool(
-        description = "Read the live workbench: the workspace tree (area ids, editors, ratios), settings, and the run/fleet snapshot"
+        description = "Read the live workbench: the workspace tree (area ids, editors, ratios), settings, current box metrics, the fleet, and a run summary. Runs carry a step COUNT only — call get_run for one run's step detail."
     )]
     async fn get_state(&self) -> Result<CallToolResult, McpError> {
+        let snap = crate::daemon::snapshot();
+        // A run's step logs are inlined in the snapshot and dwarf everything
+        // else — a single 300-step run made get_state ~10 MB, too big for an
+        // agent to read. Summarize each run to its step count here; the agent
+        // drills into one run with get_run. The UI's metric timeseries stay out
+        // too — an agent wants the current box numbers, not an hour of samples.
+        let runs: Vec<Value> = snap
+            .runs
+            .iter()
+            .map(|r| {
+                json!({
+                    "id": r.id,
+                    "workflow": r.workflow,
+                    "status": r.status,
+                    "note": r.note,
+                    "error": r.error,
+                    "updated_at": r.updated_at,
+                    "steps": r.steps.len(),
+                })
+            })
+            .collect();
         let state = json!({
             "workspaces": crate::daemon::workspaces(),
             "settings": crate::daemon::settings(),
-            "state": crate::daemon::snapshot(),
+            "herdr": snap.herdr,
+            "machine": snap.machine,
+            "fleet": snap.fleet,
+            "timers": snap.timers,
+            "runs": runs,
         });
         Ok(CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string(&state).unwrap_or_default(),
         )]))
+    }
+
+    #[tool(
+        description = "Read one run in full: every step with its result and error. Use after get_state to drill into a run by id."
+    )]
+    async fn get_run(
+        &self,
+        Parameters(a): Parameters<RunArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        match crate::daemon::snapshot()
+            .runs
+            .into_iter()
+            .find(|r| r.id == a.id)
+        {
+            Some(run) => Ok(CallToolResult::success(vec![ContentBlock::text(
+                serde_json::to_string(&run).unwrap_or_default(),
+            )])),
+            None => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "no run with id {}",
+                a.id
+            ))])),
+        }
     }
 }
 
