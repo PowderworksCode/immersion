@@ -46,6 +46,11 @@ struct Shared {
     /// The one write path for layout. Built once; fn-pointer commands, so it
     /// is cheap to hold and Send + Sync without a lock of its own.
     commands: immersion::Commands,
+    /// Undo is a stack of past workbench values — the layout is one serde
+    /// value, so a snapshot is the whole history entry, no diffing. Redo holds
+    /// what undo popped, cleared the moment a new edit lands.
+    undo: Mutex<Vec<immersion::Workspaces>>,
+    redo: Mutex<Vec<immersion::Workspaces>>,
     timers: Mutex<Vec<crate::ui::TimerRow>>,
     in_flight: Mutex<HashSet<String>>,
 }
@@ -135,6 +140,18 @@ pub fn set_splash_off(off: bool) {
 pub fn dispatch(name: &str, params: serde_json::Value) -> immersion::Workspaces {
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
+    // Record for undo before editing — but not for pure navigation (switching
+    // a tab is not something you undo), and cap the depth so history does not
+    // grow without bound.
+    if s.commands.records_undo(name) {
+        let snapshot = w.clone();
+        let mut u = s.undo.lock().expect("undo");
+        u.push(snapshot);
+        if u.len() > 100 {
+            u.remove(0);
+        }
+        s.redo.lock().expect("redo").clear();
+    }
     if let Err(e) = s.commands.run(&mut w, name, &params) {
         eprintln!("command {name} failed: {e}");
     }
@@ -145,6 +162,41 @@ pub fn dispatch(name: &str, params: serde_json::Value) -> immersion::Workspaces 
              ON CONFLICT(key) DO UPDATE SET value = ?1",
             rusqlite::params![json],
         );
+    }
+    w.clone()
+}
+
+fn persist_workspaces(s: &Shared, w: &immersion::Workspaces) {
+    if let Ok(json) = serde_json::to_string(w) {
+        let conn = s.db.lock().expect("db");
+        let _ = conn.execute(
+            "INSERT INTO kv (key, value) VALUES ('workspaces', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = ?1",
+            rusqlite::params![json],
+        );
+    }
+}
+
+/// Step back one edit. The current value goes onto the redo stack, the last
+/// undo value becomes current. A no-op with an empty stack.
+pub fn undo() -> immersion::Workspaces {
+    let s = shared();
+    let mut w = s.workspaces.lock().expect("workspaces");
+    if let Some(prev) = s.undo.lock().expect("undo").pop() {
+        s.redo.lock().expect("redo").push(w.clone());
+        *w = prev;
+        persist_workspaces(&s, &w);
+    }
+    w.clone()
+}
+
+pub fn redo() -> immersion::Workspaces {
+    let s = shared();
+    let mut w = s.workspaces.lock().expect("workspaces");
+    if let Some(next) = s.redo.lock().expect("redo").pop() {
+        s.undo.lock().expect("undo").push(w.clone());
+        *w = next;
+        persist_workspaces(&s, &w);
     }
     w.clone()
 }
@@ -532,6 +584,8 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
             fleet: Mutex::new(Vec::new()),
             workspaces: Mutex::new(initial_workspaces),
             commands: crate::workflows::commands(),
+            undo: Mutex::new(Vec::new()),
+            redo: Mutex::new(Vec::new()),
             timers: Mutex::new(Vec::new()),
             in_flight: Mutex::new(HashSet::new()),
         }))

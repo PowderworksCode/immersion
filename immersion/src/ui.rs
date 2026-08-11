@@ -75,13 +75,20 @@ pub struct AreasProps {
     /// here, so there is exactly one way to mutate the layout — the property
     /// that lets undo, the keymap, and a future agent reach everything.
     pub on_command: Callback<(String, serde_json::Value)>,
+    /// When set to a live area id, only that area is shown, filling the deck —
+    /// Blender's maximize. View state, not layout: it is per-client and does
+    /// not touch the tree, so it lives outside the command bus by design.
+    #[props(default)]
+    pub maximized: Option<AreaId>,
 }
 
 impl PartialEq for AreasProps {
     fn eq(&self, other: &Self) -> bool {
-        // The callback is identity-stable per mount; the layout and kinds are
-        // what decide whether a re-render matters.
-        self.layout == other.layout && self.kinds == other.kinds
+        // The callback is identity-stable per mount; the layout, kinds, and
+        // maximize target are what decide whether a re-render matters.
+        self.layout == other.layout
+            && self.kinds == other.kinds
+            && self.maximized == other.maximized
     }
 }
 
@@ -109,10 +116,21 @@ pub fn Areas(props: AreasProps) -> Element {
     });
 
     let root = props.layout.root.clone();
-    let lone = matches!(root, Area::Leaf { .. });
+    // Maximize: if the target is a real leaf, show just it, full-deck. A leaf
+    // shown alone gets no close button (see `lone`), which reads right — a
+    // maximized area is momentarily the only one.
+    let maxed = props.maximized.and_then(|id| match root.find(id) {
+        Some(node @ Area::Leaf { .. }) => Some(node.clone()),
+        _ => None,
+    });
+    let lone = matches!(root, Area::Leaf { .. }) || maxed.is_some();
     rsx! {
         div { class: "im-root",
-            {render_node(&root, &props, lone)}
+            if let Some(node) = maxed {
+                {render_node(&node, &props, true)}
+            } else {
+                {render_node(&root, &props, lone)}
+            }
         }
     }
 }
