@@ -43,6 +43,9 @@ struct Shared {
     /// The workbench: a set of named layout trees. Server truth, shared by
     /// every client, persisted like everything else.
     workspaces: Mutex<immersion::Workspaces>,
+    /// The one write path for layout. Built once; fn-pointer commands, so it
+    /// is cheap to hold and Send + Sync without a lock of its own.
+    commands: immersion::Commands,
     timers: Mutex<Vec<crate::ui::TimerRow>>,
     in_flight: Mutex<HashSet<String>>,
 }
@@ -123,14 +126,18 @@ pub fn set_splash_off(off: bool) {
     );
 }
 
-/// Apply one mutation, persist the result, hand it back. The write-through is
-/// the point: a workbench that lives only in memory resets on every deploy,
-/// which is exactly the failure the boot-id reload would otherwise cause
+/// Run a layout command and hand back the new workbench. THE one write path:
+/// every UI mutation — button, dropdown, gesture, tab — arrives here as a
+/// named command, is applied to the workspace value, and persisted. The
+/// write-through is the point: a workbench that lived only in memory would
+/// reset on every deploy, the failure the boot-id reload would otherwise cause
 /// daily.
-pub fn mutate_workspaces(f: impl FnOnce(&mut immersion::Workspaces)) -> immersion::Workspaces {
+pub fn dispatch(name: &str, params: serde_json::Value) -> immersion::Workspaces {
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
-    f(&mut w);
+    if let Err(e) = s.commands.run(&mut w, name, &params) {
+        eprintln!("command {name} failed: {e}");
+    }
     if let Ok(json) = serde_json::to_string(&*w) {
         let conn = s.db.lock().expect("db");
         let _ = conn.execute(
@@ -524,6 +531,7 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
             herdr: Mutex::new(None),
             fleet: Mutex::new(Vec::new()),
             workspaces: Mutex::new(initial_workspaces),
+            commands: crate::workflows::commands(),
             timers: Mutex::new(Vec::new()),
             in_flight: Mutex::new(HashSet::new()),
         }))

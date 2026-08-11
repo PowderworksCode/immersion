@@ -310,21 +310,31 @@ pub fn App() -> Element {
     let mut splash_open = use_signal(|| !crate::daemon::splash_off());
     let mut dont_show = use_signal(crate::daemon::splash_off);
 
+    // THE write path. Every button, dropdown, gesture and tab emits a named
+    // command; this fires it through the daemon (which applies + persists) and
+    // updates the local signal immediately, since the poll is for OTHER
+    // clients and waiting a tick for your own edit would read as lag.
+    let cmd = use_callback(move |(name, params): (String, serde_json::Value)| {
+        ws.set(crate::daemon::dispatch(&name, params));
+    });
+
     let on_template = use_callback(move |i: usize| {
-        let t = templates();
-        if let Some(t) = t.into_iter().nth(i) {
-            ws.set(crate::daemon::mutate_workspaces(|w| {
-                w.add(&t.name, t.layout)
-            }));
+        if let Some(t) = templates().into_iter().nth(i) {
+            cmd.call((
+                "workspace.add".to_string(),
+                serde_json::json!({ "name": t.name, "layout": t.layout }),
+            ));
         }
     });
     let on_recent = use_callback(move |run_id: String| {
-        // Open a recent run into a fresh workspace showing just its detail.
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            let mut l = Layout::single("run");
-            l.set_editor_arg(1, "run", &run_id);
-            w.add(&format!("run {}", &run_id[..run_id.len().min(8)]), l);
-        }));
+        // A recent run opens into a fresh workspace showing just its detail.
+        let mut l = Layout::single("run");
+        l.set_editor_arg(1, "run", &run_id);
+        let name = format!("run {}", &run_id[..run_id.len().min(8)]);
+        cmd.call((
+            "workspace.add".to_string(),
+            serde_json::json!({ "name": name, "layout": l }),
+        ));
     });
     let on_dismiss = use_callback(move |()| splash_open.set(false));
     let on_dont_show = use_callback(move |off: bool| {
@@ -336,66 +346,23 @@ pub fn App() -> Element {
     // the local signal immediately — the poll is for OTHER clients, and
     // waiting a tick for your own split would read as lag. Layout mutations
     // land on the ACTIVE workspace, the only one the gestures can reach.
-    let on_switch = use_callback(move |(id, kind): (AreaId, String)| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            w.current_layout_mut().set_editor(id, &kind);
-        }));
-    });
-    let on_split = use_callback(move |(id, dir, frac): (AreaId, Dir, f32)| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            w.current_layout_mut().split(id, dir, frac);
-        }));
-    });
-    let on_join = use_callback(move |id: AreaId| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            w.current_layout_mut().join(id);
-        }));
-    });
-    let on_join_into = use_callback(move |(survivor, victim): (AreaId, AreaId)| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            w.current_layout_mut().join_into(survivor, victim);
-        }));
-    });
-    let on_ratio = use_callback(move |(id, ratio): (AreaId, f32)| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            w.current_layout_mut().set_ratio(id, ratio);
-        }));
-    });
-
-    // Workspace tab callbacks. A new tab duplicates the current tree — you
-    // add one to branch off what you are looking at, not to start blank.
-    // Open a run into its own area: split where the list is, and show the run
-    // in the new half — the pin-beside-the-charts payoff, built from the same
-    // split the gestures use.
+    // The pin-beside-the-charts payoff, now a command like everything else.
     let open_run = use_callback(move |(area, run_id): (AreaId, String)| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            let l = w.current_layout_mut();
-            if let Some(new_id) = l.split(area, Dir::Row, 0.5) {
-                l.set_editor_arg(new_id, "run", &run_id);
-            }
-        }));
+        cmd.call((
+            "open_run".to_string(),
+            serde_json::json!({ "area": area, "run": run_id }),
+        ));
     });
 
-    let ws_switch = use_callback(move |i: usize| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            w.switch(i);
-        }));
-    });
+    // Add duplicates the current tree — you branch off what you are looking
+    // at, not a blank — so it needs the live layout and composes the
+    // workspace.add command rather than being a bare command.
     let ws_add = use_callback(move |()| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            let dup = w.current().layout.clone();
-            w.add("New", dup);
-        }));
-    });
-    let ws_rename = use_callback(move |(i, name): (usize, String)| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            w.rename(i, &name);
-        }));
-    });
-    let ws_close = use_callback(move |i: usize| {
-        ws.set(crate::daemon::mutate_workspaces(|w| {
-            w.close(i);
-        }));
+        let dup = ws.read().current().layout.clone();
+        cmd.call((
+            "workspace.add".to_string(),
+            serde_json::json!({ "name": "New", "layout": dup }),
+        ));
     });
 
     let render_state = state;
@@ -444,10 +411,8 @@ pub fn App() -> Element {
                 WorkspaceTabs {
                     names: ws.read().tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
                     active: ws.read().active,
-                    on_switch: ws_switch,
+                    on_command: cmd,
                     on_add: ws_add,
-                    on_rename: ws_rename,
-                    on_close: ws_close,
                 }
                 span { class: "sub",
                     {s.herdr.clone().unwrap_or_else(|| "herdr unreachable".into())}
@@ -459,11 +424,7 @@ pub fn App() -> Element {
                     layout: ws.read().current().layout.clone(),
                     kinds: kinds(),
                     render,
-                    on_switch,
-                    on_split,
-                    on_join,
-                    on_join_into,
-                    on_ratio,
+                    on_command: cmd,
                 }
             }
         }

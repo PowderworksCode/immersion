@@ -9,6 +9,7 @@ description = "Blender-style areas for Dioxus liveview: a tiling tree of editors
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+anyhow = "1"
 dioxus = { version = "0.7.10", features = ["liveview", "router"] }
 dioxus-liveview = { version = "0.7.10", features = ["axum"] }
 

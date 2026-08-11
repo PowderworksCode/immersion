@@ -1,0 +1,324 @@
+//! The command bus: one typed write path for every layout mutation.
+//!
+//! Immersion's central rule, carried over from the React original: anything a
+//! human can do to the layout, an agent must be able to do too. That holds
+//! only if there is exactly one way to mutate the layout — a registry of named
+//! commands, each taking JSON params. The header buttons, the gesture shim,
+//! the keymap, and (later) an agent endpoint all name a command; none reaches
+//! into the tree directly.
+//!
+//! A command is `fn(&mut Workspaces, &Value) -> Result`. It is a plain
+//! function of the workspace value, so it is testable without a browser and
+//! composes into a server that has no UI — the same property the original
+//! prized in its dockview-api commands, and the reason undo is a snapshot of
+//! this value rather than a diff.
+//!
+//! The library ships the built-ins that operate on its own types (split, join,
+//! resize, switch editor, the workspace ops). A host adds domain commands —
+//! "open this run in a new area" — with [`Commands::with`], and they route
+//! through the same [`Commands::run`], so an agent driving the host reaches
+//! them identically.
+
+use std::collections::BTreeMap;
+
+use anyhow::{Result, anyhow};
+use serde_json::Value;
+
+use crate::area::Dir;
+use crate::workspace::Workspaces;
+
+/// One named operation on the workbench.
+#[derive(Clone)]
+pub struct Command {
+    pub name: &'static str,
+    /// Human- and agent-facing; becomes a palette entry and, later, a tool
+    /// description.
+    pub description: &'static str,
+    /// True for commands that only read or that a palette should de-emphasize;
+    /// today it marks the ones undo should not record (pure navigation).
+    pub navigational: bool,
+    pub run: fn(&mut Workspaces, &Value) -> Result<()>,
+}
+
+/// The registry. Ordered so a palette lists commands predictably.
+#[derive(Clone, Default)]
+pub struct Commands(BTreeMap<&'static str, Command>);
+
+impl Commands {
+    /// The commands that operate on the library's own types.
+    pub fn builtin() -> Self {
+        let mut c = Commands::default();
+        for cmd in BUILTINS {
+            c.0.insert(cmd.name, cmd.clone());
+        }
+        c
+    }
+
+    /// Add a host command. Chainable: `Commands::builtin().with(open_run)`.
+    pub fn with(mut self, cmd: Command) -> Self {
+        self.0.insert(cmd.name, cmd);
+        self
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Command> {
+        self.0.get(name)
+    }
+
+    /// Run a command against the workbench. The one write path — persistence
+    /// and undo wrap *this*, they do not bypass it.
+    pub fn run(&self, ws: &mut Workspaces, name: &str, params: &Value) -> Result<()> {
+        let cmd = self
+            .0
+            .get(name)
+            .ok_or_else(|| anyhow!("unknown command {name}"))?;
+        (cmd.run)(ws, params)
+    }
+
+    /// Whether running `name` should be recorded for undo. Unknown or
+    /// navigational commands are not.
+    pub fn records_undo(&self, name: &str) -> bool {
+        self.0.get(name).is_some_and(|c| !c.navigational)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Command> {
+        self.0.values()
+    }
+}
+
+// --- param helpers ---------------------------------------------------------
+// Commands validate their own params, like the original's paramsSchema. A
+// missing or wrong-typed field is an error, not a silent no-op — the bus is
+// the boundary where bad input stops.
+
+fn u64_field(p: &Value, key: &str) -> Result<u64> {
+    p.get(key)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| anyhow!("param {key} must be an integer"))
+}
+
+fn f32_field(p: &Value, key: &str) -> Result<f32> {
+    p.get(key)
+        .and_then(Value::as_f64)
+        .map(|v| v as f32)
+        .ok_or_else(|| anyhow!("param {key} must be a number"))
+}
+
+fn str_field<'a>(p: &'a Value, key: &str) -> Result<&'a str> {
+    p.get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("param {key} must be a string"))
+}
+
+fn dir_field(p: &Value, key: &str) -> Result<Dir> {
+    match str_field(p, key)? {
+        "row" => Ok(Dir::Row),
+        "col" => Ok(Dir::Col),
+        other => Err(anyhow!(
+            "param {key} must be \"row\" or \"col\", got {other:?}"
+        )),
+    }
+}
+
+// --- the built-ins ---------------------------------------------------------
+
+const BUILTINS: &[Command] = &[
+    Command {
+        name: "split",
+        description: "Split an area in two",
+        navigational: false,
+        run: |ws, p| {
+            ws.current_layout_mut().split(
+                u64_field(p, "id")?,
+                dir_field(p, "dir")?,
+                f32_field(p, "frac").unwrap_or(0.5),
+            );
+            Ok(())
+        },
+    },
+    Command {
+        name: "join",
+        description: "Close an area; its sibling takes the space",
+        navigational: false,
+        run: |ws, p| {
+            ws.current_layout_mut().join(u64_field(p, "id")?);
+            Ok(())
+        },
+    },
+    Command {
+        name: "join_into",
+        description: "Merge one area into a sibling",
+        navigational: false,
+        run: |ws, p| {
+            ws.current_layout_mut()
+                .join_into(u64_field(p, "survivor")?, u64_field(p, "victim")?);
+            Ok(())
+        },
+    },
+    Command {
+        name: "ratio",
+        description: "Move the seam between two areas",
+        navigational: false,
+        run: |ws, p| {
+            ws.current_layout_mut()
+                .set_ratio(u64_field(p, "id")?, f32_field(p, "ratio")?);
+            Ok(())
+        },
+    },
+    Command {
+        name: "set_editor",
+        description: "Change what an area shows",
+        navigational: false,
+        run: |ws, p| {
+            ws.current_layout_mut()
+                .set_editor(u64_field(p, "id")?, str_field(p, "editor")?);
+            Ok(())
+        },
+    },
+    Command {
+        name: "open_editor",
+        description: "Point an area at a specific thing (editor + argument)",
+        navigational: false,
+        run: |ws, p| {
+            ws.current_layout_mut().set_editor_arg(
+                u64_field(p, "id")?,
+                str_field(p, "editor")?,
+                str_field(p, "arg")?,
+            );
+            Ok(())
+        },
+    },
+    Command {
+        name: "workspace.switch",
+        description: "Show a workspace by index",
+        navigational: true,
+        run: |ws, p| {
+            ws.switch(u64_field(p, "index")? as usize);
+            Ok(())
+        },
+    },
+    Command {
+        name: "workspace.cycle",
+        description: "Show the next or previous workspace",
+        navigational: true,
+        run: |ws, p| {
+            ws.cycle(p.get("delta").and_then(Value::as_i64).unwrap_or(1) as i32);
+            Ok(())
+        },
+    },
+    Command {
+        name: "workspace.add",
+        description: "Add a workspace from a layout",
+        navigational: false,
+        run: |ws, p| {
+            let name = str_field(p, "name")?;
+            let layout = p
+                .get("layout")
+                .ok_or_else(|| anyhow!("param layout is required"))?;
+            let layout = serde_json::from_value(layout.clone())?;
+            ws.add(name, layout);
+            Ok(())
+        },
+    },
+    Command {
+        name: "workspace.rename",
+        description: "Rename a workspace",
+        navigational: false,
+        run: |ws, p| {
+            ws.rename(u64_field(p, "index")? as usize, str_field(p, "name")?);
+            Ok(())
+        },
+    },
+    Command {
+        name: "workspace.close",
+        description: "Close a workspace",
+        navigational: false,
+        run: |ws, p| {
+            ws.close(u64_field(p, "index")? as usize);
+            Ok(())
+        },
+    },
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::area::Layout;
+    use serde_json::json;
+
+    fn ws() -> Workspaces {
+        Workspaces::new("main", Layout::single("machine"))
+    }
+
+    #[test]
+    fn split_and_set_editor_run_through_the_bus() {
+        let cmds = Commands::builtin();
+        let mut w = ws();
+        cmds.run(
+            &mut w,
+            "split",
+            &json!({ "id": 1, "dir": "row", "frac": 0.6 }),
+        )
+        .unwrap();
+        let leaves = w.current().layout.root.leaves();
+        assert_eq!(leaves.len(), 2);
+        cmds.run(
+            &mut w,
+            "set_editor",
+            &json!({ "id": leaves[1], "editor": "runs" }),
+        )
+        .unwrap();
+        // The command reshaped the real tree.
+        assert_eq!(w.current().layout.root.leaves().len(), 2);
+    }
+
+    #[test]
+    fn a_bad_param_is_an_error_not_a_silent_noop() {
+        let cmds = Commands::builtin();
+        let mut w = ws();
+        assert!(
+            cmds.run(
+                &mut w,
+                "split",
+                &json!({ "id": "not-a-number", "dir": "row" })
+            )
+            .is_err()
+        );
+        assert!(
+            cmds.run(&mut w, "split", &json!({ "id": 1, "dir": "diagonal" }))
+                .is_err()
+        );
+        assert!(cmds.run(&mut w, "nonexistent", &json!({})).is_err());
+    }
+
+    #[test]
+    fn navigation_does_not_record_undo_but_edits_do() {
+        let cmds = Commands::builtin();
+        assert!(!cmds.records_undo("workspace.switch"));
+        assert!(!cmds.records_undo("workspace.cycle"));
+        assert!(cmds.records_undo("split"));
+        assert!(cmds.records_undo("join"));
+    }
+
+    #[test]
+    fn a_host_command_composes_with_the_builtins() {
+        fn open_run(ws: &mut Workspaces, p: &Value) -> Result<()> {
+            let id = u64_field(p, "area")?;
+            let run = str_field(p, "run")?;
+            let l = ws.current_layout_mut();
+            if let Some(new) = l.split(id, Dir::Row, 0.5) {
+                l.set_editor_arg(new, "run", run);
+            }
+            Ok(())
+        }
+        let cmds = Commands::builtin().with(Command {
+            name: "open_run",
+            description: "Open a run in a new area",
+            navigational: false,
+            run: open_run,
+        });
+        let mut w = ws();
+        cmds.run(&mut w, "open_run", &json!({ "area": 1, "run": "abc123" }))
+            .unwrap();
+        assert_eq!(w.current().layout.root.leaves().len(), 2);
+    }
+}
