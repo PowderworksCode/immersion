@@ -10,7 +10,7 @@
 
 use anyhow::{Result, anyhow};
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, WebSocketUpgrade},
     http::StatusCode,
     response::{Html, IntoResponse},
@@ -164,32 +164,41 @@ pub fn set_setting(pointer: &str, value: serde_json::Value) -> serde_json::Value
 /// reset on every deploy, the failure the boot-id reload would otherwise cause
 /// daily.
 pub fn dispatch(name: &str, params: serde_json::Value) -> immersion::Workspaces {
+    // The UI path: a bad command from a button or gesture is a bug in our own
+    // wiring, so log it and leave the workbench unchanged. The agent path wants
+    // the error instead — see `dispatch_checked`.
+    match dispatch_checked(name, params) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("command {name} failed: {e}");
+            workspaces()
+        }
+    }
+}
+
+/// Run a command and hand back the new workbench, or the command's error. The
+/// error-returning core of [`dispatch`]: the agent route surfaces a bad name or
+/// bad params to the caller rather than swallowing it. Atomic — the command
+/// runs against a clone, so a failure leaves the live workspace untouched (no
+/// half-applied split), and undo is recorded only on success.
+pub fn dispatch_checked(name: &str, params: serde_json::Value) -> Result<immersion::Workspaces> {
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
-    // Record for undo before editing — but not for pure navigation (switching
-    // a tab is not something you undo), and cap the depth so history does not
-    // grow without bound.
+    let mut candidate = w.clone();
+    s.commands.run(&mut candidate, name, &params)?;
+    // Success. Record for undo — but not for pure navigation (switching a tab
+    // is not something you undo) — capping depth so history is bounded.
     if s.commands.records_undo(name) {
-        let snapshot = w.clone();
         let mut u = s.undo.lock().expect("undo");
-        u.push(snapshot);
+        u.push(w.clone());
         if u.len() > 100 {
             u.remove(0);
         }
         s.redo.lock().expect("redo").clear();
     }
-    if let Err(e) = s.commands.run(&mut w, name, &params) {
-        eprintln!("command {name} failed: {e}");
-    }
-    if let Ok(json) = serde_json::to_string(&*w) {
-        let conn = s.db.lock().expect("db");
-        let _ = conn.execute(
-            "INSERT INTO kv (key, value) VALUES ('workspaces', ?1)
-             ON CONFLICT(key) DO UPDATE SET value = ?1",
-            rusqlite::params![json],
-        );
-    }
-    w.clone()
+    *w = candidate;
+    persist_workspaces(&s, &w);
+    Ok(w.clone())
 }
 
 fn persist_workspaces(s: &Shared, w: &immersion::Workspaces) {
@@ -566,6 +575,82 @@ async fn resume_route(Path(id): Path<String>) -> impl IntoResponse {
     }
 }
 
+// --- the agent route ---------------------------------------------------------
+// Immersion's thesis, made reachable over HTTP: anything a human does to the
+// workbench, an agent does the same way — one write path, one undo history. A
+// coding agent watching this box can reshape the layout, open a run in a new
+// area, or switch workspaces by POSTing the same named command a keypress
+// fires, and read the current layout and run state back as JSON.
+
+/// `GET /api/commands` — the tool catalogue. Every command the bus knows, with
+/// its description, plus undo/redo (shared write ops the route also accepts).
+/// This is the same registry the palette lists, so an agent discovers a command
+/// by it being registered — the property that keeps human and agent in parity.
+async fn api_commands() -> impl IntoResponse {
+    let s = shared();
+    let mut list: Vec<Value> = s
+        .commands
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "name": c.name,
+                "description": c.description,
+                "navigational": c.navigational,
+            })
+        })
+        .collect();
+    list.push(serde_json::json!({
+        "name": "undo", "description": "Revert the last layout change", "navigational": false,
+    }));
+    list.push(serde_json::json!({
+        "name": "redo", "description": "Reapply an undone change", "navigational": false,
+    }));
+    Json(serde_json::json!({ "commands": list }))
+}
+
+/// `GET /api/state` — what the agent reads before it acts: the live workspace
+/// tree (area ids, editors, ratios — everything a command addresses), the
+/// settings document, and the run/fleet snapshot the UI draws from.
+async fn api_state() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "workspaces": workspaces(),
+        "settings": settings(),
+        "state": snapshot(),
+    }))
+}
+
+#[derive(serde::Deserialize)]
+struct CommandBody {
+    name: String,
+    #[serde(default)]
+    params: Value,
+}
+
+/// `POST /api/command` with `{ "name": ..., "params": {...} }` — the write. It
+/// runs through the very same path a keypress does: undo/redo are the host
+/// actions, everything else is a bus command. A bad name or bad params comes
+/// back 422 with the message, not a silent success, and never half-mutates the
+/// live workbench.
+async fn api_command(Json(CommandBody { name, params }): Json<CommandBody>) -> impl IntoResponse {
+    let result = match name.as_str() {
+        "undo" => Ok(undo()),
+        "redo" => Ok(redo()),
+        _ => dispatch_checked(&name, params),
+    };
+    match result {
+        Ok(w) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "ok": true, "workspaces": w })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
     crate::herdr::ensure_socket_env();
 
@@ -652,6 +737,9 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
         .route("/trigger/{name}", post(trigger_route))
         .route("/resume/{id}", post(resume_route))
         .route("/boot", get(boot_route))
+        .route("/api/commands", get(api_commands))
+        .route("/api/state", get(api_state))
+        .route("/api/command", post(api_command))
         .route(
             "/ws",
             get(move |ws: WebSocketUpgrade| {
