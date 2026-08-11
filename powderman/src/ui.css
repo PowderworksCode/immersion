@@ -1,38 +1,38 @@
 /* Tokens. Dark is a selected set of steps, not an automatic flip: the series
    color is re-picked for the dark surface and validated against it, and both
    pass the lightness band, chroma floor and 3:1 contrast checks. */
+/* The Blender skin. Blender is not OS-adaptive — always its own flat dark
+   grey — so this is the whole palette, unconditionally, on :root. Greys
+   approximate Blender 2.9x's default dark theme: near-black seams, mid-grey
+   area surfaces, darker header strips, a muted blue widget accent. This file
+   is a straitjacket theme-file: color literals are defined here and
+   referenced by token everywhere else. */
 :root {
-  color-scheme: light dark;
-  --bg: #f7f7f5;
-  --surface: #ffffff;
-  --line: #e4e4de;
-  --grid: #eeeeea;
-  --ink: #14140f;
-  --ink-2: #56564e;
-  --ink-3: #86867c;
-  --series-1: #2a78d6;
-  --mono: var(--mono);
-  /* Reserved status steps — never reused as a series color. */
-  --good: #0ca30c;
-  --warning: #fab219;
-  --serious: #ec835a;
-  --critical: #d03b3b;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #121214;
-    --surface: #1a1a1d;
-    --line: #2b2b30;
-    --grid: #232327;
-    --ink: #f2f2ee;
-    --ink-2: #a6a69c;
-    --ink-3: #74746c;
-    --series-1: #3987e5;
-    --good: #35b06e;
-    --warning: #d9a441;
-    --serious: #ec835a;
-    --critical: #e05a4a;
-  }
+  color-scheme: dark;
+  --bg: #1a1a1a;          /* ground behind areas, and seams */
+  --surface: #303030;     /* area / panel body */
+  --line: #202020;        /* dividers, darker than the surface */
+  --grid: #3a3a3a;        /* chart gridlines, one step off surface */
+  --ink: #e6e6e6;
+  --ink-2: #b8b8b8;
+  --ink-3: #8a8a8a;
+  --series-1: #5680c2;    /* Blender's widget blue */
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --good: #6a9955;
+  --warning: #d9a441;
+  --serious: #d98a4a;
+  --critical: #d16060;
+
+  /* Immersion chrome maps onto the same skin; header strips a shade darker
+     than the area body, which is Blender's look. */
+  --im-bg: #1a1a1a;
+  --im-surface: #303030;
+  --im-header: #252525;
+  --im-seam: #141414;
+  --im-border: #454545;
+  --im-text: #e6e6e6;
+  --im-text-muted: #8a8a8a;
+  --im-accent: #5680c2;
 }
 
 * { box-sizing: border-box; }
@@ -55,17 +55,6 @@ body {
 .deck { flex: 1; min-height: 0; position: relative; display: flex; }
 .deck > * { flex: 1; min-width: 0; min-height: 0; }
 
-/* Immersion tokens, derived from the host palette so areas theme with it. */
-.app {
-  --im-bg: var(--bg);
-  --im-surface: var(--bg);
-  --im-header: var(--surface);
-  --im-seam: var(--line);
-  --im-border: var(--line);
-  --im-text: var(--ink);
-  --im-text-muted: var(--ink-3);
-  --im-accent: var(--series-1);
-}
 h2 {
   font-size: .72rem; text-transform: uppercase; letter-spacing: .09em;
   color: var(--ink-3); font-weight: 600; margin: 2.25rem 0 .75rem;
