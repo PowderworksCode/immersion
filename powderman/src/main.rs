@@ -4,6 +4,7 @@ mod db;
 mod engine;
 mod exec;
 mod herdr;
+mod mcp;
 mod metrics;
 mod treebank;
 mod ui;

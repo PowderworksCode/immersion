@@ -164,32 +164,41 @@ pub fn set_setting(pointer: &str, value: serde_json::Value) -> serde_json::Value
 /// reset on every deploy, the failure the boot-id reload would otherwise cause
 /// daily.
 pub fn dispatch(name: &str, params: serde_json::Value) -> immersion::Workspaces {
+    // The UI path: a bad command from a button or gesture is a bug in our own
+    // wiring, so log it and leave the workbench unchanged. The agent path wants
+    // the error instead — see `dispatch_checked`.
+    match dispatch_checked(name, params) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("command {name} failed: {e}");
+            workspaces()
+        }
+    }
+}
+
+/// Run a command and hand back the new workbench, or the command's error. The
+/// error-returning core of [`dispatch`]: the agent route surfaces a bad name or
+/// bad params to the caller rather than swallowing it. Atomic — the command
+/// runs against a clone, so a failure leaves the live workspace untouched (no
+/// half-applied split), and undo is recorded only on success.
+pub fn dispatch_checked(name: &str, params: serde_json::Value) -> Result<immersion::Workspaces> {
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
-    // Record for undo before editing — but not for pure navigation (switching
-    // a tab is not something you undo), and cap the depth so history does not
-    // grow without bound.
+    let mut candidate = w.clone();
+    s.commands.run(&mut candidate, name, &params)?;
+    // Success. Record for undo — but not for pure navigation (switching a tab
+    // is not something you undo) — capping depth so history is bounded.
     if s.commands.records_undo(name) {
-        let snapshot = w.clone();
         let mut u = s.undo.lock().expect("undo");
-        u.push(snapshot);
+        u.push(w.clone());
         if u.len() > 100 {
             u.remove(0);
         }
         s.redo.lock().expect("redo").clear();
     }
-    if let Err(e) = s.commands.run(&mut w, name, &params) {
-        eprintln!("command {name} failed: {e}");
-    }
-    if let Ok(json) = serde_json::to_string(&*w) {
-        let conn = s.db.lock().expect("db");
-        let _ = conn.execute(
-            "INSERT INTO kv (key, value) VALUES ('workspaces', ?1)
-             ON CONFLICT(key) DO UPDATE SET value = ?1",
-            rusqlite::params![json],
-        );
-    }
-    w.clone()
+    *w = candidate;
+    persist_workspaces(&s, &w);
+    Ok(w.clone())
 }
 
 fn persist_workspaces(s: &Shared, w: &immersion::Workspaces) {
@@ -652,6 +661,7 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
         .route("/trigger/{name}", post(trigger_route))
         .route("/resume/{id}", post(resume_route))
         .route("/boot", get(boot_route))
+        .nest_service("/mcp", crate::mcp::service())
         .route(
             "/ws",
             get(move |ws: WebSocketUpgrade| {
