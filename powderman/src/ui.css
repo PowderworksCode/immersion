@@ -11,6 +11,7 @@
   --ink-2: #56564e;
   --ink-3: #86867c;
   --series-1: #2a78d6;
+  --mono: var(--mono);
   /* Reserved status steps — never reused as a series color. */
   --good: #0ca30c;
   --warning: #fab219;
@@ -75,7 +76,7 @@ h2 {
 button {
   font: inherit; font-size: .82rem; padding: .35rem .7rem; border-radius: .4rem;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
-  cursor: pointer; transition: border-color .12s, color .12s;
+  cursor: pointer;
 }
 button:hover { border-color: var(--series-1); color: var(--series-1); }
 .resume {
@@ -163,10 +164,10 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
   padding: .22rem .8rem; align-items: baseline;
 }
 .step code {
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 12px/1.5 var(--mono);
   color: var(--ink-3); white-space: pre-wrap; word-break: break-word;
 }
-.k { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--ink-2); }
+.k { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
 .err { color: var(--critical); }
 .empty { color: var(--ink-3); padding: 2rem 0; text-align: center; }
 
@@ -177,7 +178,7 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
 }
 .agent:last-child { border-bottom: 0; }
 .agent .procs { display: flex; gap: .7rem; flex-wrap: wrap; font-size: .76rem; color: var(--ink-2); }
-.agent .proc { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.agent .proc { font-family: var(--mono); }
 
 footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 
@@ -192,11 +193,11 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .action .note { grid-column: 1; grid-row: 2; }
 .action .go { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: .4rem; align-items: center; }
 .sched {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .7rem;
+  font-family: var(--mono); font-size: .7rem;
   color: var(--ink-2); background: var(--grid); border-radius: .25rem; padding: .05rem .35rem;
 }
 .arg {
-  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 12px/1.4 var(--mono);
   padding: .3rem .45rem; width: 12rem; color: var(--ink);
   background: var(--bg); border: 1px solid var(--line); border-radius: .35rem;
 }
@@ -215,3 +216,21 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
   color: var(--ink-3);
 }
 .src.powderman { color: var(--series-1); }
+
+/* Run detail: a single run pinned in its own area. */
+.run-detail { display: flex; flex-direction: column; gap: .5rem; }
+.rd-head { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; }
+.rd-head .wf { font-size: .95rem; font-weight: 600; }
+.open {
+  font-size: .72rem; padding: .1rem .35rem; margin-right: .4rem;
+  border: 1px solid var(--line); border-radius: .3rem;
+  background: var(--surface); color: var(--ink-2); cursor: pointer;
+}
+.open:hover { border-color: var(--series-1); color: var(--series-1); }
+
+/* Run picker rows (a run-detail area with no run chosen yet). */
+.pick {
+  display: flex; align-items: baseline; gap: .55rem;
+  padding: .3rem .1rem; border-bottom: 1px solid var(--line); cursor: pointer;
+}
+.pick:hover { background: var(--surface); }

@@ -1,0 +1,10 @@
+# straitjacket configuration for the immersion workspace.
+#
+# theme-files are the two files that DEFINE the palettes — the library's
+# default fallbacks and the host's --token declarations. Every other file
+# references those tokens; a color literal anywhere else is the smell the rule
+# is for, so those stay checked.
+theme-files = [
+  "immersion/src/immersion.css",
+  "powderman/src/ui.css",
+]

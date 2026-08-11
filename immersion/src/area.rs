@@ -30,6 +30,11 @@ pub enum Area {
         id: AreaId,
         /// The editor kind this area shows — a registry key the host resolves.
         editor: String,
+        /// An optional argument the editor interprets: which run to show,
+        /// which file to open. `None` is the bare editor (a list, a picker).
+        /// serde(default) so layouts saved before this field still load.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        arg: Option<String>,
     },
     Split {
         id: AreaId,
@@ -113,6 +118,7 @@ impl Layout {
             root: Area::Leaf {
                 id: 1,
                 editor: editor.to_string(),
+                arg: None,
             },
             next_id: 2,
         }
@@ -141,16 +147,18 @@ impl Layout {
         let split_id = self.mint();
         let new_id = self.mint();
         let node = self.root.find_mut(target)?;
-        let Area::Leaf { id, editor } = node else {
+        let Area::Leaf { id, editor, arg } = node else {
             return None;
         };
         let original = Area::Leaf {
             id: *id,
             editor: editor.clone(),
+            arg: arg.clone(),
         };
         let fresh = Area::Leaf {
             id: new_id,
             editor: editor.clone(),
+            arg: arg.clone(),
         };
         *node = Area::Split {
             id: split_id,
@@ -229,11 +237,30 @@ impl Layout {
     }
 
     /// Change what an area shows, in place. The area survives — same id, same
-    /// rectangle — which is the whole point of the editor dropdown.
+    /// rectangle — which is the whole point of the editor dropdown. Switching
+    /// kind clears any argument: picking "Run detail" from the dropdown gives
+    /// you the picker, not whatever run the area showed before.
     pub fn set_editor(&mut self, leaf: AreaId, editor: &str) -> bool {
         match self.root.find_mut(leaf) {
-            Some(Area::Leaf { editor: e, .. }) => {
+            Some(Area::Leaf { editor: e, arg, .. }) => {
                 *e = editor.to_string();
+                *arg = None;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Point an area at a specific thing: editor kind plus its argument. This
+    /// is how "open run 0f6a43ae here" lands — set the kind to the run-detail
+    /// editor and the arg to the id.
+    pub fn set_editor_arg(&mut self, leaf: AreaId, editor: &str, arg: &str) -> bool {
+        match self.root.find_mut(leaf) {
+            Some(Area::Leaf {
+                editor: e, arg: a, ..
+            }) => {
+                *e = editor.to_string();
+                *a = Some(arg.to_string());
                 true
             }
             _ => false,
@@ -336,6 +363,39 @@ mod tests {
         assert!(l.join_into(c, b));
         assert_eq!(l.root.leaves(), vec![1, c]);
         assert_eq!(editor_of(&l, c), "c");
+    }
+
+    #[test]
+    fn arg_rides_the_area_and_clears_on_a_kind_switch() {
+        let mut l = Layout::single("runs");
+        // Open a run into the area.
+        assert!(l.set_editor_arg(1, "run", "0f6a43ae"));
+        let json = serde_json::to_string(&l).unwrap();
+        assert!(json.contains("0f6a43ae"), "arg must persist: {json}");
+        assert_eq!(l, serde_json::from_str(&json).unwrap());
+        // Splitting a run-detail area duplicates its arg — two views of the
+        // same run, which is the point of a split.
+        let twin = l.split(1, Dir::Row, 0.5).unwrap();
+        assert!(
+            serde_json::to_string(l.root.find(twin).unwrap())
+                .unwrap()
+                .contains("0f6a43ae")
+        );
+        // Switching kind from the dropdown drops the arg.
+        assert!(l.set_editor(1, "fleet"));
+        assert!(
+            !serde_json::to_string(l.root.find(1).unwrap())
+                .unwrap()
+                .contains("0f6a43ae")
+        );
+    }
+
+    #[test]
+    fn a_layout_saved_before_arg_existed_still_loads() {
+        // No `arg` key, as older persisted trees have.
+        let json = r#"{"root":{"kind":"leaf","id":1,"editor":"runs"},"next_id":2}"#;
+        let l: Layout = serde_json::from_str(json).unwrap();
+        assert_eq!(l.root.leaves(), vec![1]);
     }
 
     #[test]

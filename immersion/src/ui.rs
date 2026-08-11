@@ -40,9 +40,11 @@ pub struct EditorKind {
 pub struct AreasProps {
     pub layout: Layout,
     pub kinds: Vec<EditorKind>,
-    /// Renders a leaf's body. The host closes over its own state here; the
-    /// library never sees it.
-    pub render: Callback<(AreaId, String), Element>,
+    /// Renders a leaf's body from `(area id, editor kind, argument)`. The host
+    /// closes over its own state here; the library never sees it. The area id
+    /// lets an editor act on its own area — a list that opens an item into a
+    /// split needs to know where it is.
+    pub render: Callback<(AreaId, String, Option<String>), Element>,
     pub on_switch: Callback<(AreaId, String)>,
     /// Called with (leaf, dir, ratio): dir from the drag's dominant axis,
     /// ratio from where the pointer was released — the drop-ratio split.
@@ -103,7 +105,7 @@ pub fn Areas(props: AreasProps) -> Element {
 
 fn render_node(node: &Area, props: &AreasProps, lone: bool) -> Element {
     match node {
-        Area::Leaf { id, editor } => render_leaf(*id, editor, props, lone),
+        Area::Leaf { id, editor, arg } => render_leaf(*id, editor, arg.clone(), props, lone),
         Area::Split {
             id,
             dir,
@@ -142,13 +144,19 @@ fn render_node(node: &Area, props: &AreasProps, lone: bool) -> Element {
     }
 }
 
-fn render_leaf(id: AreaId, editor: &str, props: &AreasProps, lone: bool) -> Element {
+fn render_leaf(
+    id: AreaId,
+    editor: &str,
+    arg: Option<String>,
+    props: &AreasProps,
+    lone: bool,
+) -> Element {
     let kinds = props.kinds.clone();
     let editor_owned = editor.to_string();
     let on_switch = props.on_switch;
     let on_split = props.on_split;
     let on_join = props.on_join;
-    let body = props.render.call((id, editor_owned.clone()));
+    let body = props.render.call((id, editor_owned.clone(), arg));
     let label = kinds
         .iter()
         .find(|k| k.id == editor)
@@ -250,16 +258,16 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
                             on_rename.call((i, draft()));
                             editing.set(None);
                         },
+                        // Enter commits, Escape abandons the draft. Flat
+                        // if/else rather than a match so the closure body does
+                        // not nest another two levels inside the view tree.
                         onkeydown: move |e| {
-                            match e.key() {
-                                // Enter commits by blurring; Escape abandons
-                                // the draft and leaves the name unchanged.
-                                Key::Enter => {
-                                    on_rename.call((i, draft()));
-                                    editing.set(None);
-                                }
-                                Key::Escape => editing.set(None),
-                                _ => {}
+                            let k = e.key();
+                            if k == Key::Enter {
+                                on_rename.call((i, draft()));
+                            }
+                            if k == Key::Enter || k == Key::Escape {
+                                editing.set(None);
                             }
                         },
                     }
