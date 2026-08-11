@@ -101,6 +101,28 @@ pub fn workspaces() -> immersion::Workspaces {
     shared().workspaces.lock().expect("workspaces").clone()
 }
 
+/// Whether the startup splash is suppressed. A kv flag, so the choice rides
+/// the same persistence as everything else.
+pub fn splash_off() -> bool {
+    let s = shared();
+    let conn = s.db.lock().expect("db");
+    conn.query_row("SELECT value FROM kv WHERE key = 'splash_off'", [], |r| {
+        r.get::<_, String>(0)
+    })
+    .map(|v| v == "1")
+    .unwrap_or(false)
+}
+
+pub fn set_splash_off(off: bool) {
+    let s = shared();
+    let conn = s.db.lock().expect("db");
+    let _ = conn.execute(
+        "INSERT INTO kv (key, value) VALUES ('splash_off', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = ?1",
+        rusqlite::params![if off { "1" } else { "0" }],
+    );
+}
+
 /// Apply one mutation, persist the result, hand it back. The write-through is
 /// the point: a workbench that lives only in memory resets on every deploy,
 /// which is exactly the failure the boot-id reload would otherwise cause

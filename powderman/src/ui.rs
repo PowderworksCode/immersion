@@ -184,10 +184,77 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
     }
 }
 
-use immersion::{AreaId, Areas, Dir, EditorKind, WorkspaceTabs};
+use immersion::{
+    AreaId, Areas, Dir, EditorKind, Layout, Splash, SplashRecent, Template, WorkspaceTabs,
+};
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
 /// stores, so renaming one is a migration, not a refactor.
+/// The preset layouts offered on the splash. Each is a small tree the "New
+/// workspace" column builds from.
+fn templates() -> Vec<Template> {
+    let overview = {
+        let mut l = Layout::single("machine");
+        if let Some(b) = l.split(1, Dir::Col, 0.45) {
+            l.set_editor(b, "runs");
+            if let Some(r) = l.split(b, Dir::Row, 0.6) {
+                l.set_editor(r, "fleet");
+            }
+        }
+        l
+    };
+    let runs_focus = {
+        let mut l = Layout::single("runs");
+        if let Some(r) = l.split(1, Dir::Row, 0.5) {
+            l.set_editor(r, "run");
+        }
+        l
+    };
+    let monitoring = {
+        let mut l = Layout::single("machine");
+        if let Some(r) = l.split(1, Dir::Row, 0.62) {
+            l.set_editor(r, "fleet");
+        }
+        l
+    };
+    vec![
+        Template {
+            name: "Overview".into(),
+            hint: "machine, runs and fleet at a glance".into(),
+            layout: overview,
+        },
+        Template {
+            name: "Runs".into(),
+            hint: "the run list beside a detail pane".into(),
+            layout: runs_focus,
+        },
+        Template {
+            name: "Monitoring".into(),
+            hint: "machine graphs and the live fleet".into(),
+            layout: monitoring,
+        },
+        Template {
+            name: "Single".into(),
+            hint: "one area to split as you like".into(),
+            layout: Layout::single("machine"),
+        },
+    ]
+}
+
+/// Recent runs to jump back into — the "Recent files" column, run-shaped.
+fn recents(s: &State) -> Vec<SplashRecent> {
+    s.runs
+        .iter()
+        .take(8)
+        .map(|r| SplashRecent {
+            label: r.workflow.clone(),
+            sub: format!("{} · {}", short(&r.id, 8), hhmmss(r.updated_at)),
+            status: r.status.clone(),
+            key: r.id.clone(),
+        })
+        .collect()
+}
+
 fn kinds() -> Vec<EditorKind> {
     vec![
         EditorKind {
@@ -236,6 +303,34 @@ pub fn App() -> Element {
     });
 
     let s = state.read().clone();
+
+    // The splash opens on load unless suppressed, and can be reopened from the
+    // brand. A signal, because dismissing is transient UI state that need not
+    // touch the database — only the "don't show again" preference persists.
+    let mut splash_open = use_signal(|| !crate::daemon::splash_off());
+    let mut dont_show = use_signal(crate::daemon::splash_off);
+
+    let on_template = use_callback(move |i: usize| {
+        let t = templates();
+        if let Some(t) = t.into_iter().nth(i) {
+            ws.set(crate::daemon::mutate_workspaces(|w| {
+                w.add(&t.name, t.layout)
+            }));
+        }
+    });
+    let on_recent = use_callback(move |run_id: String| {
+        // Open a recent run into a fresh workspace showing just its detail.
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            let mut l = Layout::single("run");
+            l.set_editor_arg(1, "run", &run_id);
+            w.add(&format!("run {}", &run_id[..run_id.len().min(8)]), l);
+        }));
+    });
+    let on_dismiss = use_callback(move |()| splash_open.set(false));
+    let on_dont_show = use_callback(move |off: bool| {
+        crate::daemon::set_splash_off(off);
+        dont_show.set(off);
+    });
 
     // Every mutation writes through the daemon (which persists) and updates
     // the local signal immediately — the poll is for OTHER clients, and
@@ -326,8 +421,26 @@ pub fn App() -> Element {
         style { "{immersion::CSS}" }
         style { "{CSS}" }
         div { class: "app",
+            if splash_open() {
+                Splash {
+                    brand: "powderman",
+                    subtitle: "durable workflows · a herdr workbench",
+                    templates: templates(),
+                    recents: recents(&s),
+                    on_template,
+                    on_recent,
+                    on_dismiss,
+                    dont_show: dont_show(),
+                    on_dont_show,
+                }
+            }
             div { class: "topbar",
-                span { class: "brand", "powderman" }
+                span {
+                    class: "brand",
+                    title: "open the splash",
+                    onclick: move |_| splash_open.set(true),
+                    "powderman"
+                }
                 WorkspaceTabs {
                     names: ws.read().tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
                     active: ws.read().active,
