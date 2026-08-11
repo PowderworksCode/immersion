@@ -18,9 +18,11 @@
 
 mod area;
 mod ui;
+mod workspace;
 
 pub use area::{Area, AreaId, Dir, Layout, MIN_RATIO};
-pub use ui::{Areas, AreasProps, EditorKind};
+pub use ui::{Areas, AreasProps, EditorKind, WorkspaceTabs, WorkspaceTabsProps};
+pub use workspace::{Workspace, Workspaces};
 
 /// The library's chrome styles. The host concatenates this with its own CSS —
 /// tokens (`--im-*`) have fallbacks, so it works standalone and themes if the
