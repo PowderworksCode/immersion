@@ -173,3 +173,46 @@
 /* Join target tint. A distinct opacity from the split-line overlay so the
    two gestures read differently mid-drag. */
 .im-overlay.im-join { opacity: .18; }
+
+/* Startup splash — templates and recents over a dimmed backdrop. */
+.im-splash-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0, 0, 0, .55);
+  display: flex; align-items: center; justify-content: center;
+  outline: none;
+}
+.im-splash {
+  width: 40rem; max-width: 92vw;
+  background: var(--im-surface, #232327);
+  border: 1px solid var(--im-border, #3a3a40);
+  border-radius: 4px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
+  padding: 1.1rem 1.25rem 1rem;
+}
+.im-splash-head { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .9rem; }
+.im-splash-brand { font-size: 1.15rem; font-weight: 650; color: var(--im-text, #e8e8e4); }
+.im-splash-sub { font-size: .8rem; color: var(--im-text-muted, #8b8b85); }
+.im-splash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.im-splash-h {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--im-text-muted, #8b8b85); font-weight: 600; margin-bottom: .35rem;
+}
+.im-splash-item {
+  padding: .4rem .5rem; border-radius: 3px; cursor: pointer;
+  border: 1px solid transparent;
+}
+.im-splash-item:hover {
+  background: var(--im-header, #2b2b30);
+  border-color: var(--im-border, #3a3a40);
+}
+.im-splash-name {
+  font-size: .82rem; font-weight: 500; color: var(--im-text, #e8e8e4);
+  display: flex; align-items: center; gap: .4rem;
+}
+.im-splash-hint { font-size: .74rem; color: var(--im-text-muted, #8b8b85); }
+.im-splash-empty { font-size: .78rem; color: var(--im-text-muted, #8b8b85); padding: .4rem .5rem; }
+.im-dot { width: .5rem; height: .5rem; border-radius: 50%; display: inline-block; background: currentColor; }
+.im-splash-foot {
+  display: flex; align-items: center; gap: .4rem; margin-top: 1rem;
+  font-size: .76rem; color: var(--im-text-muted, #8b8b85); cursor: pointer;
+}

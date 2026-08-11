@@ -223,3 +223,4 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
   padding: .3rem .1rem; border-bottom: 1px solid var(--line); cursor: pointer;
 }
 .pick:hover { background: var(--surface); }
+.brand { cursor: pointer; }

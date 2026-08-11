@@ -17,10 +17,12 @@
 //! hole behind.
 
 mod area;
+mod splash;
 mod ui;
 mod workspace;
 
 pub use area::{Area, AreaId, Dir, Layout, MIN_RATIO};
+pub use splash::{Splash, SplashProps, SplashRecent, Template};
 pub use ui::{Areas, AreasProps, EditorKind, WorkspaceTabs, WorkspaceTabsProps};
 pub use workspace::{Workspace, Workspaces};
 
