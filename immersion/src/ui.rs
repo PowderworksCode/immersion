@@ -200,3 +200,90 @@ fn render_leaf(id: AreaId, editor: &str, props: &AreasProps, lone: bool) -> Elem
         }
     }
 }
+
+/// The topbar workspace tabs — Blender's named layouts.
+///
+/// A row of tabs plus a `+`. Click to switch, double-click to rename in
+/// place, the `✕` to close. Rename is a local `<input>` that commits on
+/// blur or Enter, so the round trip is one message per rename, not per
+/// keystroke — the same liveview budget the gesture shim and the action
+/// forms hold to.
+#[derive(Props, Clone)]
+pub struct WorkspaceTabsProps {
+    pub names: Vec<String>,
+    pub active: usize,
+    pub on_switch: Callback<usize>,
+    pub on_add: Callback<()>,
+    pub on_rename: Callback<(usize, String)>,
+    pub on_close: Callback<usize>,
+}
+
+impl PartialEq for WorkspaceTabsProps {
+    fn eq(&self, other: &Self) -> bool {
+        self.names == other.names && self.active == other.active
+    }
+}
+
+#[component]
+pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
+    let mut editing = use_signal(|| None::<usize>);
+    // The in-progress rename text. oninput keeps it current locally; the
+    // commit reads it once on blur/Enter, so the round trip is one message,
+    // not one per keystroke.
+    let mut draft = use_signal(String::new);
+    let on_switch = props.on_switch;
+    let on_add = props.on_add;
+    let on_rename = props.on_rename;
+    let on_close = props.on_close;
+    let multi = props.names.len() > 1;
+
+    rsx! {
+        div { class: "im-tabs",
+            for (i, name) in props.names.iter().cloned().enumerate() {
+                if editing() == Some(i) {
+                    input {
+                        class: "im-tab-edit",
+                        value: "{draft}",
+                        autofocus: true,
+                        oninput: move |e| draft.set(e.value()),
+                        onblur: move |_| {
+                            on_rename.call((i, draft()));
+                            editing.set(None);
+                        },
+                        onkeydown: move |e| {
+                            match e.key() {
+                                // Enter commits by blurring; Escape abandons
+                                // the draft and leaves the name unchanged.
+                                Key::Enter => {
+                                    on_rename.call((i, draft()));
+                                    editing.set(None);
+                                }
+                                Key::Escape => editing.set(None),
+                                _ => {}
+                            }
+                        },
+                    }
+                } else {
+                    div {
+                        class: if i == props.active { "im-tab active" } else { "im-tab" },
+                        onclick: move |_| on_switch.call(i),
+                        ondoubleclick: {
+                            let name = name.clone();
+                            move |_| { draft.set(name.clone()); editing.set(Some(i)); }
+                        },
+                        span { class: "im-tab-name", "{name}" }
+                        if multi {
+                            button {
+                                class: "im-tab-x",
+                                onclick: move |e| { e.stop_propagation(); on_close.call(i); },
+                                "✕"
+                            }
+                        }
+                    }
+                }
+            }
+            button { class: "im-tab-add", title: "new workspace",
+                onclick: move |_| on_add.call(()), "+" }
+        }
+    }
+}

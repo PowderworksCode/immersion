@@ -120,3 +120,38 @@
   pointer-events: none;
   background: var(--im-accent, #3987e5);
 }
+
+/* Workspace tabs in the host topbar. */
+.im-tabs { display: flex; align-items: stretch; gap: 1px; }
+.im-tab {
+  display: flex; align-items: center; gap: .3rem;
+  padding: .1rem .5rem; font-size: .76rem; cursor: pointer;
+  color: var(--im-text-muted, #8b8b85);
+  border-radius: .3rem;
+}
+.im-tab:hover { background: var(--im-header, #2b2b30); color: var(--im-text, #e8e8e4); }
+.im-tab.active {
+  background: var(--im-surface, #232327);
+  color: var(--im-text, #e8e8e4);
+  box-shadow: inset 0 -2px 0 var(--im-accent, #3987e5);
+}
+.im-tab-name { user-select: none; }
+.im-tab-x {
+  font-size: .6rem; line-height: 1; padding: .1rem .15rem;
+  border: 0; background: transparent; color: inherit; cursor: pointer;
+  opacity: 0; border-radius: .2rem;
+}
+.im-tab:hover .im-tab-x { opacity: .6; }
+.im-tab-x:hover { opacity: 1; }
+.im-tab-add {
+  font-size: .85rem; line-height: 1; padding: 0 .4rem;
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--im-text-muted, #8b8b85); border-radius: .3rem;
+}
+.im-tab-add:hover { background: var(--im-header, #2b2b30); color: var(--im-text, #e8e8e4); }
+.im-tab-edit {
+  font: inherit; font-size: .76rem; width: 8rem;
+  padding: .1rem .35rem; border-radius: .3rem;
+  border: 1px solid var(--im-accent, #3987e5);
+  background: var(--im-surface, #232327); color: var(--im-text, #e8e8e4);
+}

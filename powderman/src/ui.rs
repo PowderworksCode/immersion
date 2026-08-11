@@ -184,7 +184,7 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
     }
 }
 
-use immersion::{AreaId, Areas, Dir, EditorKind};
+use immersion::{AreaId, Areas, Dir, EditorKind, WorkspaceTabs};
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
 /// stores, so renaming one is a migration, not a refactor.
@@ -216,51 +216,74 @@ fn kinds() -> Vec<EditorKind> {
 #[component]
 pub fn App() -> Element {
     let mut state = use_signal(State::default);
-    let mut layout = use_signal(crate::daemon::layout);
+    let mut ws = use_signal(crate::daemon::workspaces);
 
     // Poll rather than push. One query per second against a WAL database that
-    // one process writes is not a cost worth engineering away yet. The layout
-    // rides along so a second browser converges on mutations within a tick.
+    // one process writes is not a cost worth engineering away yet. The
+    // workbench rides along so a second browser converges within a tick.
     use_future(move || async move {
         loop {
             if let Ok(s) = fetch_state().await {
                 state.set(s);
             }
-            layout.set(crate::daemon::layout());
+            ws.set(crate::daemon::workspaces());
             tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         }
     });
 
     let s = state.read().clone();
 
-    // Mutations write through the daemon (which persists) and update the
-    // local signal immediately — the poll is for OTHER clients, and waiting a
-    // tick for your own split would read as lag.
+    // Every mutation writes through the daemon (which persists) and updates
+    // the local signal immediately — the poll is for OTHER clients, and
+    // waiting a tick for your own split would read as lag. Layout mutations
+    // land on the ACTIVE workspace, the only one the gestures can reach.
     let on_switch = use_callback(move |(id, kind): (AreaId, String)| {
-        layout.set(crate::daemon::mutate_layout(|l| {
-            l.set_editor(id, &kind);
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            w.current_layout_mut().set_editor(id, &kind);
         }));
     });
     let on_split = use_callback(move |(id, dir, frac): (AreaId, Dir, f32)| {
-        layout.set(crate::daemon::mutate_layout(|l| {
-            l.split(id, dir, frac);
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            w.current_layout_mut().split(id, dir, frac);
         }));
     });
     let on_join = use_callback(move |id: AreaId| {
-        layout.set(crate::daemon::mutate_layout(|l| {
-            l.join(id);
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            w.current_layout_mut().join(id);
         }));
     });
     let on_join_into = use_callback(move |(survivor, victim): (AreaId, AreaId)| {
-        // join_into refuses non-siblings, so an over-ambitious drag is a
-        // no-op rather than a corrupted tree.
-        layout.set(crate::daemon::mutate_layout(|l| {
-            l.join_into(survivor, victim);
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            w.current_layout_mut().join_into(survivor, victim);
         }));
     });
     let on_ratio = use_callback(move |(id, ratio): (AreaId, f32)| {
-        layout.set(crate::daemon::mutate_layout(|l| {
-            l.set_ratio(id, ratio);
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            w.current_layout_mut().set_ratio(id, ratio);
+        }));
+    });
+
+    // Workspace tab callbacks. A new tab duplicates the current tree — you
+    // add one to branch off what you are looking at, not to start blank.
+    let ws_switch = use_callback(move |i: usize| {
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            w.switch(i);
+        }));
+    });
+    let ws_add = use_callback(move |()| {
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            let dup = w.current().layout.clone();
+            w.add("New", dup);
+        }));
+    });
+    let ws_rename = use_callback(move |(i, name): (usize, String)| {
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            w.rename(i, &name);
+        }));
+    });
+    let ws_close = use_callback(move |i: usize| {
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            w.close(i);
         }));
     });
 
@@ -283,6 +306,14 @@ pub fn App() -> Element {
         div { class: "app",
             div { class: "topbar",
                 span { class: "brand", "powderman" }
+                WorkspaceTabs {
+                    names: ws.read().tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
+                    active: ws.read().active,
+                    on_switch: ws_switch,
+                    on_add: ws_add,
+                    on_rename: ws_rename,
+                    on_close: ws_close,
+                }
                 span { class: "sub",
                     {s.herdr.clone().unwrap_or_else(|| "herdr unreachable".into())}
                     " · {s.runs.len()} runs"
@@ -290,7 +321,7 @@ pub fn App() -> Element {
             }
             div { class: "deck",
                 Areas {
-                    layout: layout.read().clone(),
+                    layout: ws.read().current().layout.clone(),
                     kinds: kinds(),
                     render,
                     on_switch,

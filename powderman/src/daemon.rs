@@ -40,9 +40,9 @@ struct Shared {
     /// pane_procs is a socket round trip per agent and the UI polls every
     /// second.
     fleet: Mutex<Vec<crate::metrics::FleetAgent>>,
-    /// The workbench tree. One layout for the daemon, shared by every client
-    /// looking at it — the layout is server truth exactly like the runs are.
-    layout: Mutex<immersion::Layout>,
+    /// The workbench: a set of named layout trees. Server truth, shared by
+    /// every client, persisted like everything else.
+    workspaces: Mutex<immersion::Workspaces>,
     timers: Mutex<Vec<crate::ui::TimerRow>>,
     in_flight: Mutex<HashSet<String>>,
 }
@@ -75,9 +75,9 @@ async fn drive(id: String) {
     }
 }
 
-/// The starter split: machine on top, runs below-left, fleet below-right.
-/// Only used when the database has no layout yet.
-fn default_layout() -> immersion::Layout {
+/// The starter workbench: an "Overview" workspace with machine on top, runs
+/// below-left, fleet below-right. Only used when the database has none yet.
+fn default_workspaces() -> immersion::Workspaces {
     let mut l = immersion::Layout::single("machine");
     if let Some(bottom) = l.split(1, immersion::Dir::Col, 0.45) {
         l.set_editor(bottom, "runs");
@@ -85,38 +85,39 @@ fn default_layout() -> immersion::Layout {
             l.set_editor(right, "fleet");
         }
     }
-    l
+    immersion::Workspaces::new("Overview", l)
 }
 
-fn load_layout(conn: &rusqlite::Connection) -> immersion::Layout {
-    conn.query_row("SELECT value FROM kv WHERE key = 'layout'", [], |r| {
+fn load_workspaces(conn: &rusqlite::Connection) -> immersion::Workspaces {
+    conn.query_row("SELECT value FROM kv WHERE key = 'workspaces'", [], |r| {
         r.get::<_, String>(0)
     })
     .ok()
     .and_then(|json| serde_json::from_str(&json).ok())
-    .unwrap_or_else(default_layout)
+    .unwrap_or_else(default_workspaces)
 }
 
-pub fn layout() -> immersion::Layout {
-    shared().layout.lock().expect("layout").clone()
+pub fn workspaces() -> immersion::Workspaces {
+    shared().workspaces.lock().expect("workspaces").clone()
 }
 
 /// Apply one mutation, persist the result, hand it back. The write-through is
-/// the point: a layout that lives only in memory resets on every deploy, which
-/// is exactly the failure the boot-id reload would otherwise cause daily.
-pub fn mutate_layout(f: impl FnOnce(&mut immersion::Layout)) -> immersion::Layout {
+/// the point: a workbench that lives only in memory resets on every deploy,
+/// which is exactly the failure the boot-id reload would otherwise cause
+/// daily.
+pub fn mutate_workspaces(f: impl FnOnce(&mut immersion::Workspaces)) -> immersion::Workspaces {
     let s = shared();
-    let mut l = s.layout.lock().expect("layout");
-    f(&mut l);
-    if let Ok(json) = serde_json::to_string(&*l) {
+    let mut w = s.workspaces.lock().expect("workspaces");
+    f(&mut w);
+    if let Ok(json) = serde_json::to_string(&*w) {
         let conn = s.db.lock().expect("db");
         let _ = conn.execute(
-            "INSERT INTO kv (key, value) VALUES ('layout', ?1)
+            "INSERT INTO kv (key, value) VALUES ('workspaces', ?1)
              ON CONFLICT(key) DO UPDATE SET value = ?1",
             rusqlite::params![json],
         );
     }
-    l.clone()
+    w.clone()
 }
 
 /// Release a parked run and drive it. The UI's resume button.
@@ -462,9 +463,9 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
     crate::herdr::ensure_socket_env();
 
     let db: Db = Arc::new(Mutex::new(crate::db::open(db_path)?));
-    let initial_layout = {
+    let initial_workspaces = {
         let conn = db.lock().expect("db");
-        load_layout(&conn)
+        load_workspaces(&conn)
     };
     let registry = crate::workflows::registry();
 
@@ -500,7 +501,7 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
             schedules,
             herdr: Mutex::new(None),
             fleet: Mutex::new(Vec::new()),
-            layout: Mutex::new(initial_layout),
+            workspaces: Mutex::new(initial_workspaces),
             timers: Mutex::new(Vec::new()),
             in_flight: Mutex::new(HashSet::new()),
         }))
