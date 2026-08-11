@@ -63,7 +63,7 @@ h2 {
 /* Actions ------------------------------------------------------------- */
 .bar { display: flex; gap: .45rem; flex-wrap: wrap; margin: 1.1rem 0 0; }
 button {
-  font: inherit; font-size: .82rem; padding: .35rem .7rem; border-radius: .4rem;
+  font: inherit; font-size: .82rem; padding: .35rem .7rem; border-radius: 3px;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
   cursor: pointer;
 }
@@ -75,12 +75,12 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
 
 /* Stat tiles — the headline numbers, not a cramped row of text ---------- */
 .tiles {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: .6rem; margin-bottom: 1.1rem;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: .3rem; margin-bottom: .5rem;
 }
 .tile {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: .55rem; padding: .7rem .85rem;
+  border-radius: 3px; padding: .7rem .85rem;
 }
 .tile .k {
   font-size: .68rem; text-transform: uppercase; letter-spacing: .07em;
@@ -95,7 +95,7 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
 /* Charts --------------------------------------------------------------- */
 .plot {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: .55rem; padding: .5rem .6rem .35rem;
+  border-radius: 3px; padding: .5rem .6rem .35rem;
   margin-bottom: .6rem;
 }
 .plot .cap {
@@ -129,7 +129,7 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
 /* Runs ----------------------------------------------------------------- */
 .run {
   border: 1px solid var(--line); background: var(--surface);
-  border-radius: .5rem; margin-bottom: .4rem; overflow: hidden;
+  border-radius: 3px; margin-bottom: .4rem; overflow: hidden;
 }
 .run > summary {
   cursor: pointer; padding: .55rem .8rem; display: grid; gap: .75rem;
@@ -174,7 +174,7 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 /* Actions — a name alone does not say what pressing it does ------------- */
 .actions { display: grid; gap: .5rem; }
 .action {
-  background: var(--surface); border: 1px solid var(--line); border-radius: .5rem;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 3px;
   padding: .6rem .8rem; display: grid; gap: .35rem;
   grid-template-columns: 1fr auto; align-items: center;
 }
@@ -188,7 +188,7 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .arg {
   font: 12px/1.4 var(--mono);
   padding: .3rem .45rem; width: 12rem; color: var(--ink);
-  background: var(--bg); border: 1px solid var(--line); border-radius: .35rem;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 3px;
 }
 .arg:focus { outline: none; border-color: var(--series-1); }
 
@@ -212,7 +212,7 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .rd-head .wf { font-size: .95rem; font-weight: 600; }
 .open {
   font-size: .72rem; padding: .1rem .35rem; margin-right: .4rem;
-  border: 1px solid var(--line); border-radius: .3rem;
+  border: 1px solid var(--line); border-radius: 3px;
   background: var(--surface); color: var(--ink-2); cursor: pointer;
 }
 .open:hover { border-color: var(--series-1); color: var(--series-1); }

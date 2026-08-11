@@ -35,26 +35,39 @@
 .im-header {
   display: flex;
   align-items: center;
-  gap: .5rem;
-  padding: .15rem .4rem;
+  gap: .35rem;
+  padding: .12rem .3rem;
   background: var(--im-header, #2b2b30);
   border-bottom: 1px solid var(--im-seam, #0e0e10);
   flex: none;
-  min-height: 1.7rem;
+  height: 1.55rem;
   user-select: none;
 }
 
 .im-kind {
   font: inherit;
-  font-size: .74rem;
+  font-size: .72rem;
+  font-weight: 500;
   color: var(--im-text, #e8e8e4);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: .25rem;
-  padding: .05rem .2rem;
-  max-width: 11rem;
+  background: var(--im-surface, #232327);
+  border: 1px solid var(--im-border, #3a3a40);
+  border-radius: 3px;
+  padding: .08rem 1.1rem .08rem .5rem;
+  max-width: 12rem;
+  cursor: pointer;
+  /* Blender's editor-type control has its own chevron; draw one so the
+     button reads as a menu rather than a plain field. */
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--im-text-muted, #8b8b85) 50%),
+    linear-gradient(135deg, var(--im-text-muted, #8b8b85) 50%, transparent 50%);
+  background-position:
+    calc(100% - 11px) center,
+    calc(100% - 7px) center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
 }
-.im-kind:hover { border-color: var(--im-border, #3a3a40); }
+.im-kind:hover { background-color: var(--im-header, #2b2b30); border-color: var(--im-accent, #3987e5); }
 .im-kind:focus { outline: none; border-color: var(--im-accent, #3987e5); }
 
 .im-title {
@@ -65,21 +78,22 @@
   white-space: nowrap;
 }
 
-.im-tools { margin-left: auto; display: flex; gap: .15rem; }
+.im-tools { margin-left: auto; display: flex; gap: .1rem; opacity: .35; }
+.im-header:hover .im-tools { opacity: 1; }
 .im-btn {
   font: inherit;
-  font-size: .7rem;
+  font-size: .72rem;
   line-height: 1;
-  padding: .18rem .3rem;
+  padding: .1rem .28rem;
   color: var(--im-text-muted, #8b8b85);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: .25rem;
+  border-radius: 3px;
   cursor: pointer;
 }
 .im-btn:hover {
   color: var(--im-text, #e8e8e4);
-  border-color: var(--im-border, #3a3a40);
+  background: var(--im-surface, #232327);
 }
 
 .im-body {
@@ -127,31 +141,31 @@
   display: flex; align-items: center; gap: .3rem;
   padding: .1rem .5rem; font-size: .76rem; cursor: pointer;
   color: var(--im-text-muted, #8b8b85);
-  border-radius: .3rem;
+  border-radius: 3px;
 }
 .im-tab:hover { background: var(--im-header, #2b2b30); color: var(--im-text, #e8e8e4); }
 .im-tab.active {
   background: var(--im-surface, #232327);
   color: var(--im-text, #e8e8e4);
-  box-shadow: inset 0 -2px 0 var(--im-accent, #3987e5);
+  box-shadow: inset 0 0 0 1px var(--im-border, #3a3a40);
 }
 .im-tab-name { user-select: none; }
 .im-tab-x {
   font-size: .6rem; line-height: 1; padding: .1rem .15rem;
   border: 0; background: transparent; color: inherit; cursor: pointer;
-  opacity: 0; border-radius: .2rem;
+  opacity: 0; border-radius: 3px;
 }
 .im-tab:hover .im-tab-x { opacity: .6; }
 .im-tab-x:hover { opacity: 1; }
 .im-tab-add {
   font-size: .85rem; line-height: 1; padding: 0 .4rem;
   border: 0; background: transparent; cursor: pointer;
-  color: var(--im-text-muted, #8b8b85); border-radius: .3rem;
+  color: var(--im-text-muted, #8b8b85); border-radius: 3px;
 }
 .im-tab-add:hover { background: var(--im-header, #2b2b30); color: var(--im-text, #e8e8e4); }
 .im-tab-edit {
   font: inherit; font-size: .76rem; width: 8rem;
-  padding: .1rem .35rem; border-radius: .3rem;
+  padding: .1rem .35rem; border-radius: 3px;
   border: 1px solid var(--im-accent, #3987e5);
   background: var(--im-surface, #232327); color: var(--im-text, #e8e8e4);
 }
