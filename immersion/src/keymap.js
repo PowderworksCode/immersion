@@ -9,7 +9,12 @@
 
 (() => {
   const chords = window.__imChords || [];
-  const isMac = /mac/i.test(navigator.platform || "");
+  // navigator.platform alone is unreliable (deprecated, and empty under some
+  // privacy settings — which then resolves Mod to Ctrl and kills every Cmd
+  // chord on a Mac); check the userAgent too.
+  const isMac =
+    /Mac|iPhone|iPad|iPod/.test(navigator.platform || "") ||
+    /Mac OS X/.test(navigator.userAgent || "");
   const mod = isMac ? "Meta" : "Ctrl";
 
   // Expand "Mod" in each binding to the platform key, keeping a map from the

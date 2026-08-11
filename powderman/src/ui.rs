@@ -185,8 +185,8 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 }
 
 use immersion::{
-    AreaId, Areas, Dir, EditorKind, Field, FieldKind, Keymap, Layout, PropertyEditor, Splash,
-    SplashRecent, Template, WorkspaceTabs, default_keymap,
+    AreaId, Areas, Dir, EditorKind, Field, FieldKind, Keymap, Layout, Palette, PaletteItem,
+    PropertyEditor, Splash, SplashRecent, Template, WorkspaceTabs, default_keymap,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -254,6 +254,40 @@ fn recents(s: &State) -> Vec<SplashRecent> {
             key: r.id.clone(),
         })
         .collect()
+}
+
+/// The palette's entries: the actions searchable by F3. They are the same
+/// `(action, params)` pairs the keymap fires — host actions (undo/redo/
+/// maximize) and navigational bus commands — with a label to search by and the
+/// chord they are bound to, so the palette, a chord, and an agent all reach one
+/// router. Workspace switches are generated per tab, so the palette lists the
+/// rooms you can jump to by name.
+fn palette_items(ws: &immersion::Workspaces) -> Vec<PaletteItem> {
+    let mut items = vec![
+        PaletteItem::new("undo", "Undo")
+            .with_hint("revert the last layout change")
+            .with_chord("Mod+Z"),
+        PaletteItem::new("redo", "Redo")
+            .with_hint("reapply an undone change")
+            .with_chord("Mod+Shift+Z"),
+        PaletteItem::new("maximize", "Maximize area")
+            .with_hint("toggle the focused area full-deck")
+            .with_chord("Mod+Shift+Space"),
+        PaletteItem::new("workspace.cycle", "Next workspace")
+            .with_chord("Alt+PageDown")
+            .with_params(serde_json::json!({ "delta": 1 })),
+        PaletteItem::new("workspace.cycle", "Previous workspace")
+            .with_chord("Alt+PageUp")
+            .with_params(serde_json::json!({ "delta": -1 })),
+    ];
+    for (i, tab) in ws.tabs.iter().enumerate() {
+        items.push(
+            PaletteItem::new("workspace.switch", &format!("Switch to {}", tab.name))
+                .with_hint("go to this workspace")
+                .with_params(serde_json::json!({ "index": i })),
+        );
+    }
+    items
 }
 
 /// The Settings editor's schema: which widget edits which pointer in the
@@ -378,6 +412,10 @@ pub fn App() -> Element {
         settings.set(crate::daemon::set_setting(&pointer, value));
     });
 
+    // The command palette is per-client view state, like maximize — one client
+    // searching commands does not open the palette in another.
+    let mut palette_open = use_signal(|| false);
+
     // Maximize is per-client view state (two browsers may maximize different
     // areas), so it is a local signal, not a command on the shared tree.
     let mut maximized = use_signal(|| None::<AreaId>);
@@ -394,6 +432,7 @@ pub fn App() -> Element {
                 let first = ws.read().current().layout.root.leaves().first().copied();
                 maximized.set(if cur.is_some() { None } else { first });
             }
+            "palette" => palette_open.set(true),
             _ => ws.set(crate::daemon::dispatch(&action, params)),
         }
     });
@@ -508,6 +547,13 @@ pub fn App() -> Element {
                 }
             }
             Keymap { bindings: default_keymap(), on_action }
+            if palette_open() {
+                Palette {
+                    items: palette_items(&ws.read()),
+                    on_run: on_action,
+                    on_close: move |()| palette_open.set(false),
+                }
+            }
             div { class: "deck",
                 Areas {
                     layout: ws.read().current().layout.clone(),

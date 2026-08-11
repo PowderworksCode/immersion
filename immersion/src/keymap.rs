@@ -11,6 +11,12 @@
 //! on macOS); the JS shim resolves it, because only the browser knows the
 //! platform. "Ctrl" means the literal Control key on every platform — Blender
 //! binds workspace cycling to Ctrl-PageUp on all three, not Cmd.
+//!
+//! Some of Blender's chords are spoken for by the browser or the OS, and a
+//! binding over one is a shortcut that silently does nothing. The defaults here
+//! are web-first: Blender's where they are free, remapped where they collide
+//! (maximize off Cmd+Space/Spotlight, workspace cycling off the tab-switch
+//! chord). docs/keymap-web-safety.md is the record of which and why.
 
 use dioxus::prelude::*;
 use serde_json::Value;
@@ -32,12 +38,12 @@ pub struct Binding {
 pub fn default_keymap() -> Vec<Binding> {
     vec![
         Binding {
-            chord: "Ctrl+PageDown",
+            chord: "Alt+PageDown",
             action: "workspace.cycle",
             params: serde_json::json!({ "delta": 1 }),
         },
         Binding {
-            chord: "Ctrl+PageUp",
+            chord: "Alt+PageUp",
             action: "workspace.cycle",
             params: serde_json::json!({ "delta": -1 }),
         },
@@ -52,8 +58,20 @@ pub fn default_keymap() -> Vec<Binding> {
             params: Value::Null,
         },
         Binding {
-            chord: "Mod+Space",
+            // Blender maximizes with Ctrl+Space, but that is macOS Input
+            // Sources and Cmd+Space is Spotlight — the OS eats both, so the
+            // shortcut is simply dead on a Mac. Mod+Shift+Space is free
+            // everywhere. See docs/keymap-web-safety.md.
+            chord: "Mod+Shift+Space",
             action: "maximize",
+            params: Value::Null,
+        },
+        Binding {
+            // Blender's Menu Search. F3 is free of any modifier collision; the
+            // shim preventDefaults it so the browser's find-again does not also
+            // fire.
+            chord: "F3",
+            action: "palette",
             params: Value::Null,
         },
     ]
