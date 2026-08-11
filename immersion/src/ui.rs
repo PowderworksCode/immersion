@@ -11,8 +11,21 @@
 //! are the same four callbacks, so the gesture work will not touch the host.
 
 use dioxus::prelude::*;
+use serde::Deserialize;
 
 use crate::area::{Area, AreaId, Dir, Layout};
+
+/// What the gesture shim commits, one message per completed drag. Everything
+/// else about a drag stays in the browser.
+#[derive(Deserialize)]
+#[serde(tag = "t", rename_all = "lowercase")]
+enum Gesture {
+    Ratio { id: AreaId, ratio: f32 },
+    Split { id: AreaId, dir: Dir, frac: f32 },
+    Join { survivor: AreaId, victim: AreaId },
+}
+
+const GESTURES_JS: &str = include_str!("gestures.js");
 
 /// One entry in the editor-type dropdown.
 #[derive(Debug, Clone, PartialEq)]
@@ -31,8 +44,16 @@ pub struct AreasProps {
     /// library never sees it.
     pub render: Callback<(AreaId, String), Element>,
     pub on_switch: Callback<(AreaId, String)>,
-    pub on_split: Callback<(AreaId, Dir)>,
+    /// Called with (leaf, dir, ratio): dir from the drag's dominant axis,
+    /// ratio from where the pointer was released — the drop-ratio split.
+    pub on_split: Callback<(AreaId, Dir, f32)>,
+    /// The close button: the sibling subtree absorbs the space.
     pub on_join: Callback<AreaId>,
+    /// The join gesture: survivor dragged over victim. Hosts validate via
+    /// [`Layout::join_into`], which refuses non-siblings.
+    pub on_join_into: Callback<(AreaId, AreaId)>,
+    /// A seam drag committed a new ratio for a split node.
+    pub on_ratio: Callback<(AreaId, f32)>,
 }
 
 impl PartialEq for AreasProps {
@@ -47,6 +68,30 @@ impl PartialEq for AreasProps {
 /// nothing.
 #[component]
 pub fn Areas(props: AreasProps) -> Element {
+    let on_split = props.on_split;
+    let on_join_into = props.on_join_into;
+    let on_ratio = props.on_ratio;
+
+    // The shim installs once per page and speaks back over the eval channel:
+    // one JSON message per completed drag, received here and dispatched to
+    // the same callbacks the header buttons use. The gesture is client-side;
+    // the mutation is not.
+    use_future(move || async move {
+        let mut channel = dioxus::document::eval(GESTURES_JS);
+        loop {
+            let Ok(raw) = channel.recv::<String>().await else {
+                // Channel closed — page going away. A reload re-installs.
+                return;
+            };
+            match serde_json::from_str::<Gesture>(&raw) {
+                Ok(Gesture::Ratio { id, ratio }) => on_ratio.call((id, ratio)),
+                Ok(Gesture::Split { id, dir, frac }) => on_split.call((id, dir, frac)),
+                Ok(Gesture::Join { survivor, victim }) => on_join_into.call((survivor, victim)),
+                Err(_) => {}
+            }
+        }
+    });
+
     let root = props.layout.root.clone();
     let lone = matches!(root, Area::Leaf { .. });
     rsx! {
@@ -70,6 +115,10 @@ fn render_node(node: &Area, props: &AreasProps, lone: bool) -> Element {
                 Dir::Row => ("im-split im-row", ratio * 100.0),
                 Dir::Col => ("im-split im-col", ratio * 100.0),
             };
+            let (handle_dir, handle_pos) = match dir {
+                Dir::Row => ("row", format!("left: {pct}%")),
+                Dir::Col => ("col", format!("top: {pct}%")),
+            };
             rsx! {
                 div { class: "{cls}", key: "{id}",
                     div { class: "im-cell", style: "flex-basis: {pct}%",
@@ -77,6 +126,15 @@ fn render_node(node: &Area, props: &AreasProps, lone: bool) -> Element {
                     }
                     div { class: "im-cell", style: "flex-basis: {100.0 - pct}%",
                         {render_node(b, props, false)}
+                    }
+                    // The resize handle rides the seam. It is chrome, not
+                    // layout: absolutely positioned over the border so the
+                    // cells' geometry stays a pure function of the ratio.
+                    div {
+                        class: "im-seam-handle im-seam-{handle_dir}",
+                        style: "{handle_pos}",
+                        "data-im-seam": "{id}",
+                        "data-im-dir": "{handle_dir}",
                     }
                 }
             }
@@ -98,7 +156,15 @@ fn render_leaf(id: AreaId, editor: &str, props: &AreasProps, lone: bool) -> Elem
         .unwrap_or(editor);
 
     rsx! {
-        div { class: "im-area", key: "{id}",
+        div { class: "im-area", key: "{id}", "data-im-area": "{id}",
+            // Corner grips: invisible hit-zones in all four corners, per the
+            // locked decision — no visual reveal in any state; the diagonal
+            // resize cursor is the only affordance. Drag inward to split,
+            // outward over a neighbour to join.
+            span { class: "im-grip im-grip-tl", "data-im-grip": "tl" }
+            span { class: "im-grip im-grip-tr", "data-im-grip": "tr" }
+            span { class: "im-grip im-grip-bl", "data-im-grip": "bl" }
+            span { class: "im-grip im-grip-br", "data-im-grip": "br" }
             div { class: "im-header",
                 // The editor-type selector — Blender's leftmost header button.
                 // A native <select> for phase 1: it is keyboard-accessible and
@@ -118,9 +184,9 @@ fn render_leaf(id: AreaId, editor: &str, props: &AreasProps, lone: bool) -> Elem
                 span { class: "im-title", "{label}" }
                 span { class: "im-tools",
                     button { class: "im-btn", title: "split horizontally",
-                        onclick: move |_| on_split.call((id, Dir::Row)), "⬒" }
+                        onclick: move |_| on_split.call((id, Dir::Row, 0.5)), "⬒" }
                     button { class: "im-btn", title: "split vertically",
-                        onclick: move |_| on_split.call((id, Dir::Col)), "◧" }
+                        onclick: move |_| on_split.call((id, Dir::Col, 0.5)), "◧" }
                     // Close-is-join: the sibling absorbs the space. The last
                     // area has no sibling, so it gets no close button rather
                     // than a button that refuses.
