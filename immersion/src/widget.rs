@@ -1,0 +1,322 @@
+//! The widget kit: Blender-style controls, bound to a serde value.
+//!
+//! A property form is a `serde_json::Value` document plus a schema of
+//! [`Field`]s, each addressing a spot in the document by JSON pointer. The
+//! [`PropertyEditor`] renders the right control per field, reads its current
+//! value out of the document, and reports an edit as `(pointer, new value)` —
+//! both serde. It does not know or care *where* the document lives; the host
+//! applies the edit (through its command bus, so a widget change persists and
+//! undoes like any other). That is the "hooked up to serde in a good way": the
+//! binding is a pointer into a value, the edit is a value, and the widget is
+//! agnostic about the document's home.
+//!
+//! Every control commits once, on the liveview budget the rest of the library
+//! holds to — a text field on blur/Enter, a slider and checkbox on change
+//! (release, not drag), never a message per keystroke or per drag frame.
+
+use dioxus::prelude::*;
+use serde_json::{Value, json};
+
+/// What kind of control edits a field, and its constraints.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldKind {
+    Text,
+    Number {
+        min: Option<f64>,
+        max: Option<f64>,
+        step: Option<f64>,
+    },
+    /// A value slider with a filled track.
+    Slider {
+        min: f64,
+        max: f64,
+        step: f64,
+    },
+    Bool,
+    /// `(value, label)` pairs for a dropdown.
+    Select(Vec<(String, String)>),
+    /// The native color picker; the value is a `#rrggbb` string.
+    Color,
+}
+
+/// One editable spot in the document.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    /// JSON pointer, e.g. `/accent` or `/sweep/limit`.
+    pub path: String,
+    pub label: String,
+    pub kind: FieldKind,
+    pub hint: Option<String>,
+}
+
+impl Field {
+    pub fn new(path: &str, label: &str, kind: FieldKind) -> Self {
+        Field {
+            path: path.to_string(),
+            label: label.to_string(),
+            kind,
+            hint: None,
+        }
+    }
+    pub fn with_hint(mut self, hint: &str) -> Self {
+        self.hint = Some(hint.to_string());
+        self
+    }
+}
+
+#[derive(Props, Clone)]
+pub struct PropertyEditorProps {
+    /// The document being edited.
+    pub doc: Value,
+    pub fields: Vec<Field>,
+    /// `(json pointer, new value)`. The host applies it to its own document.
+    pub on_edit: Callback<(String, Value)>,
+}
+
+impl PartialEq for PropertyEditorProps {
+    fn eq(&self, other: &Self) -> bool {
+        self.doc == other.doc && self.fields == other.fields
+    }
+}
+
+#[component]
+pub fn PropertyEditor(props: PropertyEditorProps) -> Element {
+    rsx! {
+        div { class: "im-props",
+            for f in props.fields.iter().cloned() {
+                {field_row(f, &props.doc, props.on_edit)}
+            }
+        }
+    }
+}
+
+fn current<'a>(doc: &'a Value, path: &str) -> Option<&'a Value> {
+    doc.pointer(path)
+}
+
+fn field_row(f: Field, doc: &Value, on_edit: Callback<(String, Value)>) -> Element {
+    let val = current(doc, &f.path).cloned().unwrap_or(Value::Null);
+    let control = match &f.kind {
+        FieldKind::Text => text_widget(&f.path, &val, on_edit),
+        FieldKind::Number { min, max, step } => {
+            number_widget(&f.path, &val, *min, *max, *step, on_edit)
+        }
+        FieldKind::Slider { min, max, step } => {
+            slider_widget(&f.path, &val, *min, *max, *step, on_edit)
+        }
+        FieldKind::Bool => bool_widget(&f.path, &val, on_edit),
+        FieldKind::Select(opts) => select_widget(&f.path, &val, opts, on_edit),
+        FieldKind::Color => color_widget(&f.path, &val, on_edit),
+    };
+    rsx! {
+        div { class: "im-field",
+            label { class: "im-field-label",
+                span { "{f.label}" }
+                if let Some(h) = f.hint.clone() {
+                    span { class: "im-field-hint", "{h}" }
+                }
+            }
+            div { class: "im-field-control", {control} }
+        }
+    }
+}
+
+fn as_str(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
+fn as_f64(v: &Value) -> f64 {
+    v.as_f64().unwrap_or(0.0)
+}
+
+fn text_widget(path: &str, val: &Value, on_edit: Callback<(String, Value)>) -> Element {
+    let path = path.to_string();
+    let cur = as_str(val);
+    rsx! {
+        input {
+            class: "im-input",
+            r#type: "text",
+            value: "{cur}",
+            spellcheck: "false",
+            autocomplete: "off",
+            // Commit on blur or Enter — one message, not one per keystroke.
+            onchange: move |e| on_edit.call((path.clone(), json!(e.value()))),
+        }
+    }
+}
+
+fn number_widget(
+    path: &str,
+    val: &Value,
+    min: Option<f64>,
+    max: Option<f64>,
+    step: Option<f64>,
+    on_edit: Callback<(String, Value)>,
+) -> Element {
+    let path = path.to_string();
+    let cur = as_f64(val);
+    let min_s = min.map(|m| m.to_string());
+    let max_s = max.map(|m| m.to_string());
+    let step_s = step.map(|s| s.to_string()).unwrap_or_else(|| "1".into());
+    rsx! {
+        input {
+            class: "im-input im-number",
+            r#type: "number",
+            value: "{cur}",
+            min: min_s,
+            max: max_s,
+            step: "{step_s}",
+            onchange: move |e| {
+                if let Ok(n) = e.value().parse::<f64>() {
+                    // Keep integers integer in the document, so a limit reads
+                    // `100`, not `100.0`, and round-trips to the host cleanly.
+                    let v = if n.fract() == 0.0 { json!(n as i64) } else { json!(n) };
+                    on_edit.call((path.clone(), v));
+                }
+            },
+        }
+    }
+}
+
+fn slider_widget(
+    path: &str,
+    val: &Value,
+    min: f64,
+    max: f64,
+    step: f64,
+    on_edit: Callback<(String, Value)>,
+) -> Element {
+    let path = path.to_string();
+    let cur = as_f64(val);
+    rsx! {
+        div { class: "im-slider-row",
+            input {
+                class: "im-slider",
+                r#type: "range",
+                min: "{min}",
+                max: "{max}",
+                step: "{step}",
+                value: "{cur}",
+                // range fires oninput during drag and onchange on release; use
+                // onchange so the commit is one message at the end.
+                onchange: move |e| {
+                    if let Ok(n) = e.value().parse::<f64>() {
+                        let v = if n.fract() == 0.0 { json!(n as i64) } else { json!(n) };
+                        on_edit.call((path.clone(), v));
+                    }
+                },
+            }
+            span { class: "im-slider-val", "{cur}" }
+        }
+    }
+}
+
+fn bool_widget(path: &str, val: &Value, on_edit: Callback<(String, Value)>) -> Element {
+    let path = path.to_string();
+    let cur = val.as_bool().unwrap_or(false);
+    rsx! {
+        input {
+            class: "im-check",
+            r#type: "checkbox",
+            checked: cur,
+            onchange: move |e| on_edit.call((path.clone(), json!(e.checked()))),
+        }
+    }
+}
+
+fn select_widget(
+    path: &str,
+    val: &Value,
+    opts: &[(String, String)],
+    on_edit: Callback<(String, Value)>,
+) -> Element {
+    let path = path.to_string();
+    let cur = as_str(val);
+    let opts = opts.to_vec();
+    rsx! {
+        select {
+            class: "im-select",
+            onchange: move |e| on_edit.call((path.clone(), json!(e.value()))),
+            for (value, label) in opts.iter().cloned() {
+                option { value: "{value}", selected: value == cur, "{label}" }
+            }
+        }
+    }
+}
+
+fn color_widget(path: &str, val: &Value, on_edit: Callback<(String, Value)>) -> Element {
+    let path = path.to_string();
+    let cur = {
+        let s = as_str(val);
+        if s.is_empty() {
+            "#000000".to_string()
+        } else {
+            s
+        }
+    };
+    rsx! {
+        div { class: "im-color-row",
+            input {
+                class: "im-color",
+                r#type: "color",
+                value: "{cur}",
+                onchange: move |e| on_edit.call((path.clone(), json!(e.value()))),
+            }
+            span { class: "im-color-hex", "{cur}" }
+        }
+    }
+}
+
+/// Apply an edit to a document by JSON pointer, growing missing objects along
+/// the way. Hosts use this so a widget edit lands where the pointer says, even
+/// for a nested path the document did not have yet.
+pub fn apply_edit(doc: &mut Value, pointer: &str, value: Value) {
+    let parts: Vec<&str> = pointer.trim_start_matches('/').split('/').collect();
+    if parts.is_empty() || parts == [""] {
+        *doc = value;
+        return;
+    }
+    let mut cur = doc;
+    for (i, part) in parts.iter().enumerate() {
+        if !cur.is_object() {
+            *cur = json!({});
+        }
+        let obj = cur.as_object_mut().expect("just made it an object");
+        if i == parts.len() - 1 {
+            obj.insert((*part).to_string(), value);
+            return;
+        }
+        cur = obj.entry((*part).to_string()).or_insert_with(|| json!({}));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_edit_sets_a_top_level_key() {
+        let mut doc = json!({ "accent": "#000000", "splash": true });
+        apply_edit(&mut doc, "/accent", json!("#5680c2"));
+        assert_eq!(doc["accent"], json!("#5680c2"));
+        assert_eq!(doc["splash"], json!(true)); // untouched
+    }
+
+    #[test]
+    fn apply_edit_grows_a_missing_nested_path() {
+        let mut doc = json!({});
+        apply_edit(&mut doc, "/sweep/limit", json!(100));
+        assert_eq!(doc["sweep"]["limit"], json!(100));
+    }
+
+    #[test]
+    fn a_field_reads_its_value_by_pointer() {
+        let doc = json!({ "sweep": { "limit": 250 } });
+        assert_eq!(current(&doc, "/sweep/limit"), Some(&json!(250)));
+        assert_eq!(current(&doc, "/missing"), None);
+    }
+}
