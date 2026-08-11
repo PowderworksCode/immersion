@@ -157,11 +157,6 @@ fn render_leaf(
     let on_split = props.on_split;
     let on_join = props.on_join;
     let body = props.render.call((id, editor_owned.clone(), arg));
-    let label = kinds
-        .iter()
-        .find(|k| k.id == editor)
-        .map(|k| k.label)
-        .unwrap_or(editor);
 
     rsx! {
         div { class: "im-area", key: "{id}", "data-im-area": "{id}",
@@ -189,7 +184,6 @@ fn render_leaf(
                         }
                     }
                 }
-                span { class: "im-title", "{label}" }
                 span { class: "im-tools",
                     button { class: "im-btn", title: "split horizontally",
                         onclick: move |_| on_split.call((id, Dir::Row, 0.5)), "⬒" }
