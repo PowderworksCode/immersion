@@ -331,6 +331,17 @@ fn settings_fields() -> Vec<Field> {
         )
         .with_hint("packages per ecosystem the daily sweep fetches"),
         Field::new(
+            "/theme",
+            "Theme",
+            FieldKind::Select(
+                immersion::themes()
+                    .iter()
+                    .map(|t| (t.name.to_string(), t.name.to_string()))
+                    .collect(),
+            ),
+        )
+        .with_hint("the workbench palette; accent stays your own"),
+        Field::new(
             "/density",
             "Density",
             FieldKind::Select(vec![
@@ -529,6 +540,7 @@ pub fn App() -> Element {
 
     rsx! {
         style { "{immersion::CSS}" }
+        style { "{immersion::theme_css(settings()[\"theme\"].as_str().unwrap_or(\"Blender Dark\"))}" }
         style { "{CSS}" }
         div {
             class: "app",

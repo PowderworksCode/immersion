@@ -6,5 +6,6 @@
 # is for, so those stay checked.
 theme-files = [
   "immersion/src/immersion.css",
+  "immersion/src/theme.rs",
   "powderman/src/ui.css",
 ]
