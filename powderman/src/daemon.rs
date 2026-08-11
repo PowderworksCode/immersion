@@ -109,26 +109,52 @@ pub fn workspaces() -> immersion::Workspaces {
     shared().workspaces.lock().expect("workspaces").clone()
 }
 
-/// Whether the startup splash is suppressed. A kv flag, so the choice rides
-/// the same persistence as everything else.
-pub fn splash_off() -> bool {
+/// The workbench settings document — a small JSON value the widget-based
+/// Settings editor edits by pointer. Defaults fill any key the stored doc is
+/// missing, so adding a setting never needs a migration.
+pub fn settings() -> serde_json::Value {
+    let defaults = serde_json::json!({
+        "accent": "#5680c2",
+        "splash_on_start": true,
+        "poll_ms": 1000,
+        "sweep_limit": 100,
+        "density": "cozy"
+    });
     let s = shared();
-    let conn = s.db.lock().expect("db");
-    conn.query_row("SELECT value FROM kv WHERE key = 'splash_off'", [], |r| {
-        r.get::<_, String>(0)
-    })
-    .map(|v| v == "1")
-    .unwrap_or(false)
+    let stored: serde_json::Value = {
+        let conn = s.db.lock().expect("db");
+        conn.query_row("SELECT value FROM kv WHERE key = 'settings'", [], |r| {
+            r.get::<_, String>(0)
+        })
+        .ok()
+        .and_then(|v| serde_json::from_str(&v).ok())
+        .unwrap_or(serde_json::Value::Null)
+    };
+    let mut doc = defaults;
+    if let (Some(d), Some(st)) = (doc.as_object_mut(), stored.as_object()) {
+        for (k, v) in st {
+            d.insert(k.clone(), v.clone());
+        }
+    }
+    doc
 }
 
-pub fn set_splash_off(off: bool) {
+/// Apply one widget edit to the settings document and persist. Not on the
+/// layout undo stack — a preference is not something you undo with the same
+/// Ctrl-Z that reverts a split.
+pub fn set_setting(pointer: &str, value: serde_json::Value) -> serde_json::Value {
+    let mut doc = settings();
+    immersion::apply_edit(&mut doc, pointer, value);
     let s = shared();
-    let conn = s.db.lock().expect("db");
-    let _ = conn.execute(
-        "INSERT INTO kv (key, value) VALUES ('splash_off', ?1)
-         ON CONFLICT(key) DO UPDATE SET value = ?1",
-        rusqlite::params![if off { "1" } else { "0" }],
-    );
+    if let Ok(json) = serde_json::to_string(&doc) {
+        let conn = s.db.lock().expect("db");
+        let _ = conn.execute(
+            "INSERT INTO kv (key, value) VALUES ('settings', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = ?1",
+            rusqlite::params![json],
+        );
+    }
+    doc
 }
 
 /// Run a layout command and hand back the new workbench. THE one write path:

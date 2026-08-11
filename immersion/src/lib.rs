@@ -21,6 +21,7 @@ mod command;
 mod keymap;
 mod splash;
 mod ui;
+mod widget;
 mod workspace;
 
 pub use area::{Area, AreaId, Dir, Layout, MIN_RATIO};
@@ -28,6 +29,7 @@ pub use command::{Command, Commands};
 pub use keymap::{Binding, Keymap, KeymapProps, default_keymap};
 pub use splash::{Splash, SplashProps, SplashRecent, Template};
 pub use ui::{Areas, AreasProps, EditorKind, WorkspaceTabs, WorkspaceTabsProps};
+pub use widget::{Field, FieldKind, PropertyEditor, PropertyEditorProps, apply_edit};
 pub use workspace::{Workspace, Workspaces};
 
 /// The library's chrome styles. The host concatenates this with its own CSS —

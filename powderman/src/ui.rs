@@ -185,8 +185,8 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 }
 
 use immersion::{
-    AreaId, Areas, Dir, EditorKind, Keymap, Layout, Splash, SplashRecent, Template, WorkspaceTabs,
-    default_keymap,
+    AreaId, Areas, Dir, EditorKind, Field, FieldKind, Keymap, Layout, PropertyEditor, Splash,
+    SplashRecent, Template, WorkspaceTabs, default_keymap,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -256,6 +256,45 @@ fn recents(s: &State) -> Vec<SplashRecent> {
         .collect()
 }
 
+/// The Settings editor's schema: which widget edits which pointer in the
+/// settings document. This is the whole binding — a Field per knob, the doc is
+/// serde, edits are (pointer, value).
+fn settings_fields() -> Vec<Field> {
+    vec![
+        Field::new("/accent", "Accent color", FieldKind::Color)
+            .with_hint("the widget-blue used across the workbench"),
+        Field::new(
+            "/poll_ms",
+            "Refresh interval",
+            FieldKind::Slider {
+                min: 250.0,
+                max: 5000.0,
+                step: 250.0,
+            },
+        )
+        .with_hint("how often the page repolls, in ms"),
+        Field::new("/splash_on_start", "Splash on startup", FieldKind::Bool),
+        Field::new(
+            "/sweep_limit",
+            "Default sweep limit",
+            FieldKind::Number {
+                min: Some(1.0),
+                max: Some(1000.0),
+                step: Some(50.0),
+            },
+        )
+        .with_hint("packages per ecosystem the daily sweep fetches"),
+        Field::new(
+            "/density",
+            "Density",
+            FieldKind::Select(vec![
+                ("cozy".into(), "Cozy".into()),
+                ("compact".into(), "Compact".into()),
+            ]),
+        ),
+    ]
+}
+
 fn kinds() -> Vec<EditorKind> {
     vec![
         EditorKind {
@@ -282,6 +321,10 @@ fn kinds() -> Vec<EditorKind> {
             id: "run",
             label: "Run detail",
         },
+        EditorKind {
+            id: "settings",
+            label: "Settings",
+        },
     ]
 }
 
@@ -289,6 +332,10 @@ fn kinds() -> Vec<EditorKind> {
 pub fn App() -> Element {
     let mut state = use_signal(State::default);
     let mut ws = use_signal(crate::daemon::workspaces);
+    // Settings are a serde document the widget editor edits by pointer. Not on
+    // the layout bus — a preference is not a layout mutation — but every edit
+    // still round-trips through serde and the database like everything else.
+    let mut settings = use_signal(crate::daemon::settings);
 
     // Poll rather than push. One query per second against a WAL database that
     // one process writes is not a cost worth engineering away yet. The
@@ -299,7 +346,12 @@ pub fn App() -> Element {
                 state.set(s);
             }
             ws.set(crate::daemon::workspaces());
-            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+            settings.set(crate::daemon::settings());
+            let ms = settings.read()["poll_ms"]
+                .as_u64()
+                .unwrap_or(1000)
+                .clamp(200, 10000);
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
         }
     });
 
@@ -308,8 +360,11 @@ pub fn App() -> Element {
     // The splash opens on load unless suppressed, and can be reopened from the
     // brand. A signal, because dismissing is transient UI state that need not
     // touch the database — only the "don't show again" preference persists.
-    let mut splash_open = use_signal(|| !crate::daemon::splash_off());
-    let mut dont_show = use_signal(crate::daemon::splash_off);
+    let mut splash_open = use_signal(move || {
+        crate::daemon::settings()["splash_on_start"]
+            .as_bool()
+            .unwrap_or(true)
+    });
 
     // THE write path. Every button, dropdown, gesture and tab emits a named
     // command; this fires it through the daemon (which applies + persists) and
@@ -317,6 +372,10 @@ pub fn App() -> Element {
     // clients and waiting a tick for your own edit would read as lag.
     let cmd = use_callback(move |(name, params): (String, serde_json::Value)| {
         ws.set(crate::daemon::dispatch(&name, params));
+    });
+
+    let on_setting = use_callback(move |(pointer, value): (String, serde_json::Value)| {
+        settings.set(crate::daemon::set_setting(&pointer, value));
     });
 
     // Maximize is per-client view state (two browsers may maximize different
@@ -358,9 +417,13 @@ pub fn App() -> Element {
         ));
     });
     let on_dismiss = use_callback(move |()| splash_open.set(false));
+    // The splash's "don't show" checkbox edits the same setting the Settings
+    // editor does — one value, two surfaces.
     let on_dont_show = use_callback(move |off: bool| {
-        crate::daemon::set_splash_off(off);
-        dont_show.set(off);
+        settings.set(crate::daemon::set_setting(
+            "/splash_on_start",
+            serde_json::json!(!off),
+        ));
     });
 
     // Every mutation writes through the daemon (which persists) and updates
@@ -390,6 +453,7 @@ pub fn App() -> Element {
     let render = use_callback(
         move |(area, editor, arg): (AreaId, String, Option<String>)| {
             let s = render_state.read().clone();
+            let settings_doc = settings.read().clone();
             match editor.as_str() {
                 "machine" => ed_machine(&s),
                 "fleet" => ed_fleet(&s),
@@ -400,6 +464,7 @@ pub fn App() -> Element {
                     Some(id) => ed_run_detail(&s, &id),
                     None => ed_run_picker(&s, area, open_run),
                 },
+                "settings" => ed_settings(settings_doc.clone(), on_setting),
                 other => rsx! { div { class: "empty", "unknown editor {other}" } },
             }
         },
@@ -408,7 +473,9 @@ pub fn App() -> Element {
     rsx! {
         style { "{immersion::CSS}" }
         style { "{CSS}" }
-        div { class: "app",
+        div {
+            class: "app",
+            style: "--im-accent: {settings()[\"accent\"].as_str().unwrap_or(\"#5680c2\")}; --accent-live: {settings()[\"accent\"].as_str().unwrap_or(\"#5680c2\")}",
             if splash_open() {
                 Splash {
                     brand: "powderman",
@@ -418,7 +485,7 @@ pub fn App() -> Element {
                     on_template,
                     on_recent,
                     on_dismiss,
-                    dont_show: dont_show(),
+                    dont_show: !settings()["splash_on_start"].as_bool().unwrap_or(true),
                     on_dont_show,
                 }
             }
@@ -747,6 +814,25 @@ fn ed_run_picker(s: &State, area: AreaId, open_run: Callback<(AreaId, String)>) 
                 span { class: "status {r.status}", "{r.status}" }
                 span { class: "wf", "{r.workflow}" }
                 span { class: "note", "{short(&r.id, 8)} · {hhmmss(r.updated_at)}" }
+            }
+        }
+    }
+}
+
+/// The Settings editor: widgets over the settings document. Every control is
+/// bound to a pointer by settings_fields(); an edit is (pointer, value) that
+/// the host persists. Live: accent recolors the workbench, the interval
+/// changes the poll cadence, the splash toggle mirrors the splash's own.
+fn ed_settings(
+    doc: serde_json::Value,
+    on_setting: Callback<(String, serde_json::Value)>,
+) -> Element {
+    rsx! {
+        div { class: "settings",
+            PropertyEditor {
+                doc,
+                fields: settings_fields(),
+                on_edit: on_setting,
             }
         }
     }

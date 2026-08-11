@@ -216,3 +216,26 @@
   display: flex; align-items: center; gap: .4rem; margin-top: 1rem;
   font-size: .76rem; color: var(--im-text-muted, #8b8b85); cursor: pointer;
 }
+
+/* Widget kit — Blender-style property controls. */
+.im-props { display: flex; flex-direction: column; gap: .35rem; }
+.im-field { display: grid; grid-template-columns: 11rem 1fr; gap: .6rem; align-items: center; }
+.im-field-label { display: flex; flex-direction: column; font-size: .78rem; color: var(--im-text, #e8e8e4); }
+.im-field-hint { font-size: .68rem; color: var(--im-text-muted, #8b8b85); }
+.im-field-control { min-width: 0; }
+.im-input, .im-select {
+  font: inherit; font-size: .78rem; width: 100%;
+  padding: .18rem .4rem; border-radius: 3px;
+  color: var(--im-text, #e8e8e4);
+  background: var(--im-header, #2b2b30);
+  border: 1px solid var(--im-border, #3a3a40);
+}
+.im-input:focus, .im-select:focus { outline: none; border-color: var(--im-accent, #3987e5); }
+.im-number { max-width: 8rem; }
+.im-slider-row { display: flex; align-items: center; gap: .5rem; }
+.im-slider { flex: 1; accent-color: var(--im-accent, #3987e5); }
+.im-slider-val { font-size: .74rem; color: var(--im-text-muted, #8b8b85); font-variant-numeric: tabular-nums; min-width: 2.5rem; }
+.im-check { width: 1rem; height: 1rem; accent-color: var(--im-accent, #3987e5); }
+.im-color-row { display: flex; align-items: center; gap: .5rem; }
+.im-color { width: 2.2rem; height: 1.4rem; padding: 0; border: 1px solid var(--im-border, #3a3a40); border-radius: 3px; background: none; cursor: pointer; }
+.im-color-hex { font-family: var(--im-mono, monospace); font-size: .74rem; color: var(--im-text-muted, #8b8b85); }
