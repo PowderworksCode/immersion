@@ -740,6 +740,7 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
         .route("/api/commands", get(api_commands))
         .route("/api/state", get(api_state))
         .route("/api/command", post(api_command))
+        .nest_service("/mcp", crate::mcp::service())
         .route(
             "/ws",
             get(move |ws: WebSocketUpgrade| {
