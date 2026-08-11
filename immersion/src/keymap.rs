@@ -48,6 +48,13 @@ pub fn default_keymap() -> Vec<Binding> {
             params: serde_json::json!({ "delta": -1 }),
         },
         Binding {
+            // Repeat Last (Blender's Shift+R). Bare Shift+letter, so the shim's
+            // input guard keeps it from firing while typing in a field.
+            chord: "Shift+R",
+            action: "repeat_last",
+            params: Value::Null,
+        },
+        Binding {
             chord: "Mod+Z",
             action: "undo",
             params: Value::Null,

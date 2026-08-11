@@ -53,6 +53,9 @@ struct Shared {
     redo: Mutex<Vec<immersion::Workspaces>>,
     timers: Mutex<Vec<crate::ui::TimerRow>>,
     in_flight: Mutex<HashSet<String>>,
+    /// Every command that ran, newest last — Blender's Info log. Capped; it is
+    /// a record to read, not state to replay.
+    log: Mutex<Vec<crate::ui::LogEntry>>,
 }
 
 static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
@@ -185,7 +188,23 @@ pub fn dispatch_checked(name: &str, params: serde_json::Value) -> Result<immersi
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
     let mut candidate = w.clone();
-    s.commands.run(&mut candidate, name, &params)?;
+    let outcome = s.commands.run(&mut candidate, name, &params);
+    // The Info log: every command through the one write path — UI and MCP
+    // alike — with whether it took. Newest last, capped.
+    {
+        let mut log = s.log.lock().expect("log");
+        log.push(crate::ui::LogEntry {
+            name: name.to_string(),
+            params: params.clone(),
+            at: engine::now_ms(),
+            ok: outcome.is_ok(),
+        });
+        let len = log.len();
+        if len > 200 {
+            log.drain(0..len - 200);
+        }
+    }
+    outcome?; // logged either way; surface the error after recording it
     // Success. Record for undo — but not for pure navigation (switching a tab
     // is not something you undo) — capping depth so history is bounded.
     if s.commands.records_undo(name) {
@@ -199,6 +218,29 @@ pub fn dispatch_checked(name: &str, params: serde_json::Value) -> Result<immersi
     *w = candidate;
     persist_workspaces(&s, &w);
     Ok(w.clone())
+}
+
+/// The Info log — every command that ran, newest last.
+pub fn command_log() -> Vec<crate::ui::LogEntry> {
+    shared().log.lock().expect("log").clone()
+}
+
+/// Re-run the most recent command that changed the layout (Blender's Repeat
+/// Last, Shift+R). Navigation and failed commands are skipped — repeating a
+/// tab-switch or a command that already errored is not what the key means.
+pub fn repeat_last() -> immersion::Workspaces {
+    let s = shared();
+    let last = {
+        let log = s.log.lock().expect("log");
+        log.iter()
+            .rev()
+            .find(|e| e.ok && s.commands.records_undo(&e.name))
+            .cloned()
+    };
+    match last {
+        Some(e) => dispatch(&e.name, e.params),
+        None => workspaces(),
+    }
 }
 
 fn persist_workspaces(s: &Shared, w: &immersion::Workspaces) {
@@ -321,8 +363,13 @@ pub fn snapshot() -> State {
     let since = engine::now_ms() - 3_600_000;
     drop(conn);
 
+    // Newest first, last 50 — the Info editor shows recent history.
+    let mut log = command_log();
+    log.reverse();
+    log.truncate(50);
     State {
         herdr: s.herdr.lock().expect("herdr").clone(),
+        log,
         workflows,
         runs,
         machine: crate::metrics::box_now(&s.db),
@@ -633,6 +680,7 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
             redo: Mutex::new(Vec::new()),
             timers: Mutex::new(Vec::new()),
             in_flight: Mutex::new(HashSet::new()),
+            log: Mutex::new(Vec::new()),
         }))
         .map_err(|_| anyhow!("daemon started twice"))?;
 
