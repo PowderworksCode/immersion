@@ -210,6 +210,10 @@ fn kinds() -> Vec<EditorKind> {
             id: "timers",
             label: "Timers",
         },
+        EditorKind {
+            id: "run",
+            label: "Run detail",
+        },
     ]
 }
 
