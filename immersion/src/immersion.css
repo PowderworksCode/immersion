@@ -282,3 +282,21 @@
   color: var(--im-text-muted, #8b8b85); font-size: .72rem;
   font-family: var(--im-mono, monospace); white-space: nowrap; flex: none;
 }
+
+/* Tooltip (hover help, client-side). One shared floating element the shim
+   positions; tokens with fallbacks like the rest. */
+.im-tooltip {
+  position: fixed; z-index: 60; pointer-events: none;
+  max-width: 22rem; padding: .35rem .55rem;
+  background: var(--im-panel, #2b2b30);
+  border: 1px solid var(--im-border, #3a3a40);
+  border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  font-size: .76rem; line-height: 1.3;
+}
+.im-tooltip-name { color: var(--im-text, #e8e8e4); }
+.im-tooltip-desc { color: var(--im-text-muted, #8b8b85); margin-top: .2rem; }
+.im-tooltip-key {
+  color: var(--im-text-muted, #8b8b85); margin-top: .25rem;
+  font-family: var(--im-mono, monospace); font-size: .7rem;
+}

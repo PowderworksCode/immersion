@@ -186,7 +186,7 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 
 use immersion::{
     AreaId, Areas, Dir, EditorKind, Field, FieldKind, Keymap, Layout, Palette, PaletteItem,
-    PropertyEditor, Splash, SplashRecent, Template, WorkspaceTabs, default_keymap,
+    PropertyEditor, Splash, SplashRecent, Template, Tooltips, WorkspaceTabs, default_keymap,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -308,6 +308,8 @@ fn settings_fields() -> Vec<Field> {
         )
         .with_hint("how often the page repolls, in ms"),
         Field::new("/splash_on_start", "Splash on startup", FieldKind::Bool),
+        Field::new("/tooltips_on", "Tooltips", FieldKind::Bool)
+            .with_hint("hover help on the workbench controls"),
         Field::new(
             "/sweep_limit",
             "Default sweep limit",
@@ -547,6 +549,7 @@ pub fn App() -> Element {
                 }
             }
             Keymap { bindings: default_keymap(), on_action }
+            Tooltips { enabled: settings()["tooltips_on"].as_bool().unwrap_or(true) }
             if palette_open() {
                 Palette {
                     items: palette_items(&ws.read()),

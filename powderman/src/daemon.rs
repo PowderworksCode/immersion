@@ -118,7 +118,8 @@ pub fn settings() -> serde_json::Value {
         "splash_on_start": true,
         "poll_ms": 1000,
         "sweep_limit": 100,
-        "density": "cozy"
+        "density": "cozy",
+        "tooltips_on": true
     });
     let s = shared();
     let stored: serde_json::Value = {
