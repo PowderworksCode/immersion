@@ -185,7 +185,8 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 }
 
 use immersion::{
-    AreaId, Areas, Dir, EditorKind, Layout, Splash, SplashRecent, Template, WorkspaceTabs,
+    AreaId, Areas, Dir, EditorKind, Keymap, Layout, Splash, SplashRecent, Template, WorkspaceTabs,
+    default_keymap,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -318,6 +319,26 @@ pub fn App() -> Element {
         ws.set(crate::daemon::dispatch(&name, params));
     });
 
+    // Maximize is per-client view state (two browsers may maximize different
+    // areas), so it is a local signal, not a command on the shared tree.
+    let mut maximized = use_signal(|| None::<AreaId>);
+
+    // Keymap actions. Layout commands go to the bus; undo/redo/maximize are
+    // host concerns the bus does not own.
+    let on_action = use_callback(move |(action, params): (String, serde_json::Value)| {
+        match action.as_str() {
+            "undo" => ws.set(crate::daemon::undo()),
+            "redo" => ws.set(crate::daemon::redo()),
+            "maximize" => {
+                // Toggle: maximize the first area if none is, else restore.
+                let cur = maximized();
+                let first = ws.read().current().layout.root.leaves().first().copied();
+                maximized.set(if cur.is_some() { None } else { first });
+            }
+            _ => ws.set(crate::daemon::dispatch(&action, params)),
+        }
+    });
+
     let on_template = use_callback(move |i: usize| {
         if let Some(t) = templates().into_iter().nth(i) {
             cmd.call((
@@ -419,12 +440,14 @@ pub fn App() -> Element {
                     " · {s.runs.len()} runs"
                 }
             }
+            Keymap { bindings: default_keymap(), on_action }
             div { class: "deck",
                 Areas {
                     layout: ws.read().current().layout.clone(),
                     kinds: kinds(),
                     render,
                     on_command: cmd,
+                    maximized: maximized(),
                 }
             }
         }
