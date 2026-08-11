@@ -145,17 +145,20 @@
       }
       g.frac = Math.min(0.95, Math.max(0.05, g.frac));
     } else {
-      // Outside the source: a join, if the pointer is over another area.
-      g.mode = "join";
+      // Outside the source, over another area: a join — or a SWAP when the
+      // command key is held (Ctrl on Linux/Windows, Cmd on macOS), Blender's
+      // "trade these two panels" gesture. The mode picks the overlay colour.
+      const swap = e.ctrlKey || e.metaKey;
+      g.mode = swap ? "swap" : "join";
       const t = areaAt(e.clientX, e.clientY);
       if (t && Number(t.dataset.imArea) !== g.areaId) {
         g.target = Number(t.dataset.imArea);
         const tr = t.getBoundingClientRect();
-        // Color lives in .im-overlay.im-join (a theme file); the shim sets
-        // only geometry, so no literal leaks into JavaScript.
+        // Colour lives in .im-overlay.im-join / .im-swap (theme files); the
+        // shim sets only geometry, so no literal leaks into JavaScript.
         showOverlay(
           `left:${tr.left}px;top:${tr.top}px;width:${tr.width}px;height:${tr.height}px;`,
-          "im-join"
+          swap ? "im-swap" : "im-join"
         );
       } else {
         g.target = null;
@@ -175,6 +178,9 @@
       // The server validates siblinghood; an invalid join is silently a
       // no-op there, which the reverted overlay already communicated here.
       send({ t: "join", survivor: g.areaId, victim: g.target });
+    } else if (g.mode === "swap" && g.target !== null) {
+      // Swap needs no siblinghood — any two areas can trade editors.
+      send({ t: "swap", a: g.areaId, b: g.target });
     }
   };
 

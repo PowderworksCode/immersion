@@ -266,6 +266,35 @@ impl Layout {
             _ => false,
         }
     }
+
+    /// Exchange what two areas show — editor and argument both. Corner-dragging
+    /// one area onto another with the command key swaps them, so a run detail
+    /// and a list can trade places without a join. Both must be leaves; a
+    /// no-op (returns false) if either is missing or they are the same area.
+    pub fn swap_editors(&mut self, a: AreaId, b: AreaId) -> bool {
+        if a == b {
+            return false;
+        }
+        let read = |node: &Area| match node {
+            Area::Leaf { editor, arg, .. } => Some((editor.clone(), arg.clone())),
+            _ => None,
+        };
+        let Some(ea) = self.root.find(a).and_then(read) else {
+            return false;
+        };
+        let Some(eb) = self.root.find(b).and_then(read) else {
+            return false;
+        };
+        if let Some(Area::Leaf { editor, arg, .. }) = self.root.find_mut(a) {
+            *editor = eb.0;
+            *arg = eb.1;
+        }
+        if let Some(Area::Leaf { editor, arg, .. }) = self.root.find_mut(b) {
+            *editor = ea.0;
+            *arg = ea.1;
+        }
+        true
+    }
 }
 
 #[cfg(test)]
@@ -277,6 +306,21 @@ mod tests {
             Some(Area::Leaf { editor, .. }) => editor.clone(),
             other => panic!("area {id} is not a leaf: {other:?}"),
         }
+    }
+
+    #[test]
+    fn swap_editors_exchanges_two_leaves() {
+        let mut l = Layout::single("runs");
+        let new = l
+            .split(1, Dir::Row, 0.5)
+            .expect("split makes a second leaf");
+        l.set_editor(new, "fleet");
+        assert!(l.swap_editors(1, new));
+        assert_eq!(editor_of(&l, 1), "fleet");
+        assert_eq!(editor_of(&l, new), "runs");
+        // same-area and missing-area swaps are no-ops.
+        assert!(!l.swap_editors(1, 1));
+        assert!(!l.swap_editors(1, 9999));
     }
 
     #[test]
