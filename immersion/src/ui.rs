@@ -15,14 +15,39 @@ use serde::Deserialize;
 
 use crate::area::{Area, AreaId, Dir, Layout};
 
-/// What the gesture shim commits, one message per completed drag. Everything
-/// else about a drag stays in the browser.
+/// What the gesture shim commits, one message per completed drag. Each maps to
+/// a bus command, so a drag and a header-button click are the same operation.
 #[derive(Deserialize)]
 #[serde(tag = "t", rename_all = "lowercase")]
 enum Gesture {
     Ratio { id: AreaId, ratio: f32 },
     Split { id: AreaId, dir: Dir, frac: f32 },
     Join { survivor: AreaId, victim: AreaId },
+}
+
+impl Gesture {
+    fn command(self) -> (&'static str, serde_json::Value) {
+        match self {
+            Gesture::Ratio { id, ratio } => {
+                ("ratio", serde_json::json!({ "id": id, "ratio": ratio }))
+            }
+            Gesture::Split { id, dir, frac } => {
+                let d = if matches!(dir, Dir::Row) {
+                    "row"
+                } else {
+                    "col"
+                };
+                (
+                    "split",
+                    serde_json::json!({ "id": id, "dir": d, "frac": frac }),
+                )
+            }
+            Gesture::Join { survivor, victim } => (
+                "join_into",
+                serde_json::json!({ "survivor": survivor, "victim": victim }),
+            ),
+        }
+    }
 }
 
 const GESTURES_JS: &str = include_str!("gestures.js");
@@ -45,22 +70,16 @@ pub struct AreasProps {
     /// lets an editor act on its own area — a list that opens an item into a
     /// split needs to know where it is.
     pub render: Callback<(AreaId, String, Option<String>), Element>,
-    pub on_switch: Callback<(AreaId, String)>,
-    /// Called with (leaf, dir, ratio): dir from the drag's dominant axis,
-    /// ratio from where the pointer was released — the drop-ratio split.
-    pub on_split: Callback<(AreaId, Dir, f32)>,
-    /// The close button: the sibling subtree absorbs the space.
-    pub on_join: Callback<AreaId>,
-    /// The join gesture: survivor dragged over victim. Hosts validate via
-    /// [`Layout::join_into`], which refuses non-siblings.
-    pub on_join_into: Callback<(AreaId, AreaId)>,
-    /// A seam drag committed a new ratio for a split node.
-    pub on_ratio: Callback<(AreaId, f32)>,
+    /// The single write path: `(command name, JSON params)`. The header
+    /// buttons, the editor dropdown, and the gesture shim all emit through
+    /// here, so there is exactly one way to mutate the layout — the property
+    /// that lets undo, the keymap, and a future agent reach everything.
+    pub on_command: Callback<(String, serde_json::Value)>,
 }
 
 impl PartialEq for AreasProps {
     fn eq(&self, other: &Self) -> bool {
-        // Callbacks are identity-stable per mount; the layout and kinds are
+        // The callback is identity-stable per mount; the layout and kinds are
         // what decide whether a re-render matters.
         self.layout == other.layout && self.kinds == other.kinds
     }
@@ -70,26 +89,21 @@ impl PartialEq for AreasProps {
 /// nothing.
 #[component]
 pub fn Areas(props: AreasProps) -> Element {
-    let on_split = props.on_split;
-    let on_join_into = props.on_join_into;
-    let on_ratio = props.on_ratio;
+    let on_command = props.on_command;
 
     // The shim installs once per page and speaks back over the eval channel:
-    // one JSON message per completed drag, received here and dispatched to
-    // the same callbacks the header buttons use. The gesture is client-side;
-    // the mutation is not.
+    // one JSON message per completed drag, mapped to a bus command and sent to
+    // the same callback the header buttons use. The gesture is client-side;
+    // the mutation is a command.
     use_future(move || async move {
         let mut channel = dioxus::document::eval(GESTURES_JS);
         loop {
             let Ok(raw) = channel.recv::<String>().await else {
-                // Channel closed — page going away. A reload re-installs.
-                return;
+                return; // channel closed; a reload re-installs
             };
-            match serde_json::from_str::<Gesture>(&raw) {
-                Ok(Gesture::Ratio { id, ratio }) => on_ratio.call((id, ratio)),
-                Ok(Gesture::Split { id, dir, frac }) => on_split.call((id, dir, frac)),
-                Ok(Gesture::Join { survivor, victim }) => on_join_into.call((survivor, victim)),
-                Err(_) => {}
+            if let Ok(g) = serde_json::from_str::<Gesture>(&raw) {
+                let (name, params) = g.command();
+                on_command.call((name.to_string(), params));
             }
         }
     });
@@ -153,9 +167,7 @@ fn render_leaf(
 ) -> Element {
     let kinds = props.kinds.clone();
     let editor_owned = editor.to_string();
-    let on_switch = props.on_switch;
-    let on_split = props.on_split;
-    let on_join = props.on_join;
+    let cmd = props.on_command;
     let body = props.render.call((id, editor_owned.clone(), arg));
 
     rsx! {
@@ -174,7 +186,7 @@ fn render_leaf(
                 // costs one message on change, which is the liveview budget.
                 select {
                     class: "im-kind",
-                    onchange: move |e| on_switch.call((id, e.value())),
+                    onchange: move |e| cmd.call(("set_editor".to_string(), serde_json::json!({ "id": id, "editor": e.value() }))),
                     for k in kinds.iter() {
                         option {
                             key: "{k.id}",
@@ -186,15 +198,15 @@ fn render_leaf(
                 }
                 span { class: "im-tools",
                     button { class: "im-btn", title: "split horizontally",
-                        onclick: move |_| on_split.call((id, Dir::Row, 0.5)), "⬒" }
+                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "row" }))), "⬒" }
                     button { class: "im-btn", title: "split vertically",
-                        onclick: move |_| on_split.call((id, Dir::Col, 0.5)), "◧" }
+                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "col" }))), "◧" }
                     // Close-is-join: the sibling absorbs the space. The last
                     // area has no sibling, so it gets no close button rather
                     // than a button that refuses.
                     if !lone {
                         button { class: "im-btn", title: "close (join into neighbor)",
-                            onclick: move |_| on_join.call(id), "✕" }
+                            onclick: move |_| cmd.call(("join".to_string(), serde_json::json!({ "id": id }))), "✕" }
                     }
                 }
             }
@@ -214,10 +226,10 @@ fn render_leaf(
 pub struct WorkspaceTabsProps {
     pub names: Vec<String>,
     pub active: usize,
-    pub on_switch: Callback<usize>,
+    /// `(command name, params)`, same bus as the areas. Add is a host concern
+    /// (it needs a layout to add), so it stays its own callback.
+    pub on_command: Callback<(String, serde_json::Value)>,
     pub on_add: Callback<()>,
-    pub on_rename: Callback<(usize, String)>,
-    pub on_close: Callback<usize>,
 }
 
 impl PartialEq for WorkspaceTabsProps {
@@ -233,10 +245,8 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
     // commit reads it once on blur/Enter, so the round trip is one message,
     // not one per keystroke.
     let mut draft = use_signal(String::new);
-    let on_switch = props.on_switch;
+    let cmd = props.on_command;
     let on_add = props.on_add;
-    let on_rename = props.on_rename;
-    let on_close = props.on_close;
     let multi = props.names.len() > 1;
 
     rsx! {
@@ -249,7 +259,7 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
                         autofocus: true,
                         oninput: move |e| draft.set(e.value()),
                         onblur: move |_| {
-                            on_rename.call((i, draft()));
+                            cmd.call(("workspace.rename".to_string(), serde_json::json!({ "index": i, "name": draft() })));
                             editing.set(None);
                         },
                         // Enter commits, Escape abandons the draft. Flat
@@ -258,7 +268,7 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
                         onkeydown: move |e| {
                             let k = e.key();
                             if k == Key::Enter {
-                                on_rename.call((i, draft()));
+                                cmd.call(("workspace.rename".to_string(), serde_json::json!({ "index": i, "name": draft() })));
                             }
                             if k == Key::Enter || k == Key::Escape {
                                 editing.set(None);
@@ -268,7 +278,7 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
                 } else {
                     div {
                         class: if i == props.active { "im-tab active" } else { "im-tab" },
-                        onclick: move |_| on_switch.call(i),
+                        onclick: move |_| cmd.call(("workspace.switch".to_string(), serde_json::json!({ "index": i }))),
                         ondoubleclick: {
                             let name = name.clone();
                             move |_| { draft.set(name.clone()); editing.set(Some(i)); }
@@ -277,7 +287,7 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
                         if multi {
                             button {
                                 class: "im-tab-x",
-                                onclick: move |e| { e.stop_propagation(); on_close.call(i); },
+                                onclick: move |e| { e.stop_propagation(); cmd.call(("workspace.close".to_string(), serde_json::json!({ "index": i }))); },
                                 "✕"
                             }
                         }

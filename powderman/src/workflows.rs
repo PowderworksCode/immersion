@@ -338,3 +338,30 @@ fn agent(ctx: Ctx) -> BoxFut<'static, Result<Value>> {
         Ok(json!({ "agent": name, "settled_as": final_status }))
     })
 }
+
+/// The command registry: the library's built-in layout commands plus
+/// powderman's own. `open_run` splits an area and points the new half at a
+/// run — a compound the UI needs and an agent, later, gets for free.
+pub fn commands() -> immersion::Commands {
+    fn open_run(ws: &mut immersion::Workspaces, p: &serde_json::Value) -> anyhow::Result<()> {
+        let area = p
+            .get("area")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| anyhow::anyhow!("open_run needs an integer area"))?;
+        let run = p
+            .get("run")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("open_run needs a run id"))?;
+        let l = ws.current_layout_mut();
+        if let Some(new) = l.split(area, immersion::Dir::Row, 0.5) {
+            l.set_editor_arg(new, "run", run);
+        }
+        Ok(())
+    }
+    immersion::Commands::builtin().with(immersion::Command {
+        name: "open_run",
+        description: "Open a run in a new area beside the list",
+        navigational: false,
+        run: open_run,
+    })
+}
