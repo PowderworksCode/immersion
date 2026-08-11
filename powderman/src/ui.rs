@@ -265,6 +265,18 @@ pub fn App() -> Element {
 
     // Workspace tab callbacks. A new tab duplicates the current tree — you
     // add one to branch off what you are looking at, not to start blank.
+    // Open a run into its own area: split where the list is, and show the run
+    // in the new half — the pin-beside-the-charts payoff, built from the same
+    // split the gestures use.
+    let open_run = use_callback(move |(area, run_id): (AreaId, String)| {
+        ws.set(crate::daemon::mutate_workspaces(|w| {
+            let l = w.current_layout_mut();
+            if let Some(new_id) = l.split(area, Dir::Row, 0.5) {
+                l.set_editor_arg(new_id, "run", &run_id);
+            }
+        }));
+    });
+
     let ws_switch = use_callback(move |i: usize| {
         ws.set(crate::daemon::mutate_workspaces(|w| {
             w.switch(i);
@@ -288,17 +300,23 @@ pub fn App() -> Element {
     });
 
     let render_state = state;
-    let render = use_callback(move |(_id, editor): (AreaId, String)| {
-        let s = render_state.read().clone();
-        match editor.as_str() {
-            "machine" => ed_machine(&s),
-            "fleet" => ed_fleet(&s),
-            "runs" => ed_runs(&s),
-            "actions" => ed_actions(&s),
-            "timers" => ed_timers(&s),
-            other => rsx! { div { class: "empty", "unknown editor {other}" } },
-        }
-    });
+    let render = use_callback(
+        move |(area, editor, arg): (AreaId, String, Option<String>)| {
+            let s = render_state.read().clone();
+            match editor.as_str() {
+                "machine" => ed_machine(&s),
+                "fleet" => ed_fleet(&s),
+                "runs" => ed_runs(&s, area, open_run),
+                "actions" => ed_actions(&s),
+                "timers" => ed_timers(&s),
+                "run" => match arg {
+                    Some(id) => ed_run_detail(&s, &id),
+                    None => ed_run_picker(&s, area, open_run),
+                },
+                other => rsx! { div { class: "empty", "unknown editor {other}" } },
+            }
+        },
+    );
 
     rsx! {
         style { "{immersion::CSS}" }
@@ -344,35 +362,50 @@ fn ed_actions(s: &State) -> Element {
     rsx! {
         div { class: "actions",
             for w in s.workflows.iter().cloned() {
-                div { class: "action", key: "{w.name}",
-                    div { class: "who",
-                        span { class: "wf", "{w.name}" }
-                        if let Some(sched) = w.schedule.clone() {
-                            span { class: "sched", "{sched}" }
-                        }
-                    }
-                    div { class: "note", "{w.description}" }
-                    form {
-                        class: "go",
-                        onsubmit: move |e| {
-                            let name = w.name.clone();
-                            // One message on submit, rather than a websocket
-                            // round trip per keystroke.
-                            let input = match e.get_first("input") {
-                                Some(dioxus::events::FormValue::Text(t)) => t,
-                                _ => String::new(),
-                            };
-                            async move { let _ = run_with(name, input).await; }
-                        },
-                        if let Some(ex) = w.example.clone() {
-                            input { name: "input", value: "{ex}", spellcheck: "false",
-                                    autocomplete: "off", class: "arg" }
-                        }
-                        button { r#type: "submit", "run" }
-                    }
-                }
+                {action_row(w)}
             }
         }
+    }
+}
+
+/// One workflow: what it is, and a form to run it. Extracted from `ed_actions`
+/// so the loop body stays shallow.
+fn action_row(w: WorkflowView) -> Element {
+    let example = w.example.clone();
+    let name = w.name.clone();
+    rsx! {
+        div { class: "action", key: "{w.name}",
+            div { class: "who",
+                span { class: "wf", "{w.name}" }
+                if let Some(sched) = w.schedule.clone() {
+                    span { class: "sched", "{sched}" }
+                }
+            }
+            div { class: "note", "{w.description}" }
+            form {
+                class: "go",
+                onsubmit: move |e| {
+                    let name = name.clone();
+                    // One message on submit, not a round trip per keystroke.
+                    let input = form_input(&e);
+                    async move { let _ = run_with(name, input).await; }
+                },
+                if let Some(ex) = example.clone() {
+                    input { name: "input", value: "{ex}", spellcheck: "false",
+                            autocomplete: "off", class: "arg" }
+                }
+                button { r#type: "submit", "run" }
+            }
+        }
+    }
+}
+
+/// The named field's text, or empty. Kept out of the closure so the onsubmit
+/// body is one line.
+fn form_input(e: &dioxus::prelude::Event<dioxus::events::FormData>) -> String {
+    match e.get_first("input") {
+        Some(dioxus::events::FormValue::Text(t)) => t,
+        _ => String::new(),
     }
 }
 
@@ -458,55 +491,84 @@ fn ed_timers(s: &State) -> Element {
     }
 }
 
-fn ed_runs(s: &State) -> Element {
+fn ed_runs(s: &State, area: AreaId, open_run: Callback<(AreaId, String)>) -> Element {
     rsx! {
         if s.runs.is_empty() {
             div { class: "empty", "No runs yet — trigger one from an Actions area." }
         }
         for r in s.runs.iter().cloned() {
-            details { class: "run", key: "{r.id}",
-                summary {
-                    span { class: "status {r.status}", "{r.status}" }
-                    span {
-                        span { class: "wf", "{r.workflow}" }
-                        if let Some(note) = r.note.clone() {
-                            span { class: "note", " — {note}" }
-                        }
-                        if let Some(err) = r.error.clone() {
-                            span { class: "note err", " — {short(&err, 120)}" }
-                        }
+            {run_row(r, area, open_run)}
+        }
+    }
+}
+
+/// One expandable run. Pulled out of `ed_runs` so the view tree stays shallow
+/// — a nine-deep rsx block reads no better than a nine-deep function.
+fn run_row(r: RunView, area: AreaId, open_run: Callback<(AreaId, String)>) -> Element {
+    let open_id = r.id.clone();
+    rsx! {
+        details { class: "run", key: "{r.id}",
+            summary {
+                span { class: "status {r.status}", "{r.status}" }
+                span {
+                    span { class: "wf", "{r.workflow}" }
+                    if let Some(note) = r.note.clone() {
+                        span { class: "note", " — {note}" }
                     }
-                    span { class: "when",
-                        if r.status == "suspended" || r.status == "failed" {
-                            button {
-                                class: "resume",
-                                onclick: move |e| {
-                                    e.stop_propagation();
-                                    let id = r.id.clone();
-                                    async move { let _ = resume(id).await; }
-                                },
-                                "resume"
-                            }
-                        }
-                        "{hhmmss(r.updated_at)}"
+                    if let Some(err) = r.error.clone() {
+                        span { class: "note err", " — {short(&err, 120)}" }
                     }
                 }
-                div { class: "steps",
-                    if r.steps.is_empty() {
-                        div { class: "step", span {} span { class: "note", "no steps recorded" } }
+                span { class: "when",
+                    // Pin this run into its own area beside the list.
+                    button {
+                        class: "open",
+                        title: "open in a new area",
+                        onclick: move |e| { e.stop_propagation(); open_run.call((area, open_id.clone())); },
+                        "⇱"
                     }
-                    for st in r.steps.iter().cloned() {
-                        div { class: "step", key: "{st.key}",
-                            span { class: if st.error.is_some() { "failed" } else { "done" },
-                                if st.error.is_some() { "✗" } else { "✓" }
-                            }
-                            span { class: "k", "{st.key}" }
-                            code { class: if st.error.is_some() { "err" } else { "" },
-                                {short(st.error.as_deref().or(st.result.as_deref()).unwrap_or(""), 220)}
-                            }
-                        }
+                    if r.status == "suspended" || r.status == "failed" {
+                        {resume_button(r.id.clone())}
                     }
+                    "{hhmmss(r.updated_at)}"
                 }
+            }
+            div { class: "steps",
+                if r.steps.is_empty() {
+                    div { class: "step", span {} span { class: "note", "no steps recorded" } }
+                }
+                for st in r.steps.iter().cloned() {
+                    {step_row(st)}
+                }
+            }
+        }
+    }
+}
+
+fn resume_button(id: String) -> Element {
+    rsx! {
+        button {
+            class: "resume",
+            onclick: move |e| {
+                e.stop_propagation();
+                let id = id.clone();
+                async move { let _ = resume(id).await; }
+            },
+            "resume"
+        }
+    }
+}
+
+fn step_row(st: StepView) -> Element {
+    let failed = st.error.is_some();
+    rsx! {
+        div { class: "step", key: "{st.key}",
+            span { class: if failed { "failed" } else { "done" },
+                if failed { "✗" } else { "✓" }
+            }
+            span { class: "k", "{st.key}" }
+            code { class: if failed { "err" } else { "" },
+                {short(st.error.as_deref().or(st.result.as_deref()).unwrap_or(""), 220)}
             }
         }
     }
@@ -530,4 +592,61 @@ async fn run_with(name: String, input: String) -> anyhow::Result<()> {
 
 async fn resume(id: String) -> anyhow::Result<()> {
     crate::daemon::resume(&id)
+}
+
+/// A single run, live: header, note/error, every recorded step. This is the
+/// area you pin beside the fleet and CPU charts to watch a run work. It reads
+/// the same polled snapshot as the list, filtered to one id, so it updates on
+/// the same tick with no extra plumbing.
+fn ed_run_detail(s: &State, id: &str) -> Element {
+    let Some(r) = s.runs.iter().find(|r| r.id == id).cloned() else {
+        return rsx! {
+            div { class: "empty",
+                "run {short(id, 8)} is not in the recent window."
+            }
+        };
+    };
+    rsx! {
+        div { class: "run-detail",
+            div { class: "rd-head",
+                span { class: "status {r.status}", "{r.status}" }
+                span { class: "wf", "{r.workflow}" }
+                span { class: "note", "{short(id, 8)}" }
+                if r.status == "suspended" || r.status == "failed" {
+                    {resume_button(r.id.clone())}
+                }
+            }
+            if let Some(note) = r.note.clone() {
+                div { class: "note", "{note}" }
+            }
+            if let Some(err) = r.error.clone() {
+                div { class: "note err", "{err}" }
+            }
+            div { class: "steps",
+                if r.steps.is_empty() {
+                    div { class: "step", span {} span { class: "note", "no steps yet" } }
+                }
+                for st in r.steps.iter().cloned() {
+                    {step_row(st)}
+                }
+            }
+        }
+    }
+}
+
+/// When a run-detail area has no run yet — picked from the dropdown rather
+/// than opened from the list — offer the recent runs to open in place.
+fn ed_run_picker(s: &State, area: AreaId, open_run: Callback<(AreaId, String)>) -> Element {
+    rsx! {
+        div { class: "note", "Pick a run to show here:" }
+        for r in s.runs.iter().take(12).cloned() {
+            div {
+                class: "pick",
+                onclick: move |_| open_run.call((area, r.id.clone())),
+                span { class: "status {r.status}", "{r.status}" }
+                span { class: "wf", "{r.workflow}" }
+                span { class: "note", "{short(&r.id, 8)} · {hhmmss(r.updated_at)}" }
+            }
+        }
+    }
 }

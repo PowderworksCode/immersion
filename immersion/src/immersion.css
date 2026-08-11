@@ -155,3 +155,7 @@
   border: 1px solid var(--im-accent, #3987e5);
   background: var(--im-surface, #232327); color: var(--im-text, #e8e8e4);
 }
+
+/* Join target tint. A distinct opacity from the split-line overlay so the
+   two gestures read differently mid-drag. */
+.im-overlay.im-join { opacity: .18; }

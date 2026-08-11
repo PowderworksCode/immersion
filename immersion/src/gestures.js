@@ -29,12 +29,12 @@
 
   // One overlay for whatever preview the active gesture needs.
   let overlay = null;
-  const showOverlay = (css) => {
+  const showOverlay = (css, extra) => {
     if (!overlay) {
       overlay = document.createElement("div");
-      overlay.className = "im-overlay";
       document.body.appendChild(overlay);
     }
+    overlay.className = extra ? "im-overlay " + extra : "im-overlay";
     overlay.style.cssText = css;
   };
   const hideOverlay = () => { if (overlay) { overlay.remove(); overlay = null; } };
@@ -151,9 +151,11 @@
       if (t && Number(t.dataset.imArea) !== g.areaId) {
         g.target = Number(t.dataset.imArea);
         const tr = t.getBoundingClientRect();
+        // Color lives in .im-overlay.im-join (a theme file); the shim sets
+        // only geometry, so no literal leaks into JavaScript.
         showOverlay(
-          `left:${tr.left}px;top:${tr.top}px;width:${tr.width}px;height:${tr.height}px;` +
-          `background:var(--im-accent,#3987e5);opacity:.18;`
+          `left:${tr.left}px;top:${tr.top}px;width:${tr.width}px;height:${tr.height}px;`,
+          "im-join"
         );
       } else {
         g.target = null;
