@@ -1,0 +1,90 @@
+/* Immersion chrome. Flat, gap-free, 1px seams — the locked Blender look.
+   Every color is an --im-* token with a fallback, so the library renders
+   standalone and recolors when the host defines the tokens. */
+
+.im-root {
+  /* Fills whatever the host gives it. position:fixed here would climb out of
+     the host's frame and cover its topbar — the library does not own the
+     viewport. */
+  width: 100%;
+  height: 100%;
+  display: flex;
+  background: var(--im-bg, #1a1a1d);
+  overflow: hidden;
+}
+.im-root > * { flex: 1; min-width: 0; min-height: 0; }
+
+.im-split { display: flex; min-width: 0; min-height: 0; }
+.im-row { flex-direction: row; }
+.im-col { flex-direction: column; }
+.im-cell { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.im-cell > * { flex: 1; min-width: 0; min-height: 0; }
+
+/* Areas meet on seams, not gaps: each cell after the first draws one edge. */
+.im-row > .im-cell + .im-cell { border-left: 1px solid var(--im-seam, #0e0e10); }
+.im-col > .im-cell + .im-cell { border-top: 1px solid var(--im-seam, #0e0e10); }
+
+.im-area {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--im-surface, #232327);
+}
+
+.im-header {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .15rem .4rem;
+  background: var(--im-header, #2b2b30);
+  border-bottom: 1px solid var(--im-seam, #0e0e10);
+  flex: none;
+  min-height: 1.7rem;
+  user-select: none;
+}
+
+.im-kind {
+  font: inherit;
+  font-size: .74rem;
+  color: var(--im-text, #e8e8e4);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: .25rem;
+  padding: .05rem .2rem;
+  max-width: 11rem;
+}
+.im-kind:hover { border-color: var(--im-border, #3a3a40); }
+.im-kind:focus { outline: none; border-color: var(--im-accent, #3987e5); }
+
+.im-title {
+  font-size: .72rem;
+  color: var(--im-text-muted, #8b8b85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.im-tools { margin-left: auto; display: flex; gap: .15rem; }
+.im-btn {
+  font: inherit;
+  font-size: .7rem;
+  line-height: 1;
+  padding: .18rem .3rem;
+  color: var(--im-text-muted, #8b8b85);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: .25rem;
+  cursor: pointer;
+}
+.im-btn:hover {
+  color: var(--im-text, #e8e8e4);
+  border-color: var(--im-border, #3a3a40);
+}
+
+.im-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: .6rem .75rem;
+}

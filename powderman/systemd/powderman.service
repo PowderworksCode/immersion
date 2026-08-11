@@ -1,0 +1,37 @@
+[Unit]
+Description=powderman — durable workflows
+Documentation=https://github.com/PowderworksCode/powderman
+After=default.target
+# If the binary is missing or the port is taken, fail loudly after five tries
+# rather than restarting forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/powderman
+Restart=always
+RestartSec=5
+
+# herdr-sdk resolves the socket from this variable and has NO fallback, so a
+# daemon started by systemd — which inherits nothing from a login shell —
+# would fail every herdr call with "not running under Herdr" without it.
+Environment=HERDR_SOCKET_PATH=%h/.config/herdr/herdr.sock
+
+# Without this the daemon gets systemd's default PATH — no ~/.cargo/bin, no
+# ~/.local/bin — and every workflow command fails with "Failed to find
+# executable cargo", which reads like a missing toolchain rather than a
+# missing environment. exec passes this PATH on to each transient unit, so
+# getting it right here is what makes `cargo`, `npx` and `dotnet` resolvable
+# inside workflows at all.
+Environment=PATH=%h/.cargo/bin:%h/.local/bin:%h/.dotnet/tools:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# systemd-run --user needs to reach the user manager; without this a workflow's
+# every exec fails with "Failed to connect to bus".
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+
+Environment=POWDERMAN_DB=%h/.local/share/powderman/powderman.db
+Environment=POWDERMAN_PORT=7777
+
+[Install]
+WantedBy=default.target

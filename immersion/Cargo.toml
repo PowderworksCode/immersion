@@ -1,0 +1,15 @@
+[package]
+name = "immersion"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Blender-style areas for Dioxus liveview: a tiling tree of editors, split and joined in place."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dioxus = { version = "0.7.10", features = ["liveview", "router"] }
+dioxus-liveview = { version = "0.7.10", features = ["axum"] }
+
+[dev-dependencies]
