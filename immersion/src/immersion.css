@@ -88,3 +88,35 @@
   overflow: auto;
   padding: .6rem .75rem;
 }
+
+/* Seam handles: an invisible grab strip over each split border. */
+.im-seam-handle { position: absolute; z-index: 5; }
+.im-seam-row {
+  top: 0; bottom: 0; width: 7px;
+  transform: translateX(-50%);
+  cursor: col-resize;
+}
+.im-seam-col {
+  left: 0; right: 0; height: 7px;
+  transform: translateY(-50%);
+  cursor: row-resize;
+}
+.im-split { position: relative; }
+
+/* Corner grips: transparent hit-zones, inset so they clear the seam handles.
+   No background, border, or reveal in any state — the cursor is the whole
+   affordance, per the locked decision. */
+.im-area { position: relative; }
+.im-grip { position: absolute; width: 12px; height: 12px; z-index: 6; }
+.im-grip-tl { top: 3px; left: 3px; cursor: nwse-resize; }
+.im-grip-br { right: 3px; bottom: 3px; cursor: nwse-resize; }
+.im-grip-tr { top: 3px; right: 3px; cursor: nesw-resize; }
+.im-grip-bl { left: 3px; bottom: 3px; cursor: nesw-resize; }
+
+/* The drag preview: one absolutely positioned element the shim styles. */
+.im-overlay {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  background: var(--im-accent, #3987e5);
+}

@@ -241,14 +241,26 @@ pub fn App() -> Element {
             l.set_editor(id, &kind);
         }));
     });
-    let on_split = use_callback(move |(id, dir): (AreaId, Dir)| {
+    let on_split = use_callback(move |(id, dir, frac): (AreaId, Dir, f32)| {
         layout.set(crate::daemon::mutate_layout(|l| {
-            l.split(id, dir, 0.5);
+            l.split(id, dir, frac);
         }));
     });
     let on_join = use_callback(move |id: AreaId| {
         layout.set(crate::daemon::mutate_layout(|l| {
             l.join(id);
+        }));
+    });
+    let on_join_into = use_callback(move |(survivor, victim): (AreaId, AreaId)| {
+        // join_into refuses non-siblings, so an over-ambitious drag is a
+        // no-op rather than a corrupted tree.
+        layout.set(crate::daemon::mutate_layout(|l| {
+            l.join_into(survivor, victim);
+        }));
+    });
+    let on_ratio = use_callback(move |(id, ratio): (AreaId, f32)| {
+        layout.set(crate::daemon::mutate_layout(|l| {
+            l.set_ratio(id, ratio);
         }));
     });
 
@@ -284,6 +296,8 @@ pub fn App() -> Element {
                     on_switch,
                     on_split,
                     on_join,
+                    on_join_into,
+                    on_ratio,
                 }
             }
         }

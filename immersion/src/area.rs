@@ -186,6 +186,37 @@ impl Layout {
         walk(&mut self.root, victim)
     }
 
+    /// The join gesture: drag from `survivor` over `victim`; the survivor
+    /// takes the space. Valid only for sibling leaves — the one case where
+    /// "A absorbs B" has an unambiguous meaning in a binary tree. Blender's
+    /// broader rule (any two areas sharing a full edge) needs rectangle
+    /// geometry the tree alone does not carry; that refinement belongs to the
+    /// gesture phase that can compute it, and until then refusing is honest
+    /// where guessing would corrupt someone's layout.
+    pub fn join_into(&mut self, survivor: AreaId, victim: AreaId) -> bool {
+        fn is_leaf(a: &Area) -> bool {
+            matches!(a, Area::Leaf { .. })
+        }
+        fn walk(node: &mut Area, survivor: AreaId, victim: AreaId) -> bool {
+            if let Area::Split { a, b, .. } = node {
+                let siblings = (a.id() == survivor && b.id() == victim)
+                    || (a.id() == victim && b.id() == survivor);
+                if siblings && is_leaf(a) && is_leaf(b) {
+                    let keep = if a.id() == survivor {
+                        (**a).clone()
+                    } else {
+                        (**b).clone()
+                    };
+                    *node = keep;
+                    return true;
+                }
+                return walk(a, survivor, victim) || walk(b, survivor, victim);
+            }
+            false
+        }
+        walk(&mut self.root, survivor, victim)
+    }
+
     /// Move the seam of a split.
     pub fn set_ratio(&mut self, split: AreaId, ratio: f32) -> bool {
         match self.root.find_mut(split) {
@@ -290,6 +321,21 @@ mod tests {
             reloaded.split(1, Dir::Col, 0.5)
         );
         assert_eq!(original, reloaded);
+    }
+
+    #[test]
+    fn join_into_keeps_the_survivor_and_only_works_on_sibling_leaves() {
+        let mut l = Layout::single("a");
+        let b = l.split(1, Dir::Row, 0.5).unwrap();
+        l.set_editor(b, "b");
+        let c = l.split(b, Dir::Col, 0.5).unwrap();
+        l.set_editor(c, "c");
+        // 1 and b are not siblings any more (b sits inside a nested split).
+        assert!(!l.join_into(1, b));
+        // b and c are sibling leaves: c drags over b, c survives.
+        assert!(l.join_into(c, b));
+        assert_eq!(l.root.leaves(), vec![1, c]);
+        assert_eq!(editor_of(&l, c), "c");
     }
 
     #[test]
