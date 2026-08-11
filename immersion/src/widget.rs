@@ -17,6 +17,8 @@
 use dioxus::prelude::*;
 use serde_json::{Value, json};
 
+const SCRUB_JS: &str = include_str!("scrub.js");
+
 /// What kind of control edits a field, and its constraints.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldKind {
@@ -96,6 +98,9 @@ impl PartialEq for PropertyEditorProps {
 
 #[component]
 pub fn PropertyEditor(props: PropertyEditorProps) -> Element {
+    use_future(|| async {
+        dioxus::document::eval(SCRUB_JS);
+    });
     rsx! {
         div { class: "im-props",
             for f in props.fields.iter().cloned() {
@@ -190,14 +195,21 @@ fn number_widget(
     let min_s = min.map(|m| m.to_string());
     let max_s = max.map(|m| m.to_string());
     let step_s = step.map(|s| s.to_string()).unwrap_or_else(|| "1".into());
+    let min_attr = min.map(|m| m.to_string()).unwrap_or_default();
+    let max_attr = max.map(|m| m.to_string()).unwrap_or_default();
     rsx! {
         input {
-            class: "im-input im-number",
+            class: "im-input im-number im-scrub",
             r#type: "number",
             value: "{cur}",
             min: min_s,
             max: max_s,
             step: "{step_s}",
+            // Read by scrub.js — drag horizontally to change the value.
+            "data-im-scrub": "1",
+            "data-scrub-step": "{step_s}",
+            "data-scrub-min": "{min_attr}",
+            "data-scrub-max": "{max_attr}",
             onchange: move |e| {
                 if let Ok(n) = e.value().parse::<f64>() {
                     // Keep integers integer in the document, so a limit reads

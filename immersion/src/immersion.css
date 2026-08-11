@@ -401,3 +401,8 @@
   color: var(--im-text-muted, #8b8b85); font-size: .74rem; padding: .1rem .4rem; line-height: 1.4;
 }
 .im-file-btn:hover { background: var(--im-header, #2b2b30); color: var(--im-text, #e8e8e4); }
+
+/* Number scrub: the field hints it is draggable (ew-resize) until focused for
+   typing. scrub.js drives the drag. */
+.im-scrub { cursor: ew-resize; }
+.im-scrub:focus { cursor: text; }
