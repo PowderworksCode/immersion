@@ -420,8 +420,28 @@ pub fn App() -> Element {
     // command; this fires it through the daemon (which applies + persists) and
     // updates the local signal immediately, since the poll is for OTHER
     // clients and waiting a tick for your own edit would read as lag.
+    // A transient status report (Blender names the operation you just ran in
+    // the status bar). Cleared after a few seconds by a token: each report
+    // bumps a generation, and the timer only clears if its generation is still
+    // current, so a newer report is never wiped by an older timer.
+    let mut report = use_signal(|| None::<String>);
+    let mut report_gen = use_signal(|| 0u64);
+    let do_report = use_callback(move |msg: String| {
+        report.set(Some(msg));
+        let g = report_gen() + 1;
+        report_gen.set(g);
+        spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            if report_gen() == g {
+                report.set(None);
+            }
+        });
+    });
+
     let cmd = use_callback(move |(name, params): (String, serde_json::Value)| {
+        let label = report_label(&name, &params);
         ws.set(crate::daemon::dispatch(&name, params));
+        do_report.call(label);
     });
 
     let on_setting = use_callback(move |(pointer, value): (String, serde_json::Value)| {
@@ -585,6 +605,7 @@ pub fn App() -> Element {
             }
             StatusBar {
                 hints: status_hints(),
+                message: report(),
                 right: format!(
                     "{} · {} runs",
                     s.herdr.clone().unwrap_or_else(|| "herdr unreachable".into()),
@@ -592,6 +613,31 @@ pub fn App() -> Element {
                 ),
             }
         }
+    }
+}
+
+/// A short human label for a command, for the status-bar report — Blender's
+/// "Split Area" line. Falls back to the raw name for anything unmapped.
+fn report_label(name: &str, params: &serde_json::Value) -> String {
+    match name {
+        "split" => {
+            let dir = params.get("dir").and_then(|d| d.as_str()).unwrap_or("");
+            format!(
+                "Split area {}",
+                if dir == "col" {
+                    "vertical"
+                } else {
+                    "horizontal"
+                }
+            )
+        }
+        "join" | "join_into" => "Close area".to_string(),
+        "swap" => "Swap areas".to_string(),
+        "ratio" => "Resize".to_string(),
+        "set_editor" | "open_editor" => "Change editor".to_string(),
+        "open_run" => "Open run".to_string(),
+        n if n.starts_with("workspace.") => "Workspace".to_string(),
+        other => other.to_string(),
     }
 }
 

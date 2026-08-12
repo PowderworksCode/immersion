@@ -20,6 +20,10 @@ const STATUSBAR_JS: &str = include_str!("statusbar.js");
 pub struct StatusBarProps {
     /// `(chord, label)` pairs for the left slot, e.g. `("Mod+Z", "Undo")`.
     pub hints: Vec<(String, String)>,
+    /// A transient report shown in the centre — the last operation, or a
+    /// warning — that the host clears after a moment. `None` shows nothing.
+    #[props(default)]
+    pub message: Option<String>,
     /// The right-hand segment: a version, counts, whatever the host keeps in
     /// view.
     #[props(default)]
@@ -42,6 +46,9 @@ pub fn StatusBar(props: StatusBarProps) -> Element {
                         span { class: "im-hint-label", "{label}" }
                     }
                 }
+            }
+            if let Some(msg) = props.message.clone() {
+                div { class: "im-status-report", "{msg}" }
             }
             div { class: "im-status-right", "{props.right}" }
         }
