@@ -1,0 +1,31 @@
+# Production Fly config for a persistent powderman deploy. Previews use
+# fly.preview.toml instead (they idle-stop; this does not).
+#
+# Note: a Fly deploy has no herdr and no systemd, so the fleet and run
+# execution are inert here — this serves the workbench UI and MCP. A host that
+# actually runs agents wants herdr on the box, which is the dev-VM setup, not a
+# Fly machine.
+
+app = "powderman"
+primary_region = "ewr"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.http_options]
+    idle_timeout = 900
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

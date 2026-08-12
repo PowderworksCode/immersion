@@ -1,0 +1,33 @@
+# Fly config for PR preview apps — one throwaway app per pull request, deployed
+# by .github/workflows/preview.yml. The `app` name is a placeholder; the
+# review-apps action overrides it with `--name powderman-pr-<n>`.
+#
+# Previews idle-stop: a stopped machine wakes on the next request, and an
+# interrupted session on a throwaway app is cheaper than a machine per open PR.
+# One machine only — the workbench state is a SQLite file on that machine.
+
+app = "powderman-preview"
+primary_region = "ewr"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.http_options]
+    # Liveview and MCP hold sockets open with no traffic between commands; don't
+    # reap an idle connection mid-session.
+    idle_timeout = 900
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

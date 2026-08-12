@@ -508,6 +508,16 @@ async fn watch_fleet() {
 /// can have.
 static BOOT_ID: OnceLock<String> = OnceLock::new();
 
+/// A liveness probe for the Fly health check and the preview workflow. Cheap,
+/// unauthenticated, and independent of herdr — a preview has no herdr, and the
+/// point is only "is the server up and serving".
+async fn health_route() -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        "{\"ok\":true}\n",
+    )
+}
+
 async fn boot_route() -> impl IntoResponse {
     BOOT_ID.get().cloned().unwrap_or_default()
 }
@@ -661,6 +671,7 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
         .route("/trigger/{name}", post(trigger_route))
         .route("/resume/{id}", post(resume_route))
         .route("/boot", get(boot_route))
+        .route("/health", get(health_route))
         .nest_service("/mcp", crate::mcp::service())
         .route(
             "/ws",

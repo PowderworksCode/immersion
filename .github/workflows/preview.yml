@@ -1,0 +1,120 @@
+# A throwaway Fly app per pull request, so a change can be driven — by a human
+# or an agent — before it merges.
+#
+# Fly has no per-deploy preview URLs; a preview is a separate app,
+# powderman-pr-<n>.fly.dev, created on open and destroyed on close. The app has
+# no herdr and no systemd, so the fleet and run execution are inert — but the
+# workbench UI, the command bus, the palette, the widgets and (on branches that
+# have it) the MCP server all work, which is what a preview is for.
+name: PR preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Secrets are not available to fork PRs, so the deploy would fail with a
+    # confusing auth error. Skip rather than fail.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    environment:
+      name: pr-${{ github.event.number }}
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy preview
+        id: deploy
+        # Pinned to an exact version, not @v1 — older tags silently ignore the
+        # `config` / `deploy_options` inputs and autodetect the wrong builder.
+        uses: superfly/fly-pr-review-apps@1.6.0
+        env:
+          # A preview-scoped token that can CREATE apps — not the production
+          # deploy token, which is scoped to one app.
+          FLY_API_TOKEN: ${{ secrets.FLY_PREVIEW_TOKEN }}
+        with:
+          name: powderman-pr-${{ github.event.number }}
+          config: fly.preview.toml
+          region: ewr
+          # One machine: the workbench state is a SQLite file on it.
+          ha: false
+          # The image builds from the repo root; name the Dockerfile explicitly.
+          launch_options: --dockerfile Dockerfile
+          deploy_options: --dockerfile Dockerfile
+
+      - name: Verify the preview serves the workbench
+        if: github.event.action != 'closed'
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          echo "checking $URL"
+          # The machine may still be booting (or waking — previews idle-stop).
+          for i in $(seq 1 12); do
+            if curl -sf -m 10 "$URL/health" -o /tmp/health; then break; fi
+            echo "  attempt $i: not up yet"; sleep 6
+          done
+          cat /tmp/health; echo
+          jq -e '.ok == true' /tmp/health > /dev/null \
+            || { echo "::error::$URL/health did not return ok — the preview is not running powderman"; exit 1; }
+          curl -sf -m 10 "$URL/" -o /dev/null \
+            || { echo "::error::$URL/ did not serve the workbench"; exit 1; }
+          # MCP is present only on branches that have it; report, don't fail.
+          if tools=$(curl -sf -m 10 -X POST "$URL/mcp" \
+              -H 'accept: application/json, text/event-stream' \
+              -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+              | head -c 200); then
+            echo "mcp: reachable"
+          else
+            echo "mcp: not on this branch (fine)"
+          fi
+
+      - name: Comment the preview URL
+        if: github.event.action != 'closed'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        with:
+          retries: 3
+          script: |
+            const url = process.env.PREVIEW_URL;
+            const marker = '<!-- powderman-fly-preview -->';
+            const body = [
+              marker,
+              '### powderman preview',
+              '',
+              `**${url}**`,
+              '',
+              'The workbench, live: split/join/swap areas, the F3 palette, the widgets, themes, tooltips, the status bar.',
+              'The fleet and run execution are inert here (a Fly machine has no herdr) — this is for driving the interface.',
+              '',
+              'On branches with the MCP server, point an agent at it:',
+              '',
+              '```sh',
+              `claude mcp add --transport http powderman-preview "${url}/mcp"`,
+              '```',
+              '',
+              '_Updated on every push. Destroyed when this PR closes._',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
