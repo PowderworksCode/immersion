@@ -186,7 +186,8 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 
 use immersion::{
     AreaId, Areas, Dir, EditorKind, Field, FieldKind, Keymap, Layout, Palette, PaletteItem,
-    PropertyEditor, Splash, SplashRecent, Template, Tooltips, WorkspaceTabs, default_keymap,
+    PropertyEditor, Splash, SplashRecent, StatusBar, Template, Tooltips, WorkspaceTabs,
+    default_keymap,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -566,8 +567,29 @@ pub fn App() -> Element {
                     maximized: maximized(),
                 }
             }
+            StatusBar {
+                hints: status_hints(),
+                right: format!(
+                    "{} · {} runs",
+                    s.herdr.clone().unwrap_or_else(|| "herdr unreachable".into()),
+                    s.runs.len()
+                ),
+            }
         }
     }
+}
+
+/// The key hints the status bar keeps in view — the chords worth knowing, in
+/// grammar form (the bar's shim renders `Mod` as the platform glyph). Global
+/// only for now; area-scoped hints arrive with regions.
+fn status_hints() -> Vec<(String, String)> {
+    vec![
+        ("Mod+Z".into(), "Undo".into()),
+        ("Mod+Shift+Z".into(), "Redo".into()),
+        ("F3".into(), "Commands".into()),
+        ("Mod+Shift+Space".into(), "Maximize".into()),
+        ("Alt+PageDown".into(), "Next workspace".into()),
+    ]
 }
 
 // --- editors --------------------------------------------------------------
