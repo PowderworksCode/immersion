@@ -58,9 +58,18 @@ pub struct Annotation {
     pub status: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct LogEntry {
+    pub name: String,
+    pub params: serde_json::Value,
+    pub at: i64,
+    pub ok: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct State {
     pub herdr: Option<String>,
+    pub log: Vec<LogEntry>,
     pub workflows: Vec<WorkflowView>,
     pub runs: Vec<RunView>,
     pub machine: std::collections::HashMap<String, f64>,
@@ -362,6 +371,10 @@ fn kinds() -> Vec<EditorKind> {
             id: "settings",
             label: "Settings",
         },
+        EditorKind {
+            id: "info",
+            label: "Info log",
+        },
     ]
 }
 
@@ -429,6 +442,7 @@ pub fn App() -> Element {
         match action.as_str() {
             "undo" => ws.set(crate::daemon::undo()),
             "redo" => ws.set(crate::daemon::redo()),
+            "repeat_last" => ws.set(crate::daemon::repeat_last()),
             "maximize" => {
                 // Toggle: maximize the first area if none is, else restore.
                 let cur = maximized();
@@ -502,6 +516,7 @@ pub fn App() -> Element {
                 "runs" => ed_runs(&s, area, open_run),
                 "actions" => ed_actions(&s),
                 "timers" => ed_timers(&s),
+                "info" => ed_info(&s),
                 "run" => match arg {
                     Some(id) => ed_run_detail(&s, &id),
                     None => ed_run_picker(&s, area, open_run),
@@ -706,6 +721,28 @@ fn ed_fleet(s: &State) -> Element {
                     }
                     span { class: "note", "{gib(a.procs.iter().map(|p| p.rss).sum::<f64>())}" }
                     span { class: "note", "{short(&a.cwd, 46)}" }
+                }
+            }
+        }
+    }
+}
+
+/// The Info log: every command that ran, newest first — Blender's Info editor.
+/// The workbench's own audit trail, and the more useful now that an agent
+/// drives the same command bus: this is where you see what it did.
+fn ed_info(s: &State) -> Element {
+    rsx! {
+        div { class: "info-log",
+            if s.log.is_empty() {
+                div { class: "note", "no commands yet" }
+            }
+            for (i, e) in s.log.iter().enumerate() {
+                div {
+                    class: if e.ok { "log-row" } else { "log-row failed" },
+                    key: "{i}-{e.at}",
+                    span { class: "when", "{hhmmss(e.at)}" }
+                    span { class: "k", "{e.name}" }
+                    span { class: "note", "{short(&e.params.to_string(), 80)}" }
                 }
             }
         }
