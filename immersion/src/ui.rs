@@ -23,6 +23,7 @@ enum Gesture {
     Ratio { id: AreaId, ratio: f32 },
     Split { id: AreaId, dir: Dir, frac: f32 },
     Join { survivor: AreaId, victim: AreaId },
+    Swap { a: AreaId, b: AreaId },
 }
 
 impl Gesture {
@@ -46,6 +47,7 @@ impl Gesture {
                 "join_into",
                 serde_json::json!({ "survivor": survivor, "victim": victim }),
             ),
+            Gesture::Swap { a, b } => ("swap", serde_json::json!({ "a": a, "b": b })),
         }
     }
 }

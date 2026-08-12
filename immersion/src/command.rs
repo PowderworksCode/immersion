@@ -165,6 +165,16 @@ const BUILTINS: &[Command] = &[
         },
     },
     Command {
+        name: "swap",
+        description: "Swap what two areas show",
+        navigational: false,
+        run: |ws, p| {
+            ws.current_layout_mut()
+                .swap_editors(u64_field(p, "a")?, u64_field(p, "b")?);
+            Ok(())
+        },
+    },
+    Command {
         name: "set_editor",
         description: "Change what an area shows",
         navigational: false,
