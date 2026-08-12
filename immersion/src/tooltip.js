@@ -19,7 +19,7 @@
   if (window.__imTooltipsInstalled) return;
   window.__imTooltipsInstalled = true;
 
-  const DELAY = 500;
+  const DELAY = 250;
   const RESHOW = 250;
   let tip = null;
   let timer = null;
