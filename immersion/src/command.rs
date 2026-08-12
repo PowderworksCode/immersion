@@ -239,6 +239,18 @@ const BUILTINS: &[Command] = &[
         },
     },
     Command {
+        name: "workspace.duplicate",
+        description: "Duplicate a workspace",
+        navigational: false,
+        run: |ws, _| {
+            let cur = ws.current();
+            let name = format!("{} copy", cur.name);
+            let layout = cur.layout.clone();
+            ws.add(&name, layout);
+            Ok(())
+        },
+    },
+    Command {
         name: "workspace.close",
         description: "Close a workspace",
         navigational: false,

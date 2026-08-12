@@ -259,6 +259,13 @@ impl PartialEq for WorkspaceTabsProps {
     }
 }
 
+/// The `data-im-menu` JSON for a workspace tab — duplicate it, or close it.
+fn tab_menu_json(index: usize) -> String {
+    format!(
+        r#"[{{"label":"Duplicate","action":"workspace.duplicate","params":{{}}}},{{"sep":true}},{{"label":"Close","action":"workspace.close","params":{{"index":{index}}}}}]"#
+    )
+}
+
 #[component]
 pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
     let mut editing = use_signal(|| None::<usize>);
@@ -299,6 +306,7 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
                 } else {
                     div {
                         class: if i == props.active { "im-tab active" } else { "im-tab" },
+                        "data-im-menu": "{tab_menu_json(i)}",
                         onclick: move |_| cmd.call(("workspace.switch".to_string(), serde_json::json!({ "index": i }))),
                         ondoubleclick: {
                             let name = name.clone();
