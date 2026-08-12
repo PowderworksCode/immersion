@@ -240,8 +240,23 @@
 .im-input:focus, .im-select:focus { outline: none; border-color: var(--im-accent, #3987e5); }
 .im-number { max-width: 8rem; }
 .im-slider-row { display: flex; align-items: center; gap: .5rem; }
-.im-slider { flex: 1; accent-color: var(--im-accent, #3987e5); }
-.im-slider-val { font-size: .74rem; color: var(--im-text-muted, #8b8b85); font-variant-numeric: tabular-nums; min-width: 2.5rem; }
+.im-slider {
+  position: relative; flex: 1; height: 1.4rem; border-radius: 3px; overflow: hidden;
+  border: 1px solid var(--im-border, #3a3a40);
+  background: linear-gradient(to right,
+    var(--im-accent, #3987e5) 0 var(--im-fill, 0%),
+    var(--im-input-bg, #232327) var(--im-fill, 0%));
+  cursor: ew-resize;
+}
+.im-slider-input {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  opacity: 0; cursor: ew-resize;
+}
+.im-slider-val {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  pointer-events: none; font-size: .72rem; color: var(--im-text, #e8e8e4);
+  font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
 .im-check { width: 1rem; height: 1rem; accent-color: var(--im-accent, #3987e5); }
 .im-color-row { display: flex; align-items: center; gap: .5rem; }
 .im-color { width: 2.2rem; height: 1.4rem; padding: 0; border: 1px solid var(--im-border, #3a3a40); border-radius: 3px; background: none; cursor: pointer; }
