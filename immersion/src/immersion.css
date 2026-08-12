@@ -393,3 +393,11 @@
 .im-help-list { display: grid; grid-template-columns: auto 1fr; gap: .35rem .9rem; align-items: baseline; }
 .im-help-row { display: contents; }
 .im-help-desc { color: var(--im-text-muted, #8b8b85); font-size: .8rem; }
+
+/* Layout export/import buttons in the chrome. */
+.im-layoutfile { display: inline-flex; gap: .15rem; }
+.im-file-btn {
+  border: 0; background: transparent; cursor: pointer; border-radius: 3px;
+  color: var(--im-text-muted, #8b8b85); font-size: .74rem; padding: .1rem .4rem; line-height: 1.4;
+}
+.im-file-btn:hover { background: var(--im-header, #2b2b30); color: var(--im-text, #e8e8e4); }

@@ -244,6 +244,26 @@ pub fn repeat_last() -> immersion::Workspaces {
     }
 }
 
+/// Replace the whole workbench from imported JSON (the layout export round
+/// trips back in here). A parse failure is a no-op — a malformed upload must
+/// not blank the workspace — and the swap is recorded for undo.
+pub fn set_workspaces_from_json(json: &str) -> immersion::Workspaces {
+    let s = shared();
+    match serde_json::from_str::<immersion::Workspaces>(json) {
+        Ok(new) => {
+            let mut w = s.workspaces.lock().expect("workspaces");
+            s.undo.lock().expect("undo").push(w.clone());
+            *w = new;
+            persist_workspaces(&s, &w);
+            w.clone()
+        }
+        Err(e) => {
+            eprintln!("layout import failed: {e}");
+            workspaces()
+        }
+    }
+}
+
 fn persist_workspaces(s: &Shared, w: &immersion::Workspaces) {
     if let Ok(json) = serde_json::to_string(w) {
         let conn = s.db.lock().expect("db");

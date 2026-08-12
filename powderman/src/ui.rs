@@ -195,8 +195,8 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 
 use immersion::{
     AreaId, Areas, ContextMenu, Dir, EditorKind, Field, FieldKind, Keymap, KeymapHelp, Layout,
-    Palette, PaletteItem, PropertyEditor, Splash, SplashRecent, StatusBar, Template, Tooltips,
-    WorkspaceTabs, default_keymap,
+    LayoutFile, Palette, PaletteItem, PropertyEditor, Splash, SplashRecent, StatusBar, Template,
+    Tooltips, WorkspaceTabs, default_keymap,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -580,6 +580,12 @@ pub fn App() -> Element {
                     active: ws.read().active,
                     on_command: cmd,
                     on_add: ws_add,
+                }
+                LayoutFile {
+                    layout_json: serde_json::to_string(&ws.read().clone()).unwrap_or_default(),
+                    on_import: move |json: String| {
+                        ws.set(crate::daemon::set_workspaces_from_json(&json));
+                    },
                 }
                 span { class: "sub",
                     {s.herdr.clone().unwrap_or_else(|| "herdr unreachable".into())}
