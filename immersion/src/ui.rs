@@ -189,9 +189,10 @@ fn render_leaf(
     let editor_owned = editor.to_string();
     let cmd = props.on_command;
     let body = props.render.call((id, editor_owned.clone(), arg));
+    let menu = crate::contextmenu::area_menu_json(id);
 
     rsx! {
-        div { class: "im-area", key: "{id}", "data-im-area": "{id}",
+        div { class: "im-area", key: "{id}", "data-im-area": "{id}", "data-im-menu": "{menu}",
             // Corner grips: invisible hit-zones in all four corners, per the
             // locked decision — no visual reveal in any state; the diagonal
             // resize cursor is the only affordance. Drag inward to split,
