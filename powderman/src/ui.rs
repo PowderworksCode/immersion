@@ -306,7 +306,8 @@ fn palette_items(ws: &immersion::Workspaces) -> Vec<PaletteItem> {
 fn settings_fields() -> Vec<Field> {
     vec![
         Field::new("/accent", "Accent color", FieldKind::Color)
-            .with_hint("the widget-blue used across the workbench"),
+            .with_hint("the widget-blue used across the workbench")
+            .with_default(serde_json::json!("#5680c2")),
         Field::new(
             "/poll_ms",
             "Refresh interval",
@@ -316,10 +317,13 @@ fn settings_fields() -> Vec<Field> {
                 step: 250.0,
             },
         )
-        .with_hint("how often the page repolls, in ms"),
-        Field::new("/splash_on_start", "Splash on startup", FieldKind::Bool),
+        .with_hint("how often the page repolls, in ms")
+        .with_default(serde_json::json!(1000)),
+        Field::new("/splash_on_start", "Splash on startup", FieldKind::Bool)
+            .with_default(serde_json::json!(true)),
         Field::new("/tooltips_on", "Tooltips", FieldKind::Toggle)
-            .with_hint("hover help on the workbench controls"),
+            .with_hint("hover help on the workbench controls")
+            .with_default(serde_json::json!(true)),
         Field::new(
             "/sweep_limit",
             "Default sweep limit",
@@ -329,7 +333,8 @@ fn settings_fields() -> Vec<Field> {
                 step: Some(50.0),
             },
         )
-        .with_hint("packages per ecosystem the daily sweep fetches"),
+        .with_hint("packages per ecosystem the daily sweep fetches")
+        .with_default(serde_json::json!(100)),
         Field::new(
             "/theme",
             "Theme",
@@ -348,7 +353,8 @@ fn settings_fields() -> Vec<Field> {
                 ("cozy".into(), "Cozy".into()),
                 ("compact".into(), "Compact".into()),
             ]),
-        ),
+        )
+        .with_default(serde_json::json!("cozy")),
     ]
 }
 
@@ -454,6 +460,21 @@ pub fn App() -> Element {
         let label = report_label(&name, &params);
         ws.set(crate::daemon::dispatch(&name, params));
         do_report.call(label);
+    });
+
+    // Context-menu picks are mostly layout commands (the bus), but a property
+    // field's "Reset to default" is a settings edit — route it to set_setting.
+    let on_menu = use_callback(move |(action, params): (String, serde_json::Value)| {
+        if action == "set_setting" {
+            let pointer = params.get("pointer").and_then(|p| p.as_str()).unwrap_or("");
+            let value = params
+                .get("value")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            settings.set(crate::daemon::set_setting(pointer, value));
+        } else {
+            cmd.call((action, params));
+        }
     });
 
     let on_setting = use_callback(move |(pointer, value): (String, serde_json::Value)| {
@@ -605,7 +626,7 @@ pub fn App() -> Element {
                 }
             }
             Keymap { bindings: default_keymap(), on_action }
-            ContextMenu { on_command: cmd }
+            ContextMenu { on_command: on_menu }
             if help_open() {
                 KeymapHelp {
                     bindings: default_keymap(),
