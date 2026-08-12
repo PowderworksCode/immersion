@@ -316,19 +316,28 @@ pub fn agent_get(name: &str) -> Result<Option<AgentInfo>> {
 /// Block until herdr will accept prompts for this agent.
 pub fn wait_until_ready(name: &str, timeout: std::time::Duration) -> Result<()> {
     let deadline = std::time::Instant::now() + timeout;
-    loop {
+    // Track the last state seen, so a timeout can say WHY. "never became ready"
+    // alone cannot tell a launch that crashed (the agent is gone) from one
+    // stuck waiting on a human (blocked) from one still coming up (idle) — and
+    // that distinction is the whole of the next debugging step.
+    let mut last = String::from("unlaunched");
+    while std::time::Instant::now() < deadline {
         match agent_get(name)? {
             Some(a) if a.interactive_ready == Some(true) => return Ok(()),
-            Some(a) if a.status() == "blocked" => {
-                println!("agent {name}: blocked — a human needs to answer it")
+            Some(a) => {
+                last = a.status().to_string();
+                if last == "blocked" {
+                    println!("agent {name}: blocked — a human needs to answer it");
+                }
             }
-            _ => {}
-        }
-        if std::time::Instant::now() >= deadline {
-            anyhow::bail!("agent {name} never became ready for input");
+            None => last = "gone".to_string(),
         }
         std::thread::sleep(std::time::Duration::from_millis(1500));
     }
+    anyhow::bail!(
+        "agent {name} never became ready for input after {}s (last status: {last})",
+        timeout.as_secs()
+    )
 }
 
 /// `(status, ready_for_input)` for a live agent, or `None` if there is none.
