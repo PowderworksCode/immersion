@@ -17,6 +17,7 @@
 //! hole behind.
 
 mod area;
+mod client;
 mod command;
 mod contextmenu;
 mod keymap;
@@ -25,12 +26,12 @@ mod palette;
 mod splash;
 mod statusbar;
 mod theme;
-mod tooltip;
 mod ui;
 mod widget;
 mod workspace;
 
 pub use area::{Area, AreaId, Dir, Layout, MIN_RATIO};
+pub use client::{Chrome, ChromeProps};
 pub use command::{Command, Commands};
 pub use contextmenu::{ContextMenu, ContextMenuProps};
 pub use keymap::{Binding, Keymap, KeymapHelp, KeymapHelpProps, KeymapProps, default_keymap};
@@ -39,7 +40,6 @@ pub use palette::{Palette, PaletteItem, PaletteProps};
 pub use splash::{Splash, SplashProps, SplashRecent, Template};
 pub use statusbar::{StatusBar, StatusBarProps};
 pub use theme::{Theme, theme_css, themes};
-pub use tooltip::{Tooltips, TooltipsProps};
 pub use ui::{Areas, AreasProps, EditorKind, WorkspaceTabs, WorkspaceTabsProps};
 pub use widget::{Field, FieldKind, PropertyEditor, PropertyEditorProps, apply_edit};
 pub use workspace::{Workspace, Workspaces};
