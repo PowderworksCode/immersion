@@ -192,25 +192,36 @@ fn slider_widget(
 ) -> Element {
     let path = path.to_string();
     let cur = as_f64(val);
+    // Blender's slider is a flat bar filled to the value's fraction of the
+    // range, the number centred on it — not a thumb on a rail. The native range
+    // input rides on top invisibly so it still drags and commits once; the fill
+    // is a gradient stopped at this percentage.
+    let pct = if max > min {
+        ((cur - min) / (max - min) * 100.0).clamp(0.0, 100.0)
+    } else {
+        0.0
+    };
     rsx! {
         div { class: "im-slider-row",
-            input {
-                class: "im-slider",
-                r#type: "range",
-                min: "{min}",
-                max: "{max}",
-                step: "{step}",
-                value: "{cur}",
-                // range fires oninput during drag and onchange on release; use
-                // onchange so the commit is one message at the end.
-                onchange: move |e| {
-                    if let Ok(n) = e.value().parse::<f64>() {
-                        let v = if n.fract() == 0.0 { json!(n as i64) } else { json!(n) };
-                        on_edit.call((path.clone(), v));
-                    }
-                },
+            div { class: "im-slider", style: "--im-fill: {pct}%",
+                input {
+                    class: "im-slider-input",
+                    r#type: "range",
+                    min: "{min}",
+                    max: "{max}",
+                    step: "{step}",
+                    value: "{cur}",
+                    // range fires oninput during drag and onchange on release;
+                    // use onchange so the commit is one message at the end.
+                    onchange: move |e| {
+                        if let Ok(n) = e.value().parse::<f64>() {
+                            let v = if n.fract() == 0.0 { json!(n as i64) } else { json!(n) };
+                            on_edit.call((path.clone(), v));
+                        }
+                    },
+                }
+                span { class: "im-slider-val", "{cur}" }
             }
-            span { class: "im-slider-val", "{cur}" }
         }
     }
 }
