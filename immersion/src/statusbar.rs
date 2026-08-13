@@ -14,8 +14,6 @@
 
 use dioxus::prelude::*;
 
-const STATUSBAR_JS: &str = include_str!("statusbar.js");
-
 #[derive(Props, Clone, PartialEq)]
 pub struct StatusBarProps {
     /// `(chord, label)` pairs for the left slot, e.g. `("Mod+Z", "Undo")`.
@@ -34,9 +32,6 @@ pub struct StatusBarProps {
 /// settles at the bottom on its own.
 #[component]
 pub fn StatusBar(props: StatusBarProps) -> Element {
-    use_future(|| async {
-        dioxus::document::eval(STATUSBAR_JS);
-    });
     rsx! {
         div { class: "im-statusbar",
             div { class: "im-status-hints",
