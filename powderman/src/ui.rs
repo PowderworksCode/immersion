@@ -195,8 +195,8 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 
 use immersion::{
     AreaId, Areas, Chrome, ContextMenu, Dir, EditorKind, Field, FieldKind, Keymap, KeymapHelp,
-    Layout, LayoutFile, Palette, PaletteItem, PropertyEditor, Splash, SplashRecent, StatusBar,
-    Template, WorkspaceTabs, default_keymap,
+    Layout, LayoutFile, Palette, PaletteItem, Panel, PropertyEditor, Splash, SplashRecent,
+    StatusBar, Template, WorkspaceTabs, default_keymap,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -612,14 +612,21 @@ pub fn App() -> Element {
     let render_sidebar = use_callback(move |(id, editor): (AreaId, String)| -> Element {
         rsx! {
             div { class: "area-props",
-                div { class: "area-props-title", "Properties" }
-                div { class: "area-props-row",
-                    span { class: "k", "Editor" }
-                    span { "{editor}" }
+                Panel { title: "Properties",
+                    div { class: "area-props-row",
+                        span { class: "k", "Editor" }
+                        span { "{editor}" }
+                    }
+                    div { class: "area-props-row",
+                        span { class: "k", "Area" }
+                        span { "{id}" }
+                    }
                 }
-                div { class: "area-props-row",
-                    span { class: "k", "Area" }
-                    span { "{id}" }
+                Panel { title: "Layout", open: false,
+                    div { class: "area-props-row",
+                        span { class: "k", "Regions" }
+                        span { "T · N" }
+                    }
                 }
             }
         }
