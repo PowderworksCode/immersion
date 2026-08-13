@@ -99,6 +99,13 @@ pub fn default_keymap() -> Vec<Binding> {
             description: "Keyboard shortcuts",
             params: Value::Null,
         },
+        Binding {
+            // Blender's Adjust Last Operation. F9 is unclaimed.
+            chord: "F9",
+            action: "adjust_last",
+            description: "Adjust last operation",
+            params: Value::Null,
+        },
     ]
 }
 
