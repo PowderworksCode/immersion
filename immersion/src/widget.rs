@@ -133,14 +133,24 @@ fn field_row(f: Field, doc: &Value, on_edit: Callback<(String, Value)>) -> Eleme
     // A field with a default gets a right-click "Reset to default", routed to
     // set_setting through the same context-menu shim the areas use. Nested
     // inside the area's own menu, so `closest` finds this one first.
-    let menu = f.default.as_ref().map(|d| {
-        json!([{
-            "label": "Reset to default",
-            "action": "set_setting",
-            "params": { "pointer": f.path, "value": d },
-        }])
-        .to_string()
-    });
+    // Blender's field menu: Reset to default (when the field has one), then
+    // Copy / Paste value — the last two client-side (clipboard) in the shim.
+    let menu = {
+        let mut items = Vec::new();
+        if let Some(d) = f.default.as_ref() {
+            items.push(json!({
+                "label": "Reset to default",
+                "action": "set_setting",
+                "params": { "pointer": f.path, "value": d },
+            }));
+            items.push(json!({ "sep": true }));
+        }
+        items.push(
+            json!({ "label": "Copy value", "action": "copy_value", "params": { "value": val } }),
+        );
+        items.push(json!({ "label": "Paste value", "action": "paste_value", "params": { "pointer": f.path } }));
+        Some(json!(items).to_string())
+    };
     rsx! {
         div { class: "im-field", "data-im-menu": menu,
             label { class: "im-field-label",
