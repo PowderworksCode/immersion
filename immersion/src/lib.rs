@@ -18,6 +18,7 @@
 
 mod area;
 mod command;
+mod contextmenu;
 mod keymap;
 mod palette;
 mod splash;
@@ -29,6 +30,7 @@ mod workspace;
 
 pub use area::{Area, AreaId, Dir, Layout, MIN_RATIO};
 pub use command::{Command, Commands};
+pub use contextmenu::{ContextMenu, ContextMenuProps};
 pub use keymap::{Binding, Keymap, KeymapProps, default_keymap};
 pub use palette::{Palette, PaletteItem, PaletteProps};
 pub use splash::{Splash, SplashProps, SplashRecent, Template};

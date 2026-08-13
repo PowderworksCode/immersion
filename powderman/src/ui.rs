@@ -194,9 +194,9 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 }
 
 use immersion::{
-    AreaId, Areas, Dir, EditorKind, Field, FieldKind, Keymap, Layout, Palette, PaletteItem,
-    PropertyEditor, Splash, SplashRecent, StatusBar, Template, Tooltips, WorkspaceTabs,
-    default_keymap,
+    AreaId, Areas, ContextMenu, Dir, EditorKind, Field, FieldKind, Keymap, Layout, Palette,
+    PaletteItem, PropertyEditor, Splash, SplashRecent, StatusBar, Template, Tooltips,
+    WorkspaceTabs, default_keymap,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -565,6 +565,7 @@ pub fn App() -> Element {
                 }
             }
             Keymap { bindings: default_keymap(), on_action }
+            ContextMenu { on_command: cmd }
             Tooltips { enabled: settings()["tooltips_on"].as_bool().unwrap_or(true) }
             if palette_open() {
                 Palette {
