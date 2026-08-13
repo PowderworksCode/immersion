@@ -23,6 +23,7 @@ mod keymap;
 mod palette;
 mod splash;
 mod statusbar;
+mod theme;
 mod tooltip;
 mod ui;
 mod widget;
@@ -35,6 +36,7 @@ pub use keymap::{Binding, Keymap, KeymapHelp, KeymapHelpProps, KeymapProps, defa
 pub use palette::{Palette, PaletteItem, PaletteProps};
 pub use splash::{Splash, SplashProps, SplashRecent, Template};
 pub use statusbar::{StatusBar, StatusBarProps};
+pub use theme::{Theme, theme_css, themes};
 pub use tooltip::{Tooltips, TooltipsProps};
 pub use ui::{Areas, AreasProps, EditorKind, WorkspaceTabs, WorkspaceTabsProps};
 pub use widget::{Field, FieldKind, PropertyEditor, PropertyEditorProps, apply_edit};

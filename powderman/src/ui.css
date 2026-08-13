@@ -9,29 +9,26 @@
    referenced by token everywhere else. */
 :root {
   color-scheme: dark;
-  --bg: #1a1a1a;          /* ground behind areas, and seams */
-  --surface: #303030;     /* area / panel body */
-  --line: #202020;        /* dividers, darker than the surface */
-  --grid: #3a3a3a;        /* chart gridlines, one step off surface */
-  --ink: #e6e6e6;
-  --ink-2: #b8b8b8;
-  --ink-3: #8a8a8a;
-  --series-1: #5680c2;    /* Blender's widget blue */
+  /* The palette now comes from the active immersion theme (immersion::theme_css
+     injects the --im-* block). powderman's own structural tokens derive from
+     it, so choosing a theme recolours the editors and charts too, not just the
+     library chrome. Semantic status colours stay fixed — they mean the same
+     thing in every theme. */
+  --bg: var(--im-bg);        /* ground behind areas, and seams */
+  --surface: var(--im-surface); /* area / panel body */
+  --line: var(--im-seam);    /* dividers */
+  --grid: var(--im-border);  /* chart gridlines */
+  --ink: var(--im-text);
+  --ink-2: var(--im-text-muted);
+  --ink-3: var(--im-text-muted);
+  --series-1: var(--im-accent); /* Blender's widget blue */
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --good: #6a9955;
   --warning: #d9a441;
   --serious: #d98a4a;
   --critical: #d16060;
-
-  /* Immersion chrome maps onto the same skin; header strips a shade darker
-     than the area body, which is Blender's look. */
-  --im-bg: #1a1a1a;
-  --im-surface: #303030;
-  --im-header: #252525;
-  --im-seam: #141414;
-  --im-border: #454545;
-  --im-text: #e6e6e6;
-  --im-text-muted: #8a8a8a;
+  /* Base accent; the .app inline setting overrides it for the chrome, and the
+     theme leaves accent alone (it is the user's own highlight colour). */
   --im-accent: #5680c2;
 }
 
