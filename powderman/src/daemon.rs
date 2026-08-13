@@ -227,6 +227,17 @@ pub fn command_log() -> Vec<crate::ui::LogEntry> {
     shared().log.lock().expect("log").clone()
 }
 
+/// The most recent command that changed the layout — name and params — for
+/// Adjust Last to re-run with edits. Same filter as repeat_last.
+pub fn last_command() -> Option<(String, serde_json::Value)> {
+    let s = shared();
+    let log = s.log.lock().expect("log");
+    log.iter()
+        .rev()
+        .find(|e| e.ok && s.commands.records_undo(&e.name))
+        .map(|e| (e.name.clone(), e.params.clone()))
+}
+
 /// Re-run the most recent command that changed the layout (Blender's Repeat
 /// Last, Shift+R). Navigation and failed commands are skipped — repeating a
 /// tab-switch or a command that already errored is not what the key means.

@@ -442,6 +442,22 @@ pub fn App() -> Element {
     // bumps a generation, and the timer only clears if its generation is still
     // current, so a newer report is never wiped by an older timer.
     let mut help_open = use_signal(|| false);
+    // Adjust Last (F9): re-run the last command with edited params.
+    let mut adjust_open = use_signal(|| false);
+    let mut adjust_name = use_signal(String::new);
+    let mut adjust_doc = use_signal(|| serde_json::Value::Null);
+    let adj_edit = use_callback(move |(ptr, val): (String, serde_json::Value)| {
+        let mut d = adjust_doc();
+        immersion::apply_edit(&mut d, &ptr, val);
+        adjust_doc.set(d);
+    });
+    let adj_cancel = use_callback(move |()| adjust_open.set(false));
+    let adj_apply = use_callback(move |()| {
+        // Replace the last operation with the edited one: revert it, then re-run.
+        ws.set(crate::daemon::undo());
+        ws.set(crate::daemon::dispatch(&adjust_name(), adjust_doc()));
+        adjust_open.set(false);
+    });
     let mut report = use_signal(|| None::<String>);
     let mut report_gen = use_signal(|| 0u64);
     let do_report = use_callback(move |msg: String| {
@@ -497,6 +513,13 @@ pub fn App() -> Element {
             "redo" => ws.set(crate::daemon::redo()),
             "repeat_last" => ws.set(crate::daemon::repeat_last()),
             "cheatsheet" => help_open.toggle(),
+            "adjust_last" => {
+                if let Some((name, params)) = crate::daemon::last_command() {
+                    adjust_name.set(name);
+                    adjust_doc.set(params);
+                    adjust_open.set(true);
+                }
+            }
             "maximize" => {
                 // Toggle: maximize the first area if none is, else restore.
                 let cur = maximized();
@@ -633,6 +656,15 @@ pub fn App() -> Element {
                     on_close: move |()| help_open.set(false),
                 }
             }
+            if adjust_open() {
+                AdjustPanel {
+                    name: adjust_name(),
+                    doc: adjust_doc(),
+                    on_edit: adj_edit,
+                    on_cancel: adj_cancel,
+                    on_apply: adj_apply,
+                }
+            }
             Tooltips { enabled: settings()["tooltips_on"].as_bool().unwrap_or(true) }
             if palette_open() {
                 Palette {
@@ -661,6 +693,56 @@ pub fn App() -> Element {
             }
         }
     }
+}
+
+/// The Adjust Last panel: the last command's params as an editable form, with
+/// Cancel and Apply. Extracted so the App view does not nest another four
+/// levels deep.
+#[component]
+fn AdjustPanel(
+    name: String,
+    doc: serde_json::Value,
+    on_edit: Callback<(String, serde_json::Value)>,
+    on_cancel: Callback<()>,
+    on_apply: Callback<()>,
+) -> Element {
+    let fields = fields_from_params(&doc);
+    rsx! {
+        div { class: "adjust-backdrop", onclick: move |_| on_cancel.call(()),
+            div { class: "adjust-panel", onclick: move |e| e.stop_propagation(),
+                div { class: "adjust-title", "Adjust: {name}" }
+                PropertyEditor { doc, fields, on_edit }
+                div { class: "adjust-actions",
+                    button { class: "adjust-cancel", onclick: move |_| on_cancel.call(()), "Cancel" }
+                    button { class: "adjust-apply", onclick: move |_| on_apply.call(()), "Apply" }
+                }
+            }
+        }
+    }
+}
+
+/// Turn a command'"'"'s params into an editable form: a field per key, its widget
+/// chosen by the value's type. Adjust Last renders this over the last command's
+/// params so you can re-run it with tweaks.
+fn fields_from_params(params: &serde_json::Value) -> Vec<Field> {
+    let mut fields = Vec::new();
+    if let Some(obj) = params.as_object() {
+        for (k, v) in obj {
+            let kind = if v.is_number() {
+                FieldKind::Number {
+                    min: None,
+                    max: None,
+                    step: None,
+                }
+            } else if v.is_boolean() {
+                FieldKind::Bool
+            } else {
+                FieldKind::Text
+            };
+            fields.push(Field::new(&format!("/{k}"), k, kind));
+        }
+    }
+    fields
 }
 
 /// A short human label for a command, for the status-bar report — Blender's
