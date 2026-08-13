@@ -376,3 +376,20 @@
   padding: .2rem .7rem; cursor: pointer; font: inherit; font-size: .76rem; min-width: 3rem;
 }
 .im-toggle.active { background: var(--im-accent, #3987e5); color: #fff; border-color: var(--im-accent, #3987e5); }
+
+/* Keymap cheat sheet (F1). Centered card over a dimmed backdrop. */
+.im-help-backdrop {
+  position: absolute; inset: 0; z-index: 55; display: flex;
+  align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+.im-help {
+  min-width: 20rem; max-height: 70vh; overflow-y: auto; padding: .9rem 1.1rem;
+  background: var(--im-panel, #2b2b30);
+  border: 1px solid var(--im-border, #3a3a40); border-radius: 6px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
+}
+.im-help-title { color: var(--im-text, #e8e8e4); font-size: .9rem; margin-bottom: .6rem; }
+.im-help-list { display: grid; grid-template-columns: auto 1fr; gap: .35rem .9rem; align-items: baseline; }
+.im-help-row { display: contents; }
+.im-help-desc { color: var(--im-text-muted, #8b8b85); font-size: .8rem; }

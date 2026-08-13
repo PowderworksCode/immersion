@@ -31,6 +31,9 @@ pub struct Binding {
     /// A command name (dispatched through the bus) or a host action name
     /// (`"undo"`, `"redo"`, `"maximize"`). The host decides.
     pub action: &'static str,
+    /// Human label — for the status bar hints, the cheat sheet, and (later) the
+    /// keymap editor.
+    pub description: &'static str,
     pub params: Value,
 }
 
@@ -40,11 +43,13 @@ pub fn default_keymap() -> Vec<Binding> {
         Binding {
             chord: "Alt+PageDown",
             action: "workspace.cycle",
+            description: "Next workspace",
             params: serde_json::json!({ "delta": 1 }),
         },
         Binding {
             chord: "Alt+PageUp",
             action: "workspace.cycle",
+            description: "Previous workspace",
             params: serde_json::json!({ "delta": -1 }),
         },
         Binding {
@@ -52,16 +57,19 @@ pub fn default_keymap() -> Vec<Binding> {
             // input guard keeps it from firing while typing in a field.
             chord: "Shift+R",
             action: "repeat_last",
+            description: "Repeat last command",
             params: Value::Null,
         },
         Binding {
             chord: "Mod+Z",
             action: "undo",
+            description: "Undo",
             params: Value::Null,
         },
         Binding {
             chord: "Mod+Shift+Z",
             action: "redo",
+            description: "Redo",
             params: Value::Null,
         },
         Binding {
@@ -71,6 +79,7 @@ pub fn default_keymap() -> Vec<Binding> {
             // everywhere. See docs/keymap-web-safety.md.
             chord: "Mod+Shift+Space",
             action: "maximize",
+            description: "Maximize area",
             params: Value::Null,
         },
         Binding {
@@ -79,6 +88,15 @@ pub fn default_keymap() -> Vec<Binding> {
             // fire.
             chord: "F3",
             action: "palette",
+            description: "Command palette",
+            params: Value::Null,
+        },
+        Binding {
+            // Blender's context help key; here it opens the shortcut cheat
+            // sheet. The shim preventDefaults it so the browser help does not.
+            chord: "F1",
+            action: "cheatsheet",
+            description: "Keyboard shortcuts",
             params: Value::Null,
         },
     ]
@@ -127,4 +145,44 @@ pub fn Keymap(props: KeymapProps) -> Element {
     });
 
     rsx! {}
+}
+
+#[derive(Props, Clone)]
+pub struct KeymapHelpProps {
+    pub bindings: Vec<Binding>,
+    /// Fired when the sheet should close (backdrop click).
+    pub on_close: Callback<()>,
+}
+
+impl PartialEq for KeymapHelpProps {
+    fn eq(&self, other: &Self) -> bool {
+        self.bindings == other.bindings
+    }
+}
+
+/// The shortcut cheat sheet: every binding's chord and what it does, over a
+/// dimmed backdrop. The chords use the `im-hint-key` class the status-bar shim
+/// already prettifies to the platform glyphs, so ⌘ shows on a Mac here too.
+#[component]
+pub fn KeymapHelp(props: KeymapHelpProps) -> Element {
+    let on_close = props.on_close;
+    rsx! {
+        div {
+            class: "im-help-backdrop",
+            onclick: move |_| on_close.call(()),
+            div {
+                class: "im-help",
+                onclick: move |e| e.stop_propagation(),
+                div { class: "im-help-title", "Keyboard shortcuts" }
+                div { class: "im-help-list",
+                    for b in props.bindings.iter() {
+                        div { class: "im-help-row", key: "{b.chord}",
+                            span { class: "im-hint-key", "{b.chord}" }
+                            span { class: "im-help-desc", "{b.description}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

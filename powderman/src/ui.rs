@@ -194,8 +194,8 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 }
 
 use immersion::{
-    AreaId, Areas, ContextMenu, Dir, EditorKind, Field, FieldKind, Keymap, Layout, Palette,
-    PaletteItem, PropertyEditor, Splash, SplashRecent, StatusBar, Template, Tooltips,
+    AreaId, Areas, ContextMenu, Dir, EditorKind, Field, FieldKind, Keymap, KeymapHelp, Layout,
+    Palette, PaletteItem, PropertyEditor, Splash, SplashRecent, StatusBar, Template, Tooltips,
     WorkspaceTabs, default_keymap,
 };
 
@@ -424,6 +424,7 @@ pub fn App() -> Element {
     // the status bar). Cleared after a few seconds by a token: each report
     // bumps a generation, and the timer only clears if its generation is still
     // current, so a newer report is never wiped by an older timer.
+    let mut help_open = use_signal(|| false);
     let mut report = use_signal(|| None::<String>);
     let mut report_gen = use_signal(|| 0u64);
     let do_report = use_callback(move |msg: String| {
@@ -463,6 +464,7 @@ pub fn App() -> Element {
             "undo" => ws.set(crate::daemon::undo()),
             "redo" => ws.set(crate::daemon::redo()),
             "repeat_last" => ws.set(crate::daemon::repeat_last()),
+            "cheatsheet" => help_open.toggle(),
             "maximize" => {
                 // Toggle: maximize the first area if none is, else restore.
                 let cur = maximized();
@@ -586,6 +588,12 @@ pub fn App() -> Element {
             }
             Keymap { bindings: default_keymap(), on_action }
             ContextMenu { on_command: cmd }
+            if help_open() {
+                KeymapHelp {
+                    bindings: default_keymap(),
+                    on_close: move |()| help_open.set(false),
+                }
+            }
             Tooltips { enabled: settings()["tooltips_on"].as_bool().unwrap_or(true) }
             if palette_open() {
                 Palette {
