@@ -326,6 +326,10 @@
 }
 .im-hint-label { color: var(--im-text-muted, #8b8b85); }
 .im-status-right { flex: none; color: var(--im-text-muted, #8b8b85); }
+.im-status-report {
+  flex: 1; text-align: center; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  color: var(--im-text, #e8e8e4);
+}
 
 /* Context menu (right-click). Floating list the shim positions at the cursor. */
 .im-ctxmenu {
