@@ -54,6 +54,9 @@ pub struct Field {
     pub label: String,
     pub kind: FieldKind,
     pub hint: Option<String>,
+    /// The factory value. When set, the field's right-click menu offers "Reset
+    /// to default", which sets the pointer back to this.
+    pub default: Option<Value>,
 }
 
 impl Field {
@@ -63,10 +66,15 @@ impl Field {
             label: label.to_string(),
             kind,
             hint: None,
+            default: None,
         }
     }
     pub fn with_hint(mut self, hint: &str) -> Self {
         self.hint = Some(hint.to_string());
+        self
+    }
+    pub fn with_default(mut self, default: Value) -> Self {
+        self.default = Some(default);
         self
     }
 }
@@ -117,8 +125,19 @@ fn field_row(f: Field, doc: &Value, on_edit: Callback<(String, Value)>) -> Eleme
         FieldKind::Toggle => toggle_widget(&f.path, &val, on_edit),
         FieldKind::Color => color_widget(&f.path, &val, on_edit),
     };
+    // A field with a default gets a right-click "Reset to default", routed to
+    // set_setting through the same context-menu shim the areas use. Nested
+    // inside the area's own menu, so `closest` finds this one first.
+    let menu = f.default.as_ref().map(|d| {
+        json!([{
+            "label": "Reset to default",
+            "action": "set_setting",
+            "params": { "pointer": f.path, "value": d },
+        }])
+        .to_string()
+    });
     rsx! {
-        div { class: "im-field",
+        div { class: "im-field", "data-im-menu": menu,
             label { class: "im-field-label",
                 span { "{f.label}" }
                 if let Some(h) = f.hint.clone() {
