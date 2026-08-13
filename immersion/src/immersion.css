@@ -1,3 +1,21 @@
+/* The default palette — the standalone fallbacks, defined once. A host theme
+   redefines these on :root (later in the cascade), so this is only the
+   library-alone look; referencing them below needs no per-use fallback. */
+:root {
+  --im-bg: #1a1a1d;
+  --im-seam: #0e0e10;
+  --im-surface: #232327;
+  --im-header: #2b2b30;
+  --im-text: #e8e8e4;
+  --im-border: #3a3a40;
+  --im-text-muted: #8b8b85;
+  --im-accent: #3987e5;
+  --im-fill: 0%;
+  --im-input-bg: #232327;
+  --im-mono: monospace;
+  --im-panel: #2b2b30;
+}
+
 /* Immersion chrome. Flat, gap-free, 1px seams — the locked Blender look.
    Every color is an --im-* token with a fallback, so the library renders
    standalone and recolors when the host defines the tokens. */
@@ -9,7 +27,7 @@
   width: 100%;
   height: 100%;
   display: flex;
-  background: var(--im-bg, #1a1a1d);
+  background: var(--im-bg);
   overflow: hidden;
 }
 .im-root > * { flex: 1; min-width: 0; min-height: 0; }
@@ -21,15 +39,15 @@
 .im-cell > * { flex: 1; min-width: 0; min-height: 0; }
 
 /* Areas meet on seams, not gaps: each cell after the first draws one edge. */
-.im-row > .im-cell + .im-cell { border-left: 1px solid var(--im-seam, #0e0e10); }
-.im-col > .im-cell + .im-cell { border-top: 1px solid var(--im-seam, #0e0e10); }
+.im-row > .im-cell + .im-cell { border-left: 1px solid var(--im-seam); }
+.im-col > .im-cell + .im-cell { border-top: 1px solid var(--im-seam); }
 
 .im-area {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--im-surface, #232327);
+  background: var(--im-surface);
 }
 
 .im-header {
@@ -37,8 +55,8 @@
   align-items: center;
   gap: .35rem;
   padding: .12rem .3rem;
-  background: var(--im-header, #2b2b30);
-  border-bottom: 1px solid var(--im-seam, #0e0e10);
+  background: var(--im-header);
+  border-bottom: 1px solid var(--im-seam);
   flex: none;
   height: 1.55rem;
   user-select: none;
@@ -48,9 +66,9 @@
   font: inherit;
   font-size: .72rem;
   font-weight: 500;
-  color: var(--im-text, #e8e8e4);
-  background: var(--im-surface, #232327);
-  border: 1px solid var(--im-border, #3a3a40);
+  color: var(--im-text);
+  background: var(--im-surface);
+  border: 1px solid var(--im-border);
   border-radius: 3px;
   padding: .08rem 1.1rem .08rem .5rem;
   max-width: 12rem;
@@ -59,20 +77,20 @@
      button reads as a menu rather than a plain field. */
   appearance: none;
   background-image:
-    linear-gradient(45deg, transparent 50%, var(--im-text-muted, #8b8b85) 50%),
-    linear-gradient(135deg, var(--im-text-muted, #8b8b85) 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, var(--im-text-muted) 50%),
+    linear-gradient(135deg, var(--im-text-muted) 50%, transparent 50%);
   background-position:
     calc(100% - 11px) center,
     calc(100% - 7px) center;
   background-size: 4px 4px, 4px 4px;
   background-repeat: no-repeat;
 }
-.im-kind:hover { background-color: var(--im-header, #2b2b30); border-color: var(--im-accent, #3987e5); }
-.im-kind:focus { outline: none; border-color: var(--im-accent, #3987e5); }
+.im-kind:hover { background-color: var(--im-header); border-color: var(--im-accent); }
+.im-kind:focus { outline: none; border-color: var(--im-accent); }
 
 .im-title {
   font-size: .72rem;
-  color: var(--im-text-muted, #8b8b85);
+  color: var(--im-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -85,15 +103,15 @@
   font-size: .72rem;
   line-height: 1;
   padding: .1rem .28rem;
-  color: var(--im-text-muted, #8b8b85);
+  color: var(--im-text-muted);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 3px;
   cursor: pointer;
 }
 .im-btn:hover {
-  color: var(--im-text, #e8e8e4);
-  background: var(--im-surface, #232327);
+  color: var(--im-text);
+  background: var(--im-surface);
 }
 
 .im-body {
@@ -132,7 +150,7 @@
   position: fixed;
   z-index: 50;
   pointer-events: none;
-  background: var(--im-accent, #3987e5);
+  background: var(--im-accent);
 }
 
 /* Workspace tabs in the host topbar. */
@@ -140,14 +158,14 @@
 .im-tab {
   display: flex; align-items: center; gap: .3rem;
   padding: .1rem .5rem; font-size: .76rem; cursor: pointer;
-  color: var(--im-text-muted, #8b8b85);
+  color: var(--im-text-muted);
   border-radius: 3px;
 }
-.im-tab:hover { background: var(--im-header, #2b2b30); color: var(--im-text, #e8e8e4); }
+.im-tab:hover { background: var(--im-header); color: var(--im-text); }
 .im-tab.active {
-  background: var(--im-surface, #232327);
-  color: var(--im-text, #e8e8e4);
-  box-shadow: inset 0 0 0 1px var(--im-border, #3a3a40);
+  background: var(--im-surface);
+  color: var(--im-text);
+  box-shadow: inset 0 0 0 1px var(--im-border);
 }
 .im-tab-name { user-select: none; }
 .im-tab-x {
@@ -160,14 +178,14 @@
 .im-tab-add {
   font-size: .85rem; line-height: 1; padding: 0 .4rem;
   border: 0; background: transparent; cursor: pointer;
-  color: var(--im-text-muted, #8b8b85); border-radius: 3px;
+  color: var(--im-text-muted); border-radius: 3px;
 }
-.im-tab-add:hover { background: var(--im-header, #2b2b30); color: var(--im-text, #e8e8e4); }
+.im-tab-add:hover { background: var(--im-header); color: var(--im-text); }
 .im-tab-edit {
   font: inherit; font-size: .76rem; width: 8rem;
   padding: .1rem .35rem; border-radius: 3px;
-  border: 1px solid var(--im-accent, #3987e5);
-  background: var(--im-surface, #232327); color: var(--im-text, #e8e8e4);
+  border: 1px solid var(--im-accent);
+  background: var(--im-surface); color: var(--im-text);
 }
 
 /* Join target tint. A distinct opacity from the split-line overlay so the
@@ -177,7 +195,7 @@
    outline instead of a plain tint, so the command-drag is unmistakable. */
 .im-overlay.im-swap {
   opacity: .28;
-  outline: 2px dashed var(--im-text, #e8e8e4);
+  outline: 2px dashed var(--im-text);
   outline-offset: -3px;
 }
 
@@ -190,62 +208,62 @@
 }
 .im-splash {
   width: 40rem; max-width: 92vw;
-  background: var(--im-surface, #232327);
-  border: 1px solid var(--im-border, #3a3a40);
+  background: var(--im-surface);
+  border: 1px solid var(--im-border);
   border-radius: 4px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
   padding: 1.1rem 1.25rem 1rem;
 }
 .im-splash-head { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .9rem; }
-.im-splash-brand { font-size: 1.15rem; font-weight: 650; color: var(--im-text, #e8e8e4); }
-.im-splash-sub { font-size: .8rem; color: var(--im-text-muted, #8b8b85); }
+.im-splash-brand { font-size: 1.15rem; font-weight: 650; color: var(--im-text); }
+.im-splash-sub { font-size: .8rem; color: var(--im-text-muted); }
 .im-splash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
 .im-splash-h {
   font-size: .68rem; text-transform: uppercase; letter-spacing: .08em;
-  color: var(--im-text-muted, #8b8b85); font-weight: 600; margin-bottom: .35rem;
+  color: var(--im-text-muted); font-weight: 600; margin-bottom: .35rem;
 }
 .im-splash-item {
   padding: .4rem .5rem; border-radius: 3px; cursor: pointer;
   border: 1px solid transparent;
 }
 .im-splash-item:hover {
-  background: var(--im-header, #2b2b30);
-  border-color: var(--im-border, #3a3a40);
+  background: var(--im-header);
+  border-color: var(--im-border);
 }
 .im-splash-name {
-  font-size: .82rem; font-weight: 500; color: var(--im-text, #e8e8e4);
+  font-size: .82rem; font-weight: 500; color: var(--im-text);
   display: flex; align-items: center; gap: .4rem;
 }
-.im-splash-hint { font-size: .74rem; color: var(--im-text-muted, #8b8b85); }
-.im-splash-empty { font-size: .78rem; color: var(--im-text-muted, #8b8b85); padding: .4rem .5rem; }
+.im-splash-hint { font-size: .74rem; color: var(--im-text-muted); }
+.im-splash-empty { font-size: .78rem; color: var(--im-text-muted); padding: .4rem .5rem; }
 .im-dot { width: .5rem; height: .5rem; border-radius: 50%; display: inline-block; background: currentColor; }
 .im-splash-foot {
   display: flex; align-items: center; gap: .4rem; margin-top: 1rem;
-  font-size: .76rem; color: var(--im-text-muted, #8b8b85); cursor: pointer;
+  font-size: .76rem; color: var(--im-text-muted); cursor: pointer;
 }
 
 /* Widget kit — Blender-style property controls. */
 .im-props { display: flex; flex-direction: column; gap: .35rem; }
 .im-field { display: grid; grid-template-columns: 11rem 1fr; gap: .6rem; align-items: center; }
-.im-field-label { display: flex; flex-direction: column; font-size: .78rem; color: var(--im-text, #e8e8e4); }
-.im-field-hint { font-size: .68rem; color: var(--im-text-muted, #8b8b85); }
+.im-field-label { display: flex; flex-direction: column; font-size: .78rem; color: var(--im-text); }
+.im-field-hint { font-size: .68rem; color: var(--im-text-muted); }
 .im-field-control { min-width: 0; }
 .im-input, .im-select {
   font: inherit; font-size: .78rem; width: 100%;
   padding: .18rem .4rem; border-radius: 3px;
-  color: var(--im-text, #e8e8e4);
-  background: var(--im-header, #2b2b30);
-  border: 1px solid var(--im-border, #3a3a40);
+  color: var(--im-text);
+  background: var(--im-header);
+  border: 1px solid var(--im-border);
 }
-.im-input:focus, .im-select:focus { outline: none; border-color: var(--im-accent, #3987e5); }
+.im-input:focus, .im-select:focus { outline: none; border-color: var(--im-accent); }
 .im-number { max-width: 8rem; }
 .im-slider-row { display: flex; align-items: center; gap: .5rem; }
 .im-slider {
   position: relative; flex: 1; height: 1.4rem; border-radius: 3px; overflow: hidden;
-  border: 1px solid var(--im-border, #3a3a40);
+  border: 1px solid var(--im-border);
   background: linear-gradient(to right,
-    var(--im-accent, #3987e5) 0 var(--im-fill, 0%),
-    var(--im-input-bg, #232327) var(--im-fill, 0%));
+    var(--im-accent) 0 var(--im-fill),
+    var(--im-input-bg) var(--im-fill));
   cursor: ew-resize;
 }
 .im-slider-input {
@@ -254,13 +272,13 @@
 }
 .im-slider-val {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  pointer-events: none; font-size: .72rem; color: var(--im-text, #e8e8e4);
+  pointer-events: none; font-size: .72rem; color: var(--im-text);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
-.im-check { width: 1rem; height: 1rem; accent-color: var(--im-accent, #3987e5); }
+.im-check { width: 1rem; height: 1rem; accent-color: var(--im-accent); }
 .im-color-row { display: flex; align-items: center; gap: .5rem; }
-.im-color { width: 2.2rem; height: 1.4rem; padding: 0; border: 1px solid var(--im-border, #3a3a40); border-radius: 3px; background: none; cursor: pointer; }
-.im-color-hex { font-family: var(--im-mono, monospace); font-size: .74rem; color: var(--im-text-muted, #8b8b85); }
+.im-color { width: 2.2rem; height: 1.4rem; padding: 0; border: 1px solid var(--im-border); border-radius: 3px; background: none; cursor: pointer; }
+.im-color-hex { font-family: var(--im-mono); font-size: .74rem; color: var(--im-text-muted); }
 
 /* Command palette (F3). A centered floating panel over a dim scrim; the shim
    filters the rows and moves .is-sel. Tokens with fallbacks, like the rest. */
@@ -272,37 +290,37 @@
 }
 .im-palette {
   width: min(34rem, 90%); max-height: 60vh; display: flex; flex-direction: column;
-  background: var(--im-panel, #2b2b30);
-  border: 1px solid var(--im-border, #3a3a40);
+  background: var(--im-panel);
+  border: 1px solid var(--im-border);
   border-radius: 5px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 .im-palette-input {
-  border: none; outline: none; background: var(--im-input-bg, #232327);
-  color: var(--im-text, #e8e8e4);
+  border: none; outline: none; background: var(--im-input-bg);
+  color: var(--im-text);
   font-size: .95rem; padding: .7rem .85rem;
-  border-bottom: 1px solid var(--im-border, #3a3a40);
+  border-bottom: 1px solid var(--im-border);
 }
-.im-palette-input::placeholder { color: var(--im-text-muted, #8b8b85); }
+.im-palette-input::placeholder { color: var(--im-text-muted); }
 .im-palette-list { overflow-y: auto; min-height: 0; }
 .im-palette-row {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   padding: .42rem .85rem; cursor: pointer;
 }
-.im-palette-row.is-sel { background: var(--im-accent, #3987e5); }
+.im-palette-row.is-sel { background: var(--im-accent); }
 .im-palette-row.is-sel .im-palette-label,
 .im-palette-row.is-sel .im-palette-hint,
 .im-palette-row.is-sel .im-palette-chord { color: #fff; }
 .im-palette-main { display: flex; align-items: baseline; gap: .55rem; min-width: 0; }
-.im-palette-label { color: var(--im-text, #e8e8e4); font-size: .82rem; white-space: nowrap; }
+.im-palette-label { color: var(--im-text); font-size: .82rem; white-space: nowrap; }
 .im-palette-hint {
-  color: var(--im-text-muted, #8b8b85); font-size: .72rem;
+  color: var(--im-text-muted); font-size: .72rem;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .im-palette-chord {
-  color: var(--im-text-muted, #8b8b85); font-size: .72rem;
-  font-family: var(--im-mono, monospace); white-space: nowrap; flex: none;
+  color: var(--im-text-muted); font-size: .72rem;
+  font-family: var(--im-mono); white-space: nowrap; flex: none;
 }
 
 /* Tooltip (hover help, client-side). One shared floating element the shim
@@ -310,72 +328,72 @@
 .im-tooltip {
   position: fixed; z-index: 60; pointer-events: none;
   max-width: 22rem; padding: .35rem .55rem;
-  background: var(--im-panel, #2b2b30);
-  border: 1px solid var(--im-border, #3a3a40);
+  background: var(--im-panel);
+  border: 1px solid var(--im-border);
   border-radius: 4px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   font-size: .76rem; line-height: 1.3;
 }
-.im-tooltip-name { color: var(--im-text, #e8e8e4); }
-.im-tooltip-desc { color: var(--im-text-muted, #8b8b85); margin-top: .2rem; }
+.im-tooltip-name { color: var(--im-text); }
+.im-tooltip-desc { color: var(--im-text-muted); margin-top: .2rem; }
 .im-tooltip-key {
-  color: var(--im-text-muted, #8b8b85); margin-top: .25rem;
-  font-family: var(--im-mono, monospace); font-size: .7rem;
+  color: var(--im-text-muted); margin-top: .25rem;
+  font-family: var(--im-mono); font-size: .7rem;
 }
 /* Status bar: Blender's bottom strip. Left = key hints, right = host segment. */
 .im-statusbar {
   display: flex; align-items: center; justify-content: space-between;
   gap: 1rem; flex: none; height: 1.5rem; padding: 0 .6rem;
-  background: var(--im-panel, #2b2b30);
-  border-top: 1px solid var(--im-border, #3a3a40);
-  font-size: .72rem; color: var(--im-text-muted, #8b8b85);
+  background: var(--im-panel);
+  border-top: 1px solid var(--im-border);
+  font-size: .72rem; color: var(--im-text-muted);
   overflow: hidden; white-space: nowrap;
 }
 .im-status-hints { display: flex; align-items: center; gap: 1rem; min-width: 0; overflow: hidden; }
 .im-hint { display: inline-flex; align-items: baseline; gap: .3rem; }
 .im-hint-key {
-  font-family: var(--im-mono, monospace); color: var(--im-text, #e8e8e4);
-  background: var(--im-input-bg, #232327);
-  border: 1px solid var(--im-border, #3a3a40); border-radius: 3px;
+  font-family: var(--im-mono); color: var(--im-text);
+  background: var(--im-input-bg);
+  border: 1px solid var(--im-border); border-radius: 3px;
   padding: 0 .28rem; font-size: .68rem;
 }
-.im-hint-label { color: var(--im-text-muted, #8b8b85); }
-.im-status-right { flex: none; color: var(--im-text-muted, #8b8b85); }
+.im-hint-label { color: var(--im-text-muted); }
+.im-status-right { flex: none; color: var(--im-text-muted); }
 .im-status-report {
   flex: 1; text-align: center; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  color: var(--im-text, #e8e8e4);
+  color: var(--im-text);
 }
 
 /* Context menu (right-click). Floating list the shim positions at the cursor. */
 .im-ctxmenu {
   position: fixed; z-index: 65; min-width: 10rem; padding: .25rem;
-  background: var(--im-panel, #2b2b30);
-  border: 1px solid var(--im-border, #3a3a40); border-radius: 5px;
+  background: var(--im-panel);
+  border: 1px solid var(--im-border); border-radius: 5px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); font-size: .8rem;
 }
 .im-ctx-item {
   padding: .3rem .55rem; border-radius: 3px; cursor: pointer;
-  color: var(--im-text, #e8e8e4); white-space: nowrap;
+  color: var(--im-text); white-space: nowrap;
 }
-.im-ctx-item.is-sel, .im-ctx-item:hover { background: var(--im-accent, #3987e5); color: #fff; }
-.im-ctx-sep { height: 1px; margin: .25rem .3rem; background: var(--im-border, #3a3a40); }
+.im-ctx-item.is-sel, .im-ctx-item:hover { background: var(--im-accent); color: #fff; }
+.im-ctx-sep { height: 1px; margin: .25rem .3rem; background: var(--im-border); }
 
 /* Radio row (expanded enum) + toggle button. */
-.im-radio { display: inline-flex; border: 1px solid var(--im-border, #3a3a40); border-radius: 3px; overflow: hidden; }
+.im-radio { display: inline-flex; border: 1px solid var(--im-border); border-radius: 3px; overflow: hidden; }
 .im-radio-btn {
-  border: 0; border-right: 1px solid var(--im-border, #3a3a40);
-  background: var(--im-input-bg, #232327); color: var(--im-text-muted, #8b8b85);
+  border: 0; border-right: 1px solid var(--im-border);
+  background: var(--im-input-bg); color: var(--im-text-muted);
   padding: .2rem .55rem; cursor: pointer; font: inherit; font-size: .76rem;
 }
 .im-radio-btn:last-child { border-right: 0; }
-.im-radio-btn:hover { color: var(--im-text, #e8e8e4); }
-.im-radio-btn.active { background: var(--im-accent, #3987e5); color: #fff; }
+.im-radio-btn:hover { color: var(--im-text); }
+.im-radio-btn.active { background: var(--im-accent); color: #fff; }
 .im-toggle {
-  border: 1px solid var(--im-border, #3a3a40); border-radius: 3px;
-  background: var(--im-input-bg, #232327); color: var(--im-text-muted, #8b8b85);
+  border: 1px solid var(--im-border); border-radius: 3px;
+  background: var(--im-input-bg); color: var(--im-text-muted);
   padding: .2rem .7rem; cursor: pointer; font: inherit; font-size: .76rem; min-width: 3rem;
 }
-.im-toggle.active { background: var(--im-accent, #3987e5); color: #fff; border-color: var(--im-accent, #3987e5); }
+.im-toggle.active { background: var(--im-accent); color: #fff; border-color: var(--im-accent); }
 
 /* Keymap cheat sheet (F1). Centered card over a dimmed backdrop. */
 .im-help-backdrop {
@@ -385,22 +403,22 @@
 }
 .im-help {
   min-width: 20rem; max-height: 70vh; overflow-y: auto; padding: .9rem 1.1rem;
-  background: var(--im-panel, #2b2b30);
-  border: 1px solid var(--im-border, #3a3a40); border-radius: 6px;
+  background: var(--im-panel);
+  border: 1px solid var(--im-border); border-radius: 6px;
   box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
 }
-.im-help-title { color: var(--im-text, #e8e8e4); font-size: .9rem; margin-bottom: .6rem; }
+.im-help-title { color: var(--im-text); font-size: .9rem; margin-bottom: .6rem; }
 .im-help-list { display: grid; grid-template-columns: auto 1fr; gap: .35rem .9rem; align-items: baseline; }
 .im-help-row { display: contents; }
-.im-help-desc { color: var(--im-text-muted, #8b8b85); font-size: .8rem; }
+.im-help-desc { color: var(--im-text-muted); font-size: .8rem; }
 
 /* Layout export/import buttons in the chrome. */
 .im-layoutfile { display: inline-flex; gap: .15rem; }
 .im-file-btn {
   border: 0; background: transparent; cursor: pointer; border-radius: 3px;
-  color: var(--im-text-muted, #8b8b85); font-size: .74rem; padding: .1rem .4rem; line-height: 1.4;
+  color: var(--im-text-muted); font-size: .74rem; padding: .1rem .4rem; line-height: 1.4;
 }
-.im-file-btn:hover { background: var(--im-header, #2b2b30); color: var(--im-text, #e8e8e4); }
+.im-file-btn:hover { background: var(--im-header); color: var(--im-text); }
 
 /* Number scrub: the field hints it is draggable (ew-resize) until focused for
    typing. scrub.js drives the drag. */
