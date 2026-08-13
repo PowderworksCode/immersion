@@ -35,6 +35,13 @@ pub enum FieldKind {
     Bool,
     /// `(value, label)` pairs for a dropdown.
     Select(Vec<(String, String)>),
+    /// `(value, label)` pairs shown as a segmented button row — Blender's
+    /// expanded enum. Same value as a Select, more direct for two or three
+    /// options.
+    Radio(Vec<(String, String)>),
+    /// A bool shown as a single pressable button (pressed = true), rather than
+    /// a checkbox — Blender's toggle button.
+    Toggle,
     /// The native color picker; the value is a `#rrggbb` string.
     Color,
 }
@@ -106,6 +113,8 @@ fn field_row(f: Field, doc: &Value, on_edit: Callback<(String, Value)>) -> Eleme
         }
         FieldKind::Bool => bool_widget(&f.path, &val, on_edit),
         FieldKind::Select(opts) => select_widget(&f.path, &val, opts, on_edit),
+        FieldKind::Radio(opts) => radio_widget(&f.path, &val, opts, on_edit),
+        FieldKind::Toggle => toggle_widget(&f.path, &val, on_edit),
         FieldKind::Color => color_widget(&f.path, &val, on_edit),
     };
     rsx! {
@@ -255,6 +264,48 @@ fn select_widget(
             for (value, label) in opts.iter().cloned() {
                 option { value: "{value}", selected: value == cur, "{label}" }
             }
+        }
+    }
+}
+
+fn radio_widget(
+    path: &str,
+    val: &Value,
+    opts: &[(String, String)],
+    on_edit: Callback<(String, Value)>,
+) -> Element {
+    let path = path.to_string();
+    let cur = as_str(val);
+    let opts = opts.to_vec();
+    rsx! {
+        div { class: "im-radio",
+            for (value, label) in opts.iter().cloned() {
+                {
+                    let p = path.clone();
+                    let v = value.clone();
+                    let active = value == cur;
+                    rsx! {
+                        button {
+                            key: "{value}",
+                            class: if active { "im-radio-btn active" } else { "im-radio-btn" },
+                            onclick: move |_| on_edit.call((p.clone(), json!(v.clone()))),
+                            "{label}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn toggle_widget(path: &str, val: &Value, on_edit: Callback<(String, Value)>) -> Element {
+    let path = path.to_string();
+    let cur = val.as_bool().unwrap_or(false);
+    rsx! {
+        button {
+            class: if cur { "im-toggle active" } else { "im-toggle" },
+            onclick: move |_| on_edit.call((path.clone(), json!(!cur))),
+            if cur { "On" } else { "Off" }
         }
     }
 }

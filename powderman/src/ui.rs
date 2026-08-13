@@ -318,7 +318,7 @@ fn settings_fields() -> Vec<Field> {
         )
         .with_hint("how often the page repolls, in ms"),
         Field::new("/splash_on_start", "Splash on startup", FieldKind::Bool),
-        Field::new("/tooltips_on", "Tooltips", FieldKind::Bool)
+        Field::new("/tooltips_on", "Tooltips", FieldKind::Toggle)
             .with_hint("hover help on the workbench controls"),
         Field::new(
             "/sweep_limit",
@@ -333,7 +333,7 @@ fn settings_fields() -> Vec<Field> {
         Field::new(
             "/density",
             "Density",
-            FieldKind::Select(vec![
+            FieldKind::Radio(vec![
                 ("cozy".into(), "Cozy".into()),
                 ("compact".into(), "Compact".into()),
             ]),
