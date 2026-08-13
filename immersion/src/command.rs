@@ -165,6 +165,17 @@ const BUILTINS: &[Command] = &[
         },
     },
     Command {
+        name: "toggle_region",
+        description: "Show or hide an area's toolbar or sidebar",
+        // A view toggle, persisted with the layout but not something you undo.
+        navigational: true,
+        run: |ws, p| {
+            ws.current_layout_mut()
+                .toggle_region(u64_field(p, "id")?, str_field(p, "region")?);
+            Ok(())
+        },
+    },
+    Command {
         name: "duplicate_area",
         description: "Split an area and show the same editor in the new half",
         navigational: false,

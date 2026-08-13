@@ -23,6 +23,23 @@ pub enum Dir {
     Col,
 }
 
+/// The collapsible strips around a leaf's body — Blender's regions. The
+/// toolbar (T) is the narrow tool column on the left; the sidebar (N) is the
+/// properties panel on the right. Both off by default, toggled per area.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct Regions {
+    #[serde(default)]
+    pub toolbar: bool,
+    #[serde(default)]
+    pub sidebar: bool,
+}
+
+impl Regions {
+    fn is_default(&self) -> bool {
+        !self.toolbar && !self.sidebar
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Area {
@@ -35,6 +52,9 @@ pub enum Area {
         /// serde(default) so layouts saved before this field still load.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         arg: Option<String>,
+        /// The collapsible regions around the body.
+        #[serde(default, skip_serializing_if = "Regions::is_default")]
+        regions: Regions,
     },
     Split {
         id: AreaId,
@@ -119,6 +139,7 @@ impl Layout {
                 id: 1,
                 editor: editor.to_string(),
                 arg: None,
+                regions: Regions::default(),
             },
             next_id: 2,
         }
@@ -147,18 +168,26 @@ impl Layout {
         let split_id = self.mint();
         let new_id = self.mint();
         let node = self.root.find_mut(target)?;
-        let Area::Leaf { id, editor, arg } = node else {
+        let Area::Leaf {
+            id,
+            editor,
+            arg,
+            regions,
+        } = node
+        else {
             return None;
         };
         let original = Area::Leaf {
             id: *id,
             editor: editor.clone(),
             arg: arg.clone(),
+            regions: regions.clone(),
         };
         let fresh = Area::Leaf {
             id: new_id,
             editor: editor.clone(),
             arg: arg.clone(),
+            regions: Regions::default(),
         };
         *node = Area::Split {
             id: split_id,
@@ -271,6 +300,21 @@ impl Layout {
     /// one area onto another with the command key swaps them, so a run detail
     /// and a list can trade places without a join. Both must be leaves; a
     /// no-op (returns false) if either is missing or they are the same area.
+    /// Toggle a leaf's toolbar (T) or sidebar (N) region.
+    pub fn toggle_region(&mut self, leaf: AreaId, region: &str) -> bool {
+        match self.root.find_mut(leaf) {
+            Some(Area::Leaf { regions, .. }) => {
+                match region {
+                    "toolbar" => regions.toolbar = !regions.toolbar,
+                    "sidebar" => regions.sidebar = !regions.sidebar,
+                    _ => return false,
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn swap_editors(&mut self, a: AreaId, b: AreaId) -> bool {
         if a == b {
             return false;

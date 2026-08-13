@@ -114,12 +114,24 @@
   background: var(--im-surface);
 }
 
+.im-area-main { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .im-body {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: .6rem .75rem;
 }
+/* Regions — Blender's toolbar (T, narrow left) and sidebar (N, wider right). */
+.im-toolbar {
+  flex: none; width: 2.6rem; overflow-y: auto; overflow-x: hidden;
+  border-right: 1px solid var(--im-seam); background: var(--im-panel);
+}
+.im-sidebar {
+  flex: none; width: 14rem; overflow-y: auto;
+  border-left: 1px solid var(--im-seam); background: var(--im-panel);
+}
+.im-btn.active { color: var(--im-accent); }
 
 /* Seam handles: an invisible grab strip over each split border. */
 .im-seam-handle { position: absolute; z-index: 5; }

@@ -13,7 +13,7 @@
 use dioxus::prelude::*;
 use serde::Deserialize;
 
-use crate::area::{Area, AreaId, Dir, Layout};
+use crate::area::{Area, AreaId, Dir, Layout, Regions};
 
 /// What the gesture shim commits, one message per completed drag. Each maps to
 /// a bus command, so a drag and a header-button click are the same operation.
@@ -72,6 +72,14 @@ pub struct AreasProps {
     /// lets an editor act on its own area — a list that opens an item into a
     /// split needs to know where it is.
     pub render: Callback<(AreaId, String, Option<String>), Element>,
+    /// Optional: renders a leaf's left toolbar region from `(area id, editor)`.
+    /// When present, the area shows a T toggle; when absent, no toolbar.
+    #[props(default)]
+    pub render_toolbar: Option<Callback<(AreaId, String), Element>>,
+    /// Optional: renders a leaf's right sidebar (N panel) — Blender's
+    /// properties region — from `(area id, editor)`.
+    #[props(default)]
+    pub render_sidebar: Option<Callback<(AreaId, String), Element>>,
     /// The single write path: `(command name, JSON params)`. The header
     /// buttons, the editor dropdown, and the gesture shim all emit through
     /// here, so there is exactly one way to mutate the layout — the property
@@ -139,7 +147,12 @@ pub fn Areas(props: AreasProps) -> Element {
 
 fn render_node(node: &Area, props: &AreasProps, lone: bool) -> Element {
     match node {
-        Area::Leaf { id, editor, arg } => render_leaf(*id, editor, arg.clone(), props, lone),
+        Area::Leaf {
+            id,
+            editor,
+            arg,
+            regions,
+        } => render_leaf(*id, editor, arg.clone(), regions.clone(), props, lone),
         Area::Split {
             id,
             dir,
@@ -182,6 +195,7 @@ fn render_leaf(
     id: AreaId,
     editor: &str,
     arg: Option<String>,
+    regions: Regions,
     props: &AreasProps,
     lone: bool,
 ) -> Element {
@@ -190,6 +204,24 @@ fn render_leaf(
     let cmd = props.on_command;
     let body = props.render.call((id, editor_owned.clone(), arg));
     let menu = crate::contextmenu::area_menu_json(id);
+    // Region content is the host's — a leaf shows a toolbar / sidebar only if
+    // the host offers one and the region is toggled on.
+    let has_toolbar = props.render_toolbar.is_some();
+    let has_sidebar = props.render_sidebar.is_some();
+    let toolbar = if regions.toolbar {
+        props
+            .render_toolbar
+            .map(|cb| cb.call((id, editor_owned.clone())))
+    } else {
+        None
+    };
+    let sidebar = if regions.sidebar {
+        props
+            .render_sidebar
+            .map(|cb| cb.call((id, editor_owned.clone())))
+    } else {
+        None
+    };
 
     rsx! {
         div { class: "im-area", key: "{id}", "data-im-area": "{id}", "data-im-menu": "{menu}",
@@ -218,6 +250,22 @@ fn render_leaf(
                     }
                 }
                 span { class: "im-tools",
+                    if has_toolbar {
+                        button {
+                            class: if regions.toolbar { "im-btn active" } else { "im-btn" },
+                            title: "toggle toolbar",
+                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "toolbar" }))),
+                            "T"
+                        }
+                    }
+                    if has_sidebar {
+                        button {
+                            class: if regions.sidebar { "im-btn active" } else { "im-btn" },
+                            title: "toggle sidebar",
+                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "sidebar" }))),
+                            "N"
+                        }
+                    }
                     button { class: "im-btn", title: "split horizontally",
                         onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "row" }))), "⬒" }
                     button { class: "im-btn", title: "split vertically",
@@ -231,7 +279,15 @@ fn render_leaf(
                     }
                 }
             }
-            div { class: "im-body", {body} }
+            div { class: "im-area-main",
+                if let Some(t) = toolbar {
+                    div { class: "im-toolbar", {t} }
+                }
+                div { class: "im-body", {body} }
+                if let Some(sb) = sidebar {
+                    div { class: "im-sidebar", {sb} }
+                }
+            }
         }
     }
 }
