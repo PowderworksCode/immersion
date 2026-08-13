@@ -18,6 +18,7 @@ use dioxus::prelude::*;
 use serde_json::{Value, json};
 
 const SCRUB_JS: &str = include_str!("scrub.js");
+const SLIDER_JS: &str = include_str!("slider.js");
 
 /// What kind of control edits a field, and its constraints.
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +101,7 @@ impl PartialEq for PropertyEditorProps {
 pub fn PropertyEditor(props: PropertyEditorProps) -> Element {
     use_future(|| async {
         dioxus::document::eval(SCRUB_JS);
+        dioxus::document::eval(SLIDER_JS);
     });
     rsx! {
         div { class: "im-props",
