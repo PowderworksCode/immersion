@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 
-use crate::area::Dir;
+use crate::area::{Area, Dir};
 use crate::workspace::Workspaces;
 
 /// One named operation on the workbench.
@@ -161,6 +161,30 @@ const BUILTINS: &[Command] = &[
         run: |ws, p| {
             ws.current_layout_mut()
                 .set_ratio(u64_field(p, "id")?, f32_field(p, "ratio")?);
+            Ok(())
+        },
+    },
+    Command {
+        name: "duplicate_area",
+        description: "Split an area and show the same editor in the new half",
+        navigational: false,
+        run: |ws, p| {
+            let id = u64_field(p, "id")?;
+            let l = ws.current_layout_mut();
+            let src = match l.root.find(id) {
+                Some(Area::Leaf { editor, arg, .. }) => Some((editor.clone(), arg.clone())),
+                _ => None,
+            };
+            if let (Some((editor, arg)), Some(new)) = (src, l.split(id, Dir::Row, 0.5)) {
+                match arg {
+                    Some(a) => {
+                        l.set_editor_arg(new, &editor, &a);
+                    }
+                    None => {
+                        l.set_editor(new, &editor);
+                    }
+                }
+            }
             Ok(())
         },
     },
