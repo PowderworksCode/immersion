@@ -24,6 +24,7 @@ enum Gesture {
     Split { id: AreaId, dir: Dir, frac: f32 },
     Join { survivor: AreaId, victim: AreaId },
     Swap { a: AreaId, b: AreaId },
+    RegionWidth { id: AreaId, region: String, w: u16 },
 }
 
 impl Gesture {
@@ -48,6 +49,10 @@ impl Gesture {
                 serde_json::json!({ "survivor": survivor, "victim": victim }),
             ),
             Gesture::Swap { a, b } => ("swap", serde_json::json!({ "a": a, "b": b })),
+            Gesture::RegionWidth { id, region, w } => (
+                "set_region_width",
+                serde_json::json!({ "id": id, "region": region, "w": w }),
+            ),
         }
     }
 }
@@ -222,6 +227,16 @@ fn render_leaf(
     } else {
         None
     };
+    let toolbar_style = if regions.toolbar_w > 0 {
+        format!("width:{}px", regions.toolbar_w)
+    } else {
+        String::new()
+    };
+    let sidebar_style = if regions.sidebar_w > 0 {
+        format!("width:{}px", regions.sidebar_w)
+    } else {
+        String::new()
+    };
 
     rsx! {
         div { class: "im-area", key: "{id}", "data-im-area": "{id}", "data-im-menu": "{menu}",
@@ -281,11 +296,17 @@ fn render_leaf(
             }
             div { class: "im-area-main",
                 if let Some(t) = toolbar {
-                    div { class: "im-toolbar", {t} }
+                    div { class: "im-toolbar", style: "{toolbar_style}",
+                        {t}
+                        span { class: "im-region-handle im-region-handle-r", "data-im-region-handle": "toolbar" }
+                    }
                 }
                 div { class: "im-body", {body} }
                 if let Some(sb) = sidebar {
-                    div { class: "im-sidebar", {sb} }
+                    div { class: "im-sidebar", style: "{sidebar_style}",
+                        span { class: "im-region-handle im-region-handle-l", "data-im-region-handle": "sidebar" }
+                        {sb}
+                    }
                 }
             }
         }

@@ -165,6 +165,19 @@ const BUILTINS: &[Command] = &[
         },
     },
     Command {
+        name: "set_region_width",
+        description: "Resize an area's toolbar or sidebar",
+        navigational: true,
+        run: |ws, p| {
+            ws.current_layout_mut().set_region_width(
+                u64_field(p, "id")?,
+                str_field(p, "region")?,
+                u64_field(p, "w")? as u16,
+            );
+            Ok(())
+        },
+    },
+    Command {
         name: "toggle_region",
         description: "Show or hide an area's toolbar or sidebar",
         // A view toggle, persisted with the layout but not something you undo.
