@@ -54,6 +54,6 @@ pub fn ContextMenu(props: ContextMenuProps) -> Element {
 /// Kept here so the area view and the menu never drift: both come from the id.
 pub fn area_menu_json(id: crate::AreaId) -> String {
     format!(
-        r#"[{{"label":"Split horizontal","action":"split","params":{{"id":{id},"dir":"row"}}}},{{"label":"Split vertical","action":"split","params":{{"id":{id},"dir":"col"}}}},{{"sep":true}},{{"label":"Close area","action":"join","params":{{"id":{id}}}}}]"#
+        r#"[{{"label":"Split horizontal","action":"split","params":{{"id":{id},"dir":"row"}}}},{{"label":"Split vertical","action":"split","params":{{"id":{id},"dir":"col"}}}},{{"label":"Duplicate","action":"duplicate_area","params":{{"id":{id}}}}},{{"sep":true}},{{"label":"Close area","action":"join","params":{{"id":{id}}}}}]"#
     )
 }
