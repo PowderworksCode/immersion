@@ -478,21 +478,6 @@ pub fn App() -> Element {
         do_report.call(label);
     });
 
-    // Context-menu picks are mostly layout commands (the bus), but a property
-    // field's "Reset to default" is a settings edit — route it to set_setting.
-    let on_menu = use_callback(move |(action, params): (String, serde_json::Value)| {
-        if action == "set_setting" {
-            let pointer = params.get("pointer").and_then(|p| p.as_str()).unwrap_or("");
-            let value = params
-                .get("value")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
-            settings.set(crate::daemon::set_setting(pointer, value));
-        } else {
-            cmd.call((action, params));
-        }
-    });
-
     let on_setting = use_callback(move |(pointer, value): (String, serde_json::Value)| {
         settings.set(crate::daemon::set_setting(&pointer, value));
     });
@@ -530,6 +515,26 @@ pub fn App() -> Element {
             _ => ws.set(crate::daemon::dispatch(&action, params)),
         }
     });
+
+    // Menu picks reach three places: a settings edit (a field's Reset/Paste),
+    // a host action (undo, cheatsheet, maximize — things the bus does not own),
+    // or a layout command. Route by name so a menu item can be any of them.
+    let on_menu =
+        use_callback(
+            move |(action, params): (String, serde_json::Value)| match action.as_str() {
+                "set_setting" => {
+                    let pointer = params.get("pointer").and_then(|p| p.as_str()).unwrap_or("");
+                    let value = params
+                        .get("value")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
+                    settings.set(crate::daemon::set_setting(pointer, value));
+                }
+                "undo" | "redo" | "repeat_last" | "cheatsheet" | "adjust_last" | "maximize"
+                | "fullscreen" | "palette" => on_action.call((action, params)),
+                _ => cmd.call((action, params)),
+            },
+        );
 
     let on_template = use_callback(move |i: usize| {
         if let Some(t) = templates().into_iter().nth(i) {
@@ -681,6 +686,11 @@ pub fn App() -> Element {
                     onclick: move |_| splash_open.set(true),
                     "powderman"
                 }
+                span { class: "menubar",
+                    button { class: "im-menubtn", "data-im-menu-click": "{window_menu(ws.read().active)}", "Window" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{edit_menu()}", "Edit" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{help_menu()}", "Help" }
+                }
                 WorkspaceTabs {
                     names: ws.read().tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
                     active: ws.read().active,
@@ -820,6 +830,38 @@ fn report_label(name: &str, params: &serde_json::Value) -> String {
         n if n.starts_with("workspace.") => "Workspace".to_string(),
         other => other.to_string(),
     }
+}
+
+/// The menu-bar dropdowns — Blender's Window / Edit / Help, as click-open
+/// menus. Each item is an (action, params) the same router handles: host
+/// actions, layout commands, or a settings edit.
+fn window_menu(active: usize) -> String {
+    format!(
+        r#"[{{"label":"Duplicate workspace","action":"workspace.duplicate","params":{{}}}},
+           {{"label":"Close workspace","action":"workspace.close","params":{{"index":{active}}}}},
+           {{"sep":true}},
+           {{"label":"Next workspace","action":"workspace.cycle","params":{{"delta":1}},"chord":"Alt+PageDown"}},
+           {{"label":"Previous workspace","action":"workspace.cycle","params":{{"delta":-1}},"chord":"Alt+PageUp"}},
+           {{"sep":true}},
+           {{"label":"Maximize area","action":"maximize","params":null,"chord":"Mod+Shift+Space"}},
+           {{"label":"Fullscreen","action":"fullscreen","params":null,"chord":"Mod+Shift+F"}}]"#
+    )
+    .replace('\n', "")
+}
+
+fn edit_menu() -> String {
+    r#"[{"label":"Undo","action":"undo","params":null,"chord":"Mod+Z"},
+        {"label":"Redo","action":"redo","params":null,"chord":"Mod+Shift+Z"},
+        {"sep":true},
+        {"label":"Repeat last","action":"repeat_last","params":null,"chord":"Shift+R"},
+        {"label":"Adjust last operation","action":"adjust_last","params":null,"chord":"F9"}]"#
+        .replace('\n', "")
+}
+
+fn help_menu() -> String {
+    r#"[{"label":"Command palette","action":"palette","params":null,"chord":"F3"},
+        {"label":"Keyboard shortcuts","action":"cheatsheet","params":null,"chord":"F1"}]"#
+        .replace('\n', "")
 }
 
 /// The key hints the status bar keeps in view — the chords worth knowing, in

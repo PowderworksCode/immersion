@@ -248,3 +248,6 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .area-props-title { color: var(--ink); font-size: .8rem; margin-bottom: .5rem; }
 .area-props-row { display: flex; justify-content: space-between; gap: .5rem; font-size: .76rem; color: var(--ink-2); padding: .15rem 0; }
 .area-props-row .k { color: var(--ink-3); }
+
+/* The menu bar in the topbar. */
+.menubar { display: inline-flex; gap: .1rem; margin-left: .4rem; }
