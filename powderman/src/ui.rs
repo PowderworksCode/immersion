@@ -498,6 +498,16 @@ pub fn App() -> Element {
             "redo" => ws.set(crate::daemon::redo()),
             "repeat_last" => ws.set(crate::daemon::repeat_last()),
             "cheatsheet" => help_open.toggle(),
+            "favorites" => {
+                // Hand the list to the menu shim, which raises it at the
+                // pointer and sends the pick back over its own channel.
+                let items = favorites_menu_json(&settings());
+                let js = format!(
+                    "window.__imOpenMenu && window.__imOpenMenu({});",
+                    serde_json::to_string(&items).unwrap_or_default()
+                );
+                dioxus::document::eval(&js);
+            }
             "adjust_last" => {
                 if let Some((name, params)) = crate::daemon::last_command() {
                     adjust_name.set(name);
@@ -530,8 +540,29 @@ pub fn App() -> Element {
                         .unwrap_or(serde_json::Value::Null);
                     settings.set(crate::daemon::set_setting(pointer, value));
                 }
+                "noop" => {}
+                "favorite_add" => {
+                    // Right-clicking a menu row adds it here — deduped by label
+                    // and capped, so the list stays a quick menu, not a log.
+                    let mut favs = settings()["favorites"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
+                    let label = params.get("label").and_then(|l| l.as_str()).unwrap_or("");
+                    if !label.is_empty() && !favs.iter().any(|f| f["label"] == params["label"]) {
+                        favs.push(params.clone());
+                        if favs.len() > 12 {
+                            favs.remove(0);
+                        }
+                        settings.set(crate::daemon::set_setting(
+                            "/favorites",
+                            serde_json::json!(favs),
+                        ));
+                        do_report.call(format!("Added to favourites: {label}"));
+                    }
+                }
                 "undo" | "redo" | "repeat_last" | "cheatsheet" | "adjust_last" | "maximize"
-                | "fullscreen" | "palette" => on_action.call((action, params)),
+                | "fullscreen" | "palette" | "favorites" => on_action.call((action, params)),
                 _ => cmd.call((action, params)),
             },
         );
@@ -830,6 +861,23 @@ fn report_label(name: &str, params: &serde_json::Value) -> String {
         n if n.starts_with("workspace.") => "Workspace".to_string(),
         other => other.to_string(),
     }
+}
+
+/// The Quick Favourites menu (Q), from the settings list. Each entry is the
+/// (label, action, params) a menu row carries, so a favourite runs exactly as
+/// the menu item it was added from.
+fn favorites_menu_json(settings: &serde_json::Value) -> String {
+    let items: Vec<serde_json::Value> = settings["favorites"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|f| f.get("action").is_some())
+        .collect();
+    if items.is_empty() {
+        return r#"[{"label":"(no favourites — right-click a menu item to add one)","action":"noop","params":null}]"#.to_string();
+    }
+    serde_json::to_string(&items).unwrap_or_else(|_| "[]".into())
 }
 
 /// The menu-bar dropdowns — Blender's Window / Edit / Help, as click-open

@@ -123,7 +123,14 @@ pub fn settings() -> serde_json::Value {
         "sweep_limit": 100,
         "density": "cozy",
         "tooltips_on": true,
-        "theme": "Blender Dark"
+        "theme": "Blender Dark",
+        // Quick Favourites (Q). Seeded with a few useful ones; right-clicking
+        // any menu row adds to this list.
+        "favorites": [
+            {"label": "Command palette", "action": "palette", "params": null},
+            {"label": "Maximize area", "action": "maximize", "params": null},
+            {"label": "Adjust last operation", "action": "adjust_last", "params": null}
+        ]
     });
     let s = shared();
     let stored: serde_json::Value = {
