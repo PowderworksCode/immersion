@@ -15,31 +15,10 @@
   window.__imClient = true;
 
   // --- shared helpers -------------------------------------------------------
-  const isMac = () =>
-    /Mac|iPhone|iPad|iPod/.test(navigator.platform || "") ||
-    /Mac OS X/.test(navigator.userAgent || "");
-  const prettifyChord = (text) => {
-    const sym = { Mod: "⌘", Ctrl: "⌃", Alt: "⌥", Shift: "⇧" };
-    return isMac()
-      ? text.split("+").map((t) => sym[t] || t).join("")
-      : text.split("+").map((t) => (t === "Mod" ? "Ctrl" : t)).join("+");
-  };
-
-  // --- status-bar chord prettify -------------------------------------------
-  // Rewrite `Mod+Shift+Z` to the platform glyphs on any .im-hint-key; re-run
-  // after a re-render recreates them (the data-pretty mark keeps it idempotent).
-  const pretty = () => {
-    // Status-bar hints and menu chords both show a chord; prettify either.
-    for (const el of document.querySelectorAll(
-      ".im-hint-key:not([data-pretty]), .im-ctx-chord:not([data-pretty])",
-    )) {
-      el.dataset.pretty = "1";
-      el.textContent = prettifyChord(el.textContent);
-    }
-  };
-  const runPretty = () => requestAnimationFrame(pretty);
-  runPretty();
-  new MutationObserver(runPretty).observe(document.body, { childList: true, subtree: true });
+  // (Chord prettifying used to live here, rewriting .im-hint-key text. That
+  // detached the text nodes the renderer patches, so a chord that changed —
+  // a rebind — never visibly updated. Chords are now written server-side from
+  // a platform flag the client reports once; see keymap.rs.)
 
   // --- slider live preview --------------------------------------------------
   // The slider commits on release; update the fill and readout locally as it

@@ -95,6 +95,12 @@ pub struct AreasProps {
     /// not touch the tree, so it lives outside the command bus by design.
     #[props(default)]
     pub maximized: Option<AreaId>,
+    /// A version of whatever host state the editors read. The deck memoizes on
+    /// its props, so without this a change the layout does not encode — a
+    /// setting, a rebind — would leave the editor bodies stale until something
+    /// else moved. The host bumps it; any value that changes will do.
+    #[props(default)]
+    pub revision: u64,
 }
 
 impl PartialEq for AreasProps {
@@ -104,6 +110,7 @@ impl PartialEq for AreasProps {
         self.layout == other.layout
             && self.kinds == other.kinds
             && self.maximized == other.maximized
+            && self.revision == other.revision
     }
 }
 
