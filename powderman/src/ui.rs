@@ -498,6 +498,13 @@ pub fn App() -> Element {
             "redo" => ws.set(crate::daemon::redo()),
             "repeat_last" => ws.set(crate::daemon::repeat_last()),
             "cheatsheet" => help_open.toggle(),
+            "pie" => {
+                let js = format!(
+                    "window.__imOpenPie && window.__imOpenPie({});",
+                    serde_json::to_string(&pie_menu_json()).unwrap_or_default()
+                );
+                dioxus::document::eval(&js);
+            }
             "favorites" => {
                 // Hand the list to the menu shim, which raises it at the
                 // pointer and sends the pick back over its own channel.
@@ -562,7 +569,9 @@ pub fn App() -> Element {
                     }
                 }
                 "undo" | "redo" | "repeat_last" | "cheatsheet" | "adjust_last" | "maximize"
-                | "fullscreen" | "palette" | "favorites" => on_action.call((action, params)),
+                | "fullscreen" | "palette" | "favorites" | "pie" => {
+                    on_action.call((action, params))
+                }
                 _ => cmd.call((action, params)),
             },
         );
@@ -861,6 +870,21 @@ fn report_label(name: &str, params: &serde_json::Value) -> String {
         n if n.starts_with("workspace.") => "Workspace".to_string(),
         other => other.to_string(),
     }
+}
+
+/// The area pie (backquote): the operations worth reaching by muscle memory,
+/// laid out radially. "@area" is resolved by the shim to whichever area the
+/// pointer is over, so one definition serves every area.
+fn pie_menu_json() -> String {
+    r#"[{"label":"Split H","action":"split","params":{"id":"@area","dir":"row"}},
+        {"label":"Split V","action":"split","params":{"id":"@area","dir":"col"}},
+        {"label":"Duplicate","action":"duplicate_area","params":{"id":"@area"}},
+        {"label":"Close","action":"join","params":{"id":"@area"}},
+        {"label":"Toolbar","action":"toggle_region","params":{"id":"@area","region":"toolbar"}},
+        {"label":"Sidebar","action":"toggle_region","params":{"id":"@area","region":"sidebar"}},
+        {"label":"Maximize","action":"maximize","params":null},
+        {"label":"Palette","action":"palette","params":null}]"#
+        .replace('\n', "")
 }
 
 /// The Quick Favourites menu (Q), from the settings list. Each entry is the

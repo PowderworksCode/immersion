@@ -100,6 +100,13 @@ pub fn default_keymap() -> Vec<Binding> {
             params: Value::Null,
         },
         Binding {
+            // Blender raises its view pie on the backquote; free in browsers.
+            chord: "`",
+            action: "pie",
+            description: "Area pie menu",
+            params: Value::Null,
+        },
+        Binding {
             // Blender's Quick Favourites. A bare letter, so the shim's input
             // guard keeps it from firing while typing in a field.
             chord: "Q",
