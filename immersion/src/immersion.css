@@ -296,7 +296,10 @@
 }
 .im-check { width: 1rem; height: 1rem; accent-color: var(--im-accent); }
 .im-color-row { display: flex; align-items: center; gap: .5rem; }
-.im-color { width: 2.2rem; height: 1.4rem; padding: 0; border: 1px solid var(--im-border); border-radius: 3px; background: none; cursor: pointer; }
+.im-color {
+  width: 2.2rem; height: 1.4rem; padding: 0; border-radius: 3px; cursor: pointer;
+  border: 1px solid var(--im-border);
+}
 .im-color-hex { font-family: var(--im-mono); font-size: .74rem; color: var(--im-text-muted); }
 
 /* Command palette (F3). A centered floating panel over a dim scrim; the shim
@@ -506,3 +509,33 @@
 }
 .im-filter:focus { border-color: var(--im-accent); }
 .im-filter::placeholder { color: var(--im-text-muted); }
+
+
+/* Colour picker popup — SV square and hue strip, driven by the shim. */
+.im-color-hex {
+  width: 6rem; background: var(--im-input-bg); color: var(--im-text);
+  border: 1px solid var(--im-border); border-radius: 3px;
+  padding: .12rem .35rem; font-family: var(--im-mono); font-size: .72rem; outline: none;
+}
+.im-color-hex:focus { border-color: var(--im-accent); }
+.im-colorpop {
+  position: fixed; z-index: 67; display: flex; gap: .4rem; padding: .4rem;
+  background: var(--im-panel); border: 1px solid var(--im-border); border-radius: 5px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.im-sv {
+  position: relative; width: 10rem; height: 8rem; border-radius: 3px; cursor: crosshair;
+  background:
+    linear-gradient(to top, #000, transparent),
+    linear-gradient(to right, #fff, var(--im-sv-hue, #f00));
+}
+.im-sv-dot, .im-hue-dot {
+  position: absolute; width: 9px; height: 9px; border-radius: 50%;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6);
+  transform: translate(-50%, -50%); pointer-events: none;
+}
+.im-hue {
+  position: relative; width: 1rem; height: 8rem; border-radius: 3px; cursor: ns-resize;
+  background: linear-gradient(to bottom, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+.im-hue-dot { left: 50%; }

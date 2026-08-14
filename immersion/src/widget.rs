@@ -18,6 +18,7 @@ use dioxus::prelude::*;
 use serde_json::{Value, json};
 
 const SCRUB_JS: &str = include_str!("scrub.js");
+const COLORPICKER_JS: &str = include_str!("colorpicker.js");
 
 /// What kind of control edits a field, and its constraints.
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +101,7 @@ impl PartialEq for PropertyEditorProps {
 pub fn PropertyEditor(props: PropertyEditorProps) -> Element {
     use_future(|| async {
         dioxus::document::eval(SCRUB_JS);
+        dioxus::document::eval(COLORPICKER_JS);
     });
     rsx! {
         div { class: "im-props",
@@ -363,13 +365,24 @@ fn color_widget(path: &str, val: &Value, on_edit: Callback<(String, Value)>) -> 
     };
     rsx! {
         div { class: "im-color-row",
-            input {
+            // The swatch opens the picker popup (built by the shim); the hex
+            // field is the value itself — editable, pasteable, and the single
+            // commit path both the popup and typing go through.
+            button {
                 class: "im-color",
-                r#type: "color",
+                style: "background: {cur}",
+                title: "pick a colour",
+                "data-im-color-open": "1",
+            }
+            input {
+                class: "im-color-hex",
+                r#type: "text",
                 value: "{cur}",
+                spellcheck: "false",
+                autocomplete: "off",
+                "data-im-color-value": "1",
                 onchange: move |e| on_edit.call((path.clone(), json!(e.value()))),
             }
-            span { class: "im-color-hex", "{cur}" }
         }
     }
 }
