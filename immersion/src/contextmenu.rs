@@ -50,6 +50,23 @@ pub fn ContextMenu(props: ContextMenuProps) -> Element {
     rsx! {}
 }
 
+/// The editor switcher's menu — every registered editor kind, as a click-open
+/// list. Blender's leftmost header button is a menu of editor types, not a
+/// dropdown control, and a menu can show labels the way the registry names them.
+pub fn editor_menu_json(id: crate::AreaId, kinds: &[crate::EditorKind], current: &str) -> String {
+    let items: Vec<String> = kinds
+        .iter()
+        .map(|k| {
+            let mark = if k.id == current { "• " } else { "" };
+            format!(
+                r#"{{"label":"{mark}{}","action":"set_editor","params":{{"id":{id},"editor":"{}"}}}}"#,
+                k.label, k.id
+            )
+        })
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
 /// The area header's View dropdown — region toggles and the area operations,
 /// Blender's per-editor View menu. Click-opened (data-im-menu-click), so it
 /// reads as a menu button rather than a right-click surprise.

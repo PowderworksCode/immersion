@@ -70,20 +70,12 @@
   background: var(--im-surface);
   border: 1px solid var(--im-border);
   border-radius: 3px;
-  padding: .08rem 1.1rem .08rem .5rem;
+  padding: .08rem .5rem;
   max-width: 12rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   cursor: pointer;
-  /* Blender's editor-type control has its own chevron; draw one so the
-     button reads as a menu rather than a plain field. */
-  appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--im-text-muted) 50%),
-    linear-gradient(135deg, var(--im-text-muted) 50%, transparent 50%);
-  background-position:
-    calc(100% - 11px) center,
-    calc(100% - 7px) center;
-  background-size: 4px 4px, 4px 4px;
-  background-repeat: no-repeat;
 }
 .im-kind:hover { background-color: var(--im-header); border-color: var(--im-accent); }
 .im-kind:focus { outline: none; border-color: var(--im-accent); }
