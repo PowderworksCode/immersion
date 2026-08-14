@@ -37,11 +37,22 @@ pub struct Regions {
     pub toolbar_w: u16,
     #[serde(default)]
     pub sidebar_w: u16,
+    /// The header collapsed to a stub — Blender's Hide Header.
+    #[serde(default)]
+    pub header_hidden: bool,
+    /// The header along the bottom edge instead of the top — Blender's Flip.
+    #[serde(default)]
+    pub header_bottom: bool,
 }
 
 impl Regions {
     fn is_default(&self) -> bool {
-        !self.toolbar && !self.sidebar && self.toolbar_w == 0 && self.sidebar_w == 0
+        !self.toolbar
+            && !self.sidebar
+            && self.toolbar_w == 0
+            && self.sidebar_w == 0
+            && !self.header_hidden
+            && !self.header_bottom
     }
 }
 
@@ -328,6 +339,8 @@ impl Layout {
                 match region {
                     "toolbar" => regions.toolbar = !regions.toolbar,
                     "sidebar" => regions.sidebar = !regions.sidebar,
+                    "header" => regions.header_hidden = !regions.header_hidden,
+                    "header_flip" => regions.header_bottom = !regions.header_bottom,
                     _ => return false,
                 }
                 true

@@ -468,3 +468,16 @@
   color: var(--im-text-muted); font-family: var(--im-mono); font-size: .68rem; flex: none;
 }
 .im-ctx-item.is-sel .im-ctx-chord, .im-ctx-item:hover .im-ctx-chord { color: #fff; }
+
+/* Header options: a stub to restore a hidden header, and the flipped header's
+   border moves to the top edge since it now sits under the body. */
+.im-header-stub {
+  position: absolute; top: 0; left: 0; z-index: 6;
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--im-text-muted); font-size: .6rem; line-height: 1;
+  padding: .1rem .3rem;
+}
+.im-header-stub:hover { color: var(--im-text); background: var(--im-header); }
+.im-area > .im-area-main + .im-header {
+  border-bottom: 0; border-top: 1px solid var(--im-seam);
+}

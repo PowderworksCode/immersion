@@ -248,56 +248,15 @@ fn render_leaf(
             span { class: "im-grip im-grip-tr", "data-im-grip": "tr" }
             span { class: "im-grip im-grip-bl", "data-im-grip": "bl" }
             span { class: "im-grip im-grip-br", "data-im-grip": "br" }
-            div { class: "im-header",
-                // The editor-type selector — Blender's leftmost header button.
-                // A native <select> for phase 1: it is keyboard-accessible and
-                // costs one message on change, which is the liveview budget.
-                select {
-                    class: "im-kind",
-                    onchange: move |e| cmd.call(("set_editor".to_string(), serde_json::json!({ "id": id, "editor": e.value() }))),
-                    for k in kinds.iter() {
-                        option {
-                            key: "{k.id}",
-                            value: "{k.id}",
-                            selected: k.id == editor_owned,
-                            "{k.label}"
-                        }
-                    }
-                }
+            if !regions.header_hidden && !regions.header_bottom {
+                {leaf_header(id, editor_owned.clone(), kinds.clone(), cmd, &regions, has_toolbar, has_sidebar, lone)}
+            }
+            if regions.header_hidden {
                 button {
-                    class: "im-viewmenu",
-                    title: "view menu",
-                    "data-im-menu-click": "{crate::contextmenu::view_menu_json(id, regions.toolbar, regions.sidebar, has_toolbar || has_sidebar)}",
-                    "View"
-                }
-                span { class: "im-tools",
-                    if has_toolbar {
-                        button {
-                            class: if regions.toolbar { "im-btn active" } else { "im-btn" },
-                            title: "toggle toolbar",
-                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "toolbar" }))),
-                            "T"
-                        }
-                    }
-                    if has_sidebar {
-                        button {
-                            class: if regions.sidebar { "im-btn active" } else { "im-btn" },
-                            title: "toggle sidebar",
-                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "sidebar" }))),
-                            "N"
-                        }
-                    }
-                    button { class: "im-btn", title: "split horizontally",
-                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "row" }))), "⬒" }
-                    button { class: "im-btn", title: "split vertically",
-                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "col" }))), "◧" }
-                    // Close-is-join: the sibling absorbs the space. The last
-                    // area has no sibling, so it gets no close button rather
-                    // than a button that refuses.
-                    if !lone {
-                        button { class: "im-btn", title: "close (join into neighbor)",
-                            onclick: move |_| cmd.call(("join".to_string(), serde_json::json!({ "id": id }))), "✕" }
-                    }
+                    class: "im-header-stub",
+                    title: "show header",
+                    onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "header" }))),
+                    "▾"
                 }
             }
             div { class: "im-area-main",
@@ -314,6 +273,9 @@ fn render_leaf(
                         {sb}
                     }
                 }
+            }
+            if !regions.header_hidden && regions.header_bottom {
+                {leaf_header(id, editor_owned.clone(), kinds.clone(), cmd, &regions, has_toolbar, has_sidebar, lone)}
             }
         }
     }
@@ -409,5 +371,75 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
             button { class: "im-tab-add", title: "new workspace",
                 onclick: move |_| on_add.call(()), "+" }
         }
+    }
+}
+
+/// The area header — editor switcher, View menu, and the tool buttons. Built
+/// as its own function so it can be placed above or below the body (Blender's
+/// flip) without duplicating the markup.
+#[allow(clippy::too_many_arguments)]
+fn leaf_header(
+    id: AreaId,
+    editor_owned: String,
+    kinds: Vec<EditorKind>,
+    cmd: Callback<(String, serde_json::Value)>,
+    regions: &Regions,
+    has_toolbar: bool,
+    has_sidebar: bool,
+    lone: bool,
+) -> Element {
+    rsx! {
+            div { class: "im-header",
+                // The editor-type selector — Blender's leftmost header button.
+                // A native <select> for phase 1: it is keyboard-accessible and
+                // costs one message on change, which is the liveview budget.
+                select {
+                    class: "im-kind",
+                    onchange: move |e| cmd.call(("set_editor".to_string(), serde_json::json!({ "id": id, "editor": e.value() }))),
+                    for k in kinds.iter() {
+                        option {
+                            key: "{k.id}",
+                            value: "{k.id}",
+                            selected: k.id == editor_owned,
+                            "{k.label}"
+                        }
+                    }
+                }
+                button {
+                    class: "im-viewmenu",
+                    title: "view menu",
+                    "data-im-menu-click": "{crate::contextmenu::view_menu_json(id, regions.toolbar, regions.sidebar, has_toolbar || has_sidebar)}",
+                    "View"
+                }
+                span { class: "im-tools",
+                    if has_toolbar {
+                        button {
+                            class: if regions.toolbar { "im-btn active" } else { "im-btn" },
+                            title: "toggle toolbar",
+                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "toolbar" }))),
+                            "T"
+                        }
+                    }
+                    if has_sidebar {
+                        button {
+                            class: if regions.sidebar { "im-btn active" } else { "im-btn" },
+                            title: "toggle sidebar",
+                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "sidebar" }))),
+                            "N"
+                        }
+                    }
+                    button { class: "im-btn", title: "split horizontally",
+                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "row" }))), "⬒" }
+                    button { class: "im-btn", title: "split vertically",
+                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "col" }))), "◧" }
+                    // Close-is-join: the sibling absorbs the space. The last
+                    // area has no sibling, so it gets no close button rather
+                    // than a button that refuses.
+                    if !lone {
+                        button { class: "im-btn", title: "close (join into neighbor)",
+                            onclick: move |_| cmd.call(("join".to_string(), serde_json::json!({ "id": id }))), "✕" }
+                    }
+                }
+            }
     }
 }
