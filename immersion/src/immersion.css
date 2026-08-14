@@ -496,3 +496,13 @@
   position: fixed; transform: translate(-50%, -50%);
   width: 6px; height: 6px; border-radius: 50%; background: var(--im-text-muted);
 }
+
+/* Filter box — narrows a list as you type, client-side. */
+.im-filter {
+  width: 100%; box-sizing: border-box;
+  background: var(--im-input-bg); color: var(--im-text);
+  border: 1px solid var(--im-border); border-radius: 3px;
+  padding: .18rem .4rem; font: inherit; font-size: .76rem; outline: none;
+}
+.im-filter:focus { border-color: var(--im-accent); }
+.im-filter::placeholder { color: var(--im-text-muted); }

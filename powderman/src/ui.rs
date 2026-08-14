@@ -194,9 +194,9 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 }
 
 use immersion::{
-    AreaId, Areas, Chrome, ContextMenu, Dir, EditorKind, Field, FieldKind, Keymap, KeymapHelp,
-    Layout, LayoutFile, Palette, PaletteItem, Panel, PropertyEditor, Splash, SplashRecent,
-    StatusBar, Template, WorkspaceTabs, default_keymap,
+    AreaId, Areas, Chrome, ContextMenu, Dir, EditorKind, Field, FieldKind, FilterBox, Keymap,
+    KeymapHelp, Layout, LayoutFile, Palette, PaletteItem, Panel, PropertyEditor, Splash,
+    SplashRecent, StatusBar, Template, WorkspaceTabs, default_keymap,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -1111,11 +1111,15 @@ fn ed_timers(s: &State) -> Element {
 
 fn ed_runs(s: &State, area: AreaId, open_run: Callback<(AreaId, String)>) -> Element {
     rsx! {
-        if s.runs.is_empty() {
-            div { class: "empty", "No runs yet — trigger one from an Actions area." }
-        }
-        for r in s.runs.iter().cloned() {
-            {run_row(r, area, open_run)}
+        div { class: "im-filter-scope runs-list",
+            if s.runs.is_empty() {
+                div { class: "empty", "No runs yet — trigger one from an Actions area." }
+            } else {
+                div { class: "runs-filter", FilterBox { placeholder: "filter runs…" } }
+            }
+            for r in s.runs.iter().cloned() {
+                {run_row(r, area, open_run)}
+            }
         }
     }
 }
@@ -1125,7 +1129,10 @@ fn ed_runs(s: &State, area: AreaId, open_run: Callback<(AreaId, String)>) -> Ele
 fn run_row(r: RunView, area: AreaId, open_run: Callback<(AreaId, String)>) -> Element {
     let open_id = r.id.clone();
     rsx! {
-        details { class: "run", key: "{r.id}",
+        details {
+            class: "run",
+            key: "{r.id}",
+            "data-filter-text": "{r.workflow} {r.status} {r.note.clone().unwrap_or_default()} {r.error.clone().unwrap_or_default()}",
             summary {
                 span { class: "status {r.status}", "{r.status}" }
                 span {

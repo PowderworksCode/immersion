@@ -251,3 +251,6 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 
 /* The menu bar in the topbar. */
 .menubar { display: inline-flex; gap: .1rem; margin-left: .4rem; }
+
+/* The runs filter box sits above the list. */
+.runs-filter { padding: 0 0 .4rem; position: sticky; top: 0; background: var(--surface); z-index: 2; }
