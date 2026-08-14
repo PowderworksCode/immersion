@@ -45,6 +45,13 @@ pub enum FieldKind {
     /// A bool shown as a single pressable button (pressed = true), rather than
     /// a checkbox — Blender's toggle button.
     Toggle,
+    /// Several numbers on one row, addressed as a JSON array — Blender's
+    /// vector fields (a location's X/Y/Z, a size's W/H). The labels name the
+    /// components; the value is an array of that length.
+    Vector {
+        labels: Vec<String>,
+        step: Option<f64>,
+    },
     /// The native color picker; the value is a `#rrggbb` string.
     Color,
 }
@@ -130,6 +137,7 @@ fn field_row(f: Field, doc: &Value, on_edit: Callback<(String, Value)>) -> Eleme
         FieldKind::Select(opts) => select_widget(&f.path, &val, opts, on_edit),
         FieldKind::Radio(opts) => radio_widget(&f.path, &val, opts, on_edit),
         FieldKind::Toggle => toggle_widget(&f.path, &val, on_edit),
+        FieldKind::Vector { labels, step } => vector_widget(&f.path, &val, labels, *step, on_edit),
         FieldKind::Color => color_widget(&f.path, &val, on_edit),
     };
     // A field with a default gets a right-click "Reset to default", routed to
@@ -349,6 +357,64 @@ fn toggle_widget(path: &str, val: &Value, on_edit: Callback<(String, Value)>) ->
             class: if cur { "im-toggle active" } else { "im-toggle" },
             onclick: move |_| on_edit.call((path.clone(), json!(!cur))),
             if cur { "On" } else { "Off" }
+        }
+    }
+}
+
+fn vector_widget(
+    path: &str,
+    val: &Value,
+    labels: &[String],
+    step: Option<f64>,
+    on_edit: Callback<(String, Value)>,
+) -> Element {
+    let arr = val.as_array().cloned().unwrap_or_default();
+    let step_s = step.map(|s| s.to_string()).unwrap_or_else(|| "1".into());
+    rsx! {
+        div { class: "im-vector",
+            for (i, label) in labels.iter().cloned().enumerate() {
+                {vector_part(path, &arr, i, labels.len(), label, &step_s, on_edit)}
+            }
+        }
+    }
+}
+
+/// One component of a vector field. Its own function so the row does not nest
+/// another four levels deep inside the loop.
+fn vector_part(
+    path: &str,
+    arr: &[Value],
+    i: usize,
+    n: usize,
+    label: String,
+    step_s: &str,
+    on_edit: Callback<(String, Value)>,
+) -> Element {
+    let cur = arr.get(i).and_then(Value::as_f64).unwrap_or(0.0);
+    let p = path.to_string();
+    let arr = arr.to_vec();
+    let step_s = step_s.to_string();
+    rsx! {
+        label { class: "im-vec-part", key: "{i}",
+            span { class: "im-vec-label", "{label}" }
+            input {
+                class: "im-input im-number im-scrub",
+                r#type: "number",
+                value: "{cur}",
+                step: "{step_s}",
+                "data-im-scrub": "1",
+                "data-scrub-step": "{step_s}",
+                // One component changes; the whole array is rewritten, so the
+                // edit stays a single value at a single pointer.
+                onchange: move |e| {
+                    if let Ok(x) = e.value().parse::<f64>() {
+                        let mut next: Vec<Value> =
+                            (0..n).map(|k| arr.get(k).cloned().unwrap_or(json!(0))).collect();
+                        next[i] = if x.fract() == 0.0 { json!(x as i64) } else { json!(x) };
+                        on_edit.call((p.clone(), json!(next)));
+                    }
+                },
+            }
         }
     }
 }

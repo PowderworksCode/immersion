@@ -347,6 +347,16 @@ fn settings_fields() -> Vec<Field> {
         )
         .with_hint("the workbench palette; accent stays your own"),
         Field::new(
+            "/chart_window",
+            "Chart window",
+            FieldKind::Vector {
+                labels: vec!["H".into(), "N".into(), "S".into()],
+                step: Some(1.0),
+            },
+        )
+        .with_hint("hours shown, samples, smoothing")
+        .with_default(serde_json::json!([1, 60, 3])),
+        Field::new(
             "/density",
             "Density",
             FieldKind::Radio(vec![
