@@ -443,3 +443,15 @@
    typing. scrub.js drives the drag. */
 .im-scrub { cursor: ew-resize; }
 .im-scrub:focus { cursor: text; }
+
+/* Collapsible panels (Blender's property sections). */
+.im-panel { border-bottom: 1px solid var(--im-seam); }
+.im-panel-head {
+  display: flex; align-items: center; gap: .35rem; cursor: pointer;
+  padding: .35rem .55rem; user-select: none;
+  color: var(--im-text); font-size: .78rem;
+}
+.im-panel-head:hover { background: var(--im-input-bg); }
+.im-panel-arrow { color: var(--im-text-muted); font-size: .7rem; width: .8rem; }
+.im-panel-title { font-weight: 500; }
+.im-panel-body { padding: .3rem .55rem .55rem; }
