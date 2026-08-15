@@ -77,6 +77,13 @@ pub fn view_menu_json(id: crate::AreaId, toolbar: bool, sidebar: bool, regions: 
     ));
     items.push(r#"{"sep":true}"#.to_string());
     items.push(format!(
+        r#"{{"label":"Hide header","action":"toggle_region","params":{{"id":{id},"region":"header"}}}}"#
+    ));
+    items.push(format!(
+        r#"{{"label":"Flip header","action":"toggle_region","params":{{"id":{id},"region":"header_flip"}}}}"#
+    ));
+    items.push(r#"{"sep":true}"#.to_string());
+    items.push(format!(
         r#"{{"label":"Close area","action":"join","params":{{"id":{id}}}}}"#
     ));
     format!("[{}]", items.join(","))
