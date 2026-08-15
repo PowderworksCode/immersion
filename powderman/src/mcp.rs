@@ -150,7 +150,7 @@ impl Default for Workbench {
 /// or the command's error as tool-visible content (so the agent reads why a
 /// call was rejected rather than getting an opaque protocol failure).
 fn run(name: &str, params: serde_json::Value) -> Result<CallToolResult, McpError> {
-    match crate::daemon::dispatch_checked(name, params) {
+    match crate::daemon::dispatch_from("agent", name, params) {
         Ok(ws) => Ok(CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string(&ws).unwrap_or_default(),
         )])),

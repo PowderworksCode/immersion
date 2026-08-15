@@ -197,6 +197,17 @@ pub fn dispatch(name: &str, params: serde_json::Value) -> immersion::Workspaces 
 /// runs against a clone, so a failure leaves the live workspace untouched (no
 /// half-applied split), and undo is recorded only on success.
 pub fn dispatch_checked(name: &str, params: serde_json::Value) -> Result<immersion::Workspaces> {
+    dispatch_from("ui", name, params)
+}
+
+/// Run a command, recording who asked. The bus is one path by design — an
+/// agent and a keypress reach the same function — so the log is where the two
+/// stay distinguishable.
+pub fn dispatch_from(
+    source: &str,
+    name: &str,
+    params: serde_json::Value,
+) -> Result<immersion::Workspaces> {
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
     let mut candidate = w.clone();
@@ -210,6 +221,7 @@ pub fn dispatch_checked(name: &str, params: serde_json::Value) -> Result<immersi
             params: params.clone(),
             at: engine::now_ms(),
             ok: outcome.is_ok(),
+            source: source.to_string(),
         });
         let len = log.len();
         if len > 200 {
