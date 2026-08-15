@@ -17,6 +17,10 @@
 
   let menu = null;
   let onKey = null;
+  // Where the pointer last was — Blender's Q opens the favourites at the mouse.
+  let lastX = 0;
+  let lastY = 0;
+  document.addEventListener("pointermove", (e) => { lastX = e.clientX; lastY = e.clientY; }, true);
   let openFor = null; // the element whose dropdown is open, for toggle-off
 
   const close = () => {
@@ -100,6 +104,17 @@
       row.dataset.params = JSON.stringify(it.params ?? null);
       row.addEventListener("click", () => {
         pick(row.dataset.action, row.dataset.params);
+        close();
+      });
+      // Blender's "Add to Quick Favourites": right-click a menu row.
+      row.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        send("favorite_add", {
+          label: it.label,
+          action: it.action,
+          params: it.params ?? null,
+        });
         close();
       });
       menu.appendChild(row);
@@ -186,6 +201,15 @@
     openMenu(items, { rect: host.getBoundingClientRect() });
     openFor = host;
   });
+
+  // A menu the host raises from a keypress rather than a click — Quick
+  // Favourites (Q). The shim's own channel carries the pick, so the host only
+  // has to hand over the items.
+  window.__imOpenMenu = (itemsJson) => {
+    const items = parse(itemsJson);
+    if (!items) return;
+    openMenu(items, { x: lastX || 40, y: lastY || 40 });
+  };
 
   // Dismiss on any outside press.
   document.addEventListener(

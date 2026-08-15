@@ -100,6 +100,14 @@ pub fn default_keymap() -> Vec<Binding> {
             params: Value::Null,
         },
         Binding {
+            // Blender's Quick Favourites. A bare letter, so the shim's input
+            // guard keeps it from firing while typing in a field.
+            chord: "Q",
+            action: "favorites",
+            description: "Quick favourites",
+            params: Value::Null,
+        },
+        Binding {
             // Blender's Adjust Last Operation. F9 is unclaimed.
             chord: "F9",
             action: "adjust_last",
