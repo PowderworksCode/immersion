@@ -531,3 +531,9 @@
   background: linear-gradient(to bottom, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
 }
 .im-hue-dot { left: 50%; }
+
+/* Vector field — several numbers on one row (Blender's X/Y/Z). */
+.im-vector { display: flex; gap: .25rem; }
+.im-vec-part { display: flex; align-items: center; gap: .2rem; flex: 1; min-width: 0; }
+.im-vec-label { color: var(--im-text-muted); font-size: .68rem; width: .8rem; flex: none; }
+.im-vec-part .im-input { width: 100%; min-width: 0; }
