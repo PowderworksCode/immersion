@@ -12,6 +12,33 @@
 
 import { once } from "./types";
 
+// Blender lets you type arithmetic into a number field: `3*2`, `1920/2`,
+// `pi*2`. Evaluate it here, on commit, and hand the widget a plain number —
+// the server never sees the expression, and an unparseable one is left alone
+// for the field's own validation to reject.
+const CONSTS: Record<string, number> = { pi: Math.PI, e: Math.E, tau: Math.PI * 2 };
+
+export const evalExpr = (raw: string): number | null => {
+  const src = raw.trim().toLowerCase();
+  if (src === "") return null;
+  // A plain number is the common case and needs no parsing.
+  const plain = Number(src);
+  if (Number.isFinite(plain)) return plain;
+  // Only digits, the four operators, parens, dots and known constant names —
+  // anything else is not arithmetic and must not be evaluated.
+  const named = src.replace(/pi|tau|e/g, "0");
+  if (!/^[-+*/()0-9.\s]+$/.test(named)) return null;
+  const expr = src.replace(/pi|tau|e/g, (m) => String(CONSTS[m] ?? 0));
+  try {
+    // eslint-disable-next-line no-new-func -- the input is restricted to
+    // arithmetic by the test above; this evaluates numbers, not code.
+    const v = Function(`"use strict";return (${expr})`)() as unknown;
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+};
+
 interface Scrub {
   input: HTMLInputElement;
   startX: number;
@@ -70,6 +97,19 @@ if (once("__imScrub")) {
       v = Math.min(s.max, Math.max(s.min, v));
       const dec = (String(s.step).split(".")[1] ?? "").length;
       s.input.value = v.toFixed(dec);
+    },
+    true,
+  );
+
+  // Typing commits through `change`; evaluate an expression before the widget
+  // reads the value, so `3*2` reaches the document as 6.
+  document.addEventListener(
+    "change",
+    (e) => {
+      const input = e.target as HTMLInputElement | null;
+      if (!input?.dataset || input.dataset.imScrub === undefined) return;
+      const v = evalExpr(input.value);
+      if (v !== null && String(v) !== input.value.trim()) input.value = String(v);
     },
     true,
   );
