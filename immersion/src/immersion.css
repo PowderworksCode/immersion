@@ -455,3 +455,16 @@
 .im-panel-arrow { color: var(--im-text-muted); font-size: .7rem; width: .8rem; }
 .im-panel-title { font-weight: 500; }
 .im-panel-body { padding: .3rem .55rem .55rem; }
+
+/* Menu-bar / header dropdown buttons, and the chord column in a menu row. */
+.im-viewmenu, .im-menubtn {
+  border: 0; background: transparent; cursor: pointer; border-radius: 3px;
+  color: var(--im-text-muted); font: inherit; font-size: .74rem;
+  padding: .1rem .4rem; line-height: 1.4;
+}
+.im-viewmenu:hover, .im-menubtn:hover { background: var(--im-header); color: var(--im-text); }
+.im-ctx-item { display: flex; align-items: baseline; justify-content: space-between; gap: 1.2rem; }
+.im-ctx-chord {
+  color: var(--im-text-muted); font-family: var(--im-mono); font-size: .68rem; flex: none;
+}
+.im-ctx-item.is-sel .im-ctx-chord, .im-ctx-item:hover .im-ctx-chord { color: #fff; }

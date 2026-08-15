@@ -264,6 +264,12 @@ fn render_leaf(
                         }
                     }
                 }
+                button {
+                    class: "im-viewmenu",
+                    title: "view menu",
+                    "data-im-menu-click": "{crate::contextmenu::view_menu_json(id, regions.toolbar, regions.sidebar, has_toolbar || has_sidebar)}",
+                    "View"
+                }
                 span { class: "im-tools",
                     if has_toolbar {
                         button {

@@ -29,7 +29,10 @@
   // Rewrite `Mod+Shift+Z` to the platform glyphs on any .im-hint-key; re-run
   // after a re-render recreates them (the data-pretty mark keeps it idempotent).
   const pretty = () => {
-    for (const el of document.querySelectorAll(".im-hint-key:not([data-pretty])")) {
+    // Status-bar hints and menu chords both show a chord; prettify either.
+    for (const el of document.querySelectorAll(
+      ".im-hint-key:not([data-pretty]), .im-ctx-chord:not([data-pretty])",
+    )) {
       el.dataset.pretty = "1";
       el.textContent = prettifyChord(el.textContent);
     }

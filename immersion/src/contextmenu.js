@@ -1,12 +1,15 @@
-// The context-menu shim: Blender's right-click menu, client-side.
+// The menu shim: Blender's right-click menus AND its click-open dropdowns,
+// client-side.
 //
-// A right-clickable control carries its menu as a `data-im-menu` JSON array of
-// {label, action, params} (or {sep:true}). On contextmenu the shim reads it,
-// draws a floating menu at the cursor (flipped to stay on-screen), drives it by
-// arrow/enter/escape and click, and commits ONE message — the picked
-// {action, params} — over the eval channel, which the host routes through the
-// same command bus a button uses. Opening and moving the menu never touch the
-// wire; only the pick does.
+// An element carries its menu as a JSON array of {label, action, params} (or
+// {sep:true}) in one of two attributes:
+//   data-im-menu        — opens on right-click, at the cursor (a context menu)
+//   data-im-menu-click  — opens on left-click, anchored under the element
+//                         (a dropdown: header menus, the menu bar, favourites)
+// Either way the shim draws the menu, drives it by arrow/enter/escape and
+// click, and commits ONE message — the picked {action, params} — which the host
+// routes through the same command bus a button uses. Opening and moving the
+// menu never touch the wire; only the pick does.
 
 (() => {
   if (window.__imCtxMenu) return;
@@ -14,6 +17,7 @@
 
   let menu = null;
   let onKey = null;
+  let openFor = null; // the element whose dropdown is open, for toggle-off
 
   const close = () => {
     if (menu) {
@@ -24,6 +28,7 @@
       document.removeEventListener("keydown", onKey, true);
       onKey = null;
     }
+    openFor = null;
   };
 
   const send = (action, params) => {
@@ -63,20 +68,10 @@
     send(action, params);
   };
 
-  document.addEventListener("contextmenu", (e) => {
-    const host = e.target.closest?.("[data-im-menu]");
-    if (!host) return;
-    let items;
-    try {
-      items = JSON.parse(host.dataset.imMenu);
-    } catch (_) {
-      return;
-    }
-    if (!Array.isArray(items) || items.length === 0) return;
-    e.preventDefault();
+  // Build and place the menu. `at` is either {x, y} (cursor) or {rect} (anchor
+  // the menu under an element's box, the dropdown case).
+  const openMenu = (items, at) => {
     close();
-    // Prefetch the clipboard so a Paste pick can send synchronously. The
-    // contextmenu event is a user gesture, which read permission needs.
     if (items.some((it) => it.action === "paste_value")) {
       navigator.clipboard.readText().then((t) => { clipStash = t; }).catch(() => {});
     }
@@ -92,7 +87,15 @@
       }
       const row = document.createElement("div");
       row.className = "im-ctx-item";
-      row.textContent = it.label;
+      const label = document.createElement("span");
+      label.textContent = it.label;
+      row.appendChild(label);
+      if (it.chord) {
+        const c = document.createElement("span");
+        c.className = "im-ctx-chord";
+        c.textContent = it.chord;
+        row.appendChild(c);
+      }
       row.dataset.action = it.action;
       row.dataset.params = JSON.stringify(it.params ?? null);
       row.addEventListener("click", () => {
@@ -105,10 +108,18 @@
 
     const w = menu.offsetWidth;
     const h = menu.offsetHeight;
-    let x = e.clientX;
-    let y = e.clientY;
+    let x;
+    let y;
+    if (at.rect) {
+      x = at.rect.left;
+      y = at.rect.bottom + 2; // hang under the button
+      if (y + h > window.innerHeight - 4) y = at.rect.top - h - 2; // flip above
+    } else {
+      x = at.x;
+      y = at.y;
+      if (y + h > window.innerHeight - 4) y = window.innerHeight - h - 4;
+    }
     if (x + w > window.innerWidth - 4) x = window.innerWidth - w - 4;
-    if (y + h > window.innerHeight - 4) y = window.innerHeight - h - 4;
     menu.style.left = Math.max(4, x) + "px";
     menu.style.top = Math.max(4, y) + "px";
 
@@ -138,13 +149,51 @@
       }
     };
     document.addEventListener("keydown", onKey, true);
+  };
+
+  const parse = (raw) => {
+    try {
+      const items = JSON.parse(raw);
+      return Array.isArray(items) && items.length > 0 ? items : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  // Right-click: a context menu at the cursor.
+  document.addEventListener("contextmenu", (e) => {
+    const host = e.target.closest?.("[data-im-menu]");
+    if (!host) return;
+    const items = parse(host.dataset.imMenu);
+    if (!items) return;
+    e.preventDefault();
+    openMenu(items, { x: e.clientX, y: e.clientY });
+  });
+
+  // Left-click: a dropdown anchored under the button. Clicking the open
+  // button again closes it, the way a menu bar behaves.
+  document.addEventListener("click", (e) => {
+    const host = e.target.closest?.("[data-im-menu-click]");
+    if (!host) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (openFor === host) {
+      close();
+      return;
+    }
+    const items = parse(host.dataset.imMenuClick);
+    if (!items) return;
+    openMenu(items, { rect: host.getBoundingClientRect() });
+    openFor = host;
   });
 
   // Dismiss on any outside press.
   document.addEventListener(
     "pointerdown",
     (e) => {
-      if (menu && !menu.contains(e.target)) close();
+      if (menu && !menu.contains(e.target) && !e.target.closest?.("[data-im-menu-click]")) {
+        close();
+      }
     },
     true,
   );

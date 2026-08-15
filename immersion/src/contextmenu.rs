@@ -50,6 +50,38 @@ pub fn ContextMenu(props: ContextMenuProps) -> Element {
     rsx! {}
 }
 
+/// The area header's View dropdown — region toggles and the area operations,
+/// Blender's per-editor View menu. Click-opened (data-im-menu-click), so it
+/// reads as a menu button rather than a right-click surprise.
+pub fn view_menu_json(id: crate::AreaId, toolbar: bool, sidebar: bool, regions: bool) -> String {
+    let mut items = Vec::new();
+    if regions {
+        items.push(format!(
+            r#"{{"label":"{} Toolbar","action":"toggle_region","params":{{"id":{id},"region":"toolbar"}},"chord":"T"}}"#,
+            if toolbar { "Hide" } else { "Show" }
+        ));
+        items.push(format!(
+            r#"{{"label":"{} Sidebar","action":"toggle_region","params":{{"id":{id},"region":"sidebar"}},"chord":"N"}}"#,
+            if sidebar { "Hide" } else { "Show" }
+        ));
+        items.push(r#"{"sep":true}"#.to_string());
+    }
+    items.push(format!(
+        r#"{{"label":"Split horizontal","action":"split","params":{{"id":{id},"dir":"row"}}}}"#
+    ));
+    items.push(format!(
+        r#"{{"label":"Split vertical","action":"split","params":{{"id":{id},"dir":"col"}}}}"#
+    ));
+    items.push(format!(
+        r#"{{"label":"Duplicate","action":"duplicate_area","params":{{"id":{id}}}}}"#
+    ));
+    items.push(r#"{"sep":true}"#.to_string());
+    items.push(format!(
+        r#"{{"label":"Close area","action":"join","params":{{"id":{id}}}}}"#
+    ));
+    format!("[{}]", items.join(","))
+}
+
 /// The `data-im-menu` JSON for an area leaf — split either way, then close.
 /// Kept here so the area view and the menu never drift: both come from the id.
 pub fn area_menu_json(id: crate::AreaId) -> String {
