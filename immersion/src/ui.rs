@@ -17,28 +17,41 @@ use crate::area::{Area, AreaId, Dir, Layout, Regions};
 
 /// What the gesture shim commits, one message per completed drag. Each maps to
 /// a bus command, so a drag and a header-button click are the same operation.
-#[derive(Deserialize)]
+#[derive(Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../ts/generated/")]
 #[serde(tag = "t", rename_all = "lowercase")]
-enum Gesture {
+pub enum Gesture {
+    // Area ids are minted small and cross the wire as JSON numbers; without
+    // this they would generate as `bigint`, which JSON.stringify refuses.
     Ratio {
+        #[ts(type = "number")]
         id: AreaId,
+        // The seam's position among the split's children — n-ary splits have
+        // more than one, so the id alone no longer identifies it.
+        #[ts(type = "number")]
         index: usize,
         ratio: f32,
     },
     Split {
+        #[ts(type = "number")]
         id: AreaId,
         dir: Dir,
         frac: f32,
     },
     Join {
+        #[ts(type = "number")]
         survivor: AreaId,
+        #[ts(type = "number")]
         victim: AreaId,
     },
     Swap {
+        #[ts(type = "number")]
         a: AreaId,
+        #[ts(type = "number")]
         b: AreaId,
     },
     RegionWidth {
+        #[ts(type = "number")]
         id: AreaId,
         region: String,
         w: u16,

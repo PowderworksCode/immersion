@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 
 pub type AreaId = u64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../ts/generated/")]
 #[serde(rename_all = "lowercase")]
 pub enum Dir {
     /// Children side by side.

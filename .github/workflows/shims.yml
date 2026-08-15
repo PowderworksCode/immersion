@@ -28,11 +28,17 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # The wire types are generated from Rust; regenerate before typechecking
+      # so a Rust-side change that the TypeScript has not caught up with fails
+      # here rather than at runtime.
+      - name: Regenerate the wire bindings
+        run: cargo test -p immersion export_bindings
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
       - name: Generated shims are up to date
         run: |
           bun run scripts/build-shims.ts
-          git diff --exit-code -- immersion/src/*.js \
-            || { echo "::error::immersion/src/*.js is stale — run 'bun run build' and commit"; exit 1; }
+          git diff --exit-code -- immersion/src/*.js immersion/ts/generated \
+            || { echo "::error::generated output is stale — run 'cargo test -p immersion export_bindings && bun run build' and commit"; exit 1; }

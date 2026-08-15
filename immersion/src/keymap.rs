@@ -146,9 +146,10 @@ pub struct KeymapProps {
 }
 
 /// What the shim sends: a pressed chord, or one captured for a rebind.
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../ts/generated/", rename = "KeymapMsg")]
 #[serde(tag = "t", rename_all = "lowercase")]
-enum Msg {
+pub enum Msg {
     Chord { chord: String },
     Capture { chord: String },
 }

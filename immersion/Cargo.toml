@@ -7,6 +7,11 @@ license.workspace = true
 description = "Blender-style areas for Dioxus liveview: a tiling tree of editors, split and joined in place."
 
 [dependencies]
+# The wire between a shim and the server is declared once, here, and the
+# TypeScript is generated from it. `export` writes the bindings during
+# `cargo test`, so CI regenerates and fails on drift the same way it does for
+# the compiled shims.
+ts-rs = { version = "12", features = ["serde-compat", "serde-json-impl"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"

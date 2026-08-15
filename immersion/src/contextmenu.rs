@@ -14,9 +14,13 @@ use serde_json::Value;
 
 const CONTEXTMENU_JS: &str = include_str!("contextmenu.js");
 
-#[derive(serde::Deserialize)]
-struct Pick {
+#[derive(serde::Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../ts/generated/", rename = "MenuPick")]
+pub struct Pick {
     action: String,
+    /// Whatever the menu item carried. `unknown` on the TypeScript side, which
+    /// is honest: a pick's params are the command's business, not the shim's.
+    #[ts(type = "unknown")]
     params: Value,
 }
 
