@@ -26,6 +26,11 @@ pub struct StatusBarProps {
     /// view.
     #[props(default)]
     pub right: String,
+    /// A standing label pinned to the far right — what this instance *is*,
+    /// not what it is doing. A demo says DEMO here so its numbers are never
+    /// read as a live box. `None` shows nothing.
+    #[props(default)]
+    pub badge: Option<String>,
 }
 
 /// The bottom status strip. Place it after the deck; `.app` is a column, so it
@@ -46,6 +51,9 @@ pub fn StatusBar(props: StatusBarProps) -> Element {
                 div { class: "im-status-report", "{msg}" }
             }
             div { class: "im-status-right", "{props.right}" }
+            if let Some(badge) = props.badge.clone() {
+                div { class: "im-status-badge", title: "fabricated data — no live fleet", "{badge}" }
+            }
         }
     }
 }

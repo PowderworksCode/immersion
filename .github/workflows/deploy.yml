@@ -1,0 +1,73 @@
+# Deploy main to the public demo — https://powderman-demo.fly.dev
+#
+# The app runs in demo mode (POWDERMAN_DEMO=1, set in fly.toml): a fabricated
+# history, a DEMO badge, triggers refused. A Fly machine has no herdr and no
+# checkout, so there is nothing real for it to run; see powderman/src/demo.rs.
+#
+# No test gate here on purpose — the Docker build compiles the workspace, so a
+# main that does not build cannot deploy, and CI already gates the PR.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Two merges in quick succession would otherwise race to release different
+# images. Newer wins; the older is cancelled before it deploys.
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # First deploy on a fresh org has no app yet. Creating it here keeps the
+      # workflow self-contained rather than requiring a manual `fly launch`.
+      - name: Ensure the app exists
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_PREVIEW_TOKEN }}
+        run: |
+          if flyctl status --app powderman-demo >/dev/null 2>&1; then
+            echo "app exists"
+          else
+            # `orgs list --json` has been both an array and a name->slug map
+            # across flyctl versions; accept either rather than pinning one.
+            ORG="${{ vars.FLY_ORG }}"
+            if [ -z "$ORG" ]; then
+              ORG=$(flyctl orgs list --json |
+                jq -r 'if type=="array" then .[0].Slug else to_entries[0].value end')
+            fi
+            echo "creating powderman-demo in org $ORG"
+            flyctl apps create powderman-demo --org "$ORG"
+          fi
+
+      # The remote builder is fast (it keeps the cargo-chef layers warm) but
+      # intermittently cannot reach Fly's own registry — see #67. Same fix as
+      # the preview workflow: fall back to building on the runner.
+      - name: Deploy
+        id: deploy
+        continue-on-error: true
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_PREVIEW_TOKEN }}
+        run: flyctl deploy --config fly.toml --dockerfile Dockerfile --remote-only
+
+      - name: Deploy (local build fallback)
+        if: steps.deploy.outcome == 'failure'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_PREVIEW_TOKEN }}
+        run: flyctl deploy --config fly.toml --dockerfile Dockerfile --local-only
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS https://powderman-demo.fly.dev/health | grep -q '"ok":true'; then
+              echo "demo is up"; exit 0
+            fi
+            sleep 5
+          done
+          echo "demo did not come up healthy"; exit 1

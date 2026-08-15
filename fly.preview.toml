@@ -5,9 +5,16 @@
 # Previews idle-stop: a stopped machine wakes on the next request, and an
 # interrupted session on a throwaway app is cheaper than a machine per open PR.
 # One machine only — the workbench state is a SQLite file on that machine.
+#
+# Previews run in demo mode for the same reason the demo does: a Fly machine
+# has no herdr, so without seeded data a reviewer opens the PR's preview onto
+# empty tables and blank charts and cannot see what changed.
 
 app = "powderman-preview"
 primary_region = "ewr"
+
+[env]
+  POWDERMAN_DEMO = "1"
 
 [http_service]
   internal_port = 8080

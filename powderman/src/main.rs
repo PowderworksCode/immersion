@@ -1,6 +1,7 @@
 mod cron;
 mod daemon;
 mod db;
+mod demo;
 mod engine;
 mod exec;
 mod herdr;

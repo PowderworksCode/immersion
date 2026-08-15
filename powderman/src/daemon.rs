@@ -323,6 +323,11 @@ pub fn redo() -> immersion::Workspaces {
 /// Release a parked run and drive it. The UI's resume button.
 pub fn resume(id: &str) -> Result<()> {
     let s = shared();
+    // Same reason as trigger_with: the seeded runs are rows, not work. Driving
+    // one would replay `shell` or `needs_a_human` against a box with neither.
+    if crate::demo::enabled() {
+        return Err(anyhow!("{}", crate::demo::REFUSAL));
+    }
     engine::release_parks(&s.db, id)?;
     tokio::spawn(drive(id.to_string()));
     Ok(())
@@ -332,6 +337,12 @@ pub fn trigger_with(name: &str, input: Value) -> Result<()> {
     let s = shared();
     if !s.registry.contains_key(name) {
         return Err(anyhow!("unknown workflow {name}"));
+    }
+    // Every caller — a header button, an MCP tool, POST /trigger — lands here,
+    // so one guard covers the lot. A demo instance has no herdr socket and no
+    // checkout; starting a run would only manufacture a failed row.
+    if crate::demo::enabled() {
+        return Err(anyhow!("{}", crate::demo::REFUSAL));
     }
     let id = engine::create_run(&s.db, name, input)?;
     tokio::spawn(drive(id));
@@ -662,6 +673,9 @@ async fn trigger_route(Path(name): Path<String>, body: String) -> impl IntoRespo
 /// to where it stopped and continues.
 async fn resume_route(Path(id): Path<String>) -> impl IntoResponse {
     let s = shared();
+    if crate::demo::enabled() {
+        return (StatusCode::FORBIDDEN, format!("{}\n", crate::demo::REFUSAL));
+    }
     match engine::release_parks(&s.db, &id) {
         Ok(n) => {
             tokio::spawn(drive(id.clone()));
@@ -730,7 +744,7 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
     // box went down mid-flight. Nothing else would ever pick it up: the tick
     // only looks at suspended runs with a due deadline. Re-driving it is
     // exactly what replay is for, and costs nothing for work already recorded.
-    {
+    if !crate::demo::enabled() {
         let s = shared();
         let orphans: Vec<String> = {
             let conn = s.db.lock().expect("db");
@@ -747,10 +761,20 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
     let _ = BOOT_ID.set(engine::now_ms().to_string());
 
     tokio::spawn(tick());
-    tokio::spawn(watch_herdr());
-    tokio::spawn(crate::metrics::sample_loop(shared().db.clone()));
-    tokio::spawn(watch_fleet());
     tokio::spawn(watch_timers());
+    if crate::demo::enabled() {
+        // No herdr to watch and no box worth sampling; the fleet is a fixed
+        // list rather than a socket poll, so it is set once here.
+        let s = shared();
+        crate::demo::seed(&s.db);
+        *s.fleet.lock().expect("fleet") = crate::demo::fleet();
+        *s.herdr.lock().expect("herdr") = Some("demo fleet".to_string());
+        tokio::spawn(crate::demo::sample_loop(s.db.clone()));
+    } else {
+        tokio::spawn(watch_herdr());
+        tokio::spawn(crate::metrics::sample_loop(shared().db.clone()));
+        tokio::spawn(watch_fleet());
+    }
 
     let addr = format!("0.0.0.0:{port}");
     let view = dioxus_liveview::LiveViewPool::new();
