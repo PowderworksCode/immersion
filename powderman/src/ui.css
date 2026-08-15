@@ -239,3 +239,12 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .adjust-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
 .adjust-cancel, .adjust-apply { border: 1px solid var(--im-border); border-radius: 3px; padding: .25rem .7rem; cursor: pointer; font-size: .78rem; background: var(--im-input-bg); color: var(--ink-2); }
 .adjust-apply { background: var(--im-accent); color: #fff; border-color: var(--im-accent); }
+
+/* Region content: area toolbar (T) + properties sidebar (N). */
+.area-tools { display: flex; flex-direction: column; align-items: center; gap: .2rem; padding: .3rem .1rem; }
+.area-tool { width: 1.8rem; height: 1.8rem; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; border-radius: 3px; font-size: .9rem; }
+.area-tool:hover { background: var(--im-input-bg); color: var(--ink); }
+.area-props { padding: .5rem .6rem; }
+.area-props-title { color: var(--ink); font-size: .8rem; margin-bottom: .5rem; }
+.area-props-row { display: flex; justify-content: space-between; gap: .5rem; font-size: .76rem; color: var(--ink-2); padding: .15rem 0; }
+.area-props-row .k { color: var(--ink-3); }

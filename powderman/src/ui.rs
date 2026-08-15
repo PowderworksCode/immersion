@@ -582,6 +582,49 @@ pub fn App() -> Element {
         ));
     });
 
+    // Region content (Blender's T toolbar / N sidebar). The toolbar is a
+    // vertical strip of area actions; the sidebar is a small properties panel
+    // for the focused area. Both route through the same command bus.
+    let render_toolbar = use_callback(move |(id, _editor): (AreaId, String)| -> Element {
+        rsx! {
+            div { class: "area-tools",
+                button {
+                    class: "area-tool",
+                    title: "split horizontal",
+                    onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "row" }))),
+                    "⬒"
+                }
+                button {
+                    class: "area-tool",
+                    title: "split vertical",
+                    onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "col" }))),
+                    "◧"
+                }
+                button {
+                    class: "area-tool",
+                    title: "duplicate",
+                    onclick: move |_| cmd.call(("duplicate_area".to_string(), serde_json::json!({ "id": id }))),
+                    "⧉"
+                }
+            }
+        }
+    });
+    let render_sidebar = use_callback(move |(id, editor): (AreaId, String)| -> Element {
+        rsx! {
+            div { class: "area-props",
+                div { class: "area-props-title", "Properties" }
+                div { class: "area-props-row",
+                    span { class: "k", "Editor" }
+                    span { "{editor}" }
+                }
+                div { class: "area-props-row",
+                    span { class: "k", "Area" }
+                    span { "{id}" }
+                }
+            }
+        }
+    });
+
     let render_state = state;
     let render = use_callback(
         move |(area, editor, arg): (AreaId, String, Option<String>)| {
@@ -678,6 +721,8 @@ pub fn App() -> Element {
                     layout: ws.read().current().layout.clone(),
                     kinds: kinds(),
                     render,
+                    render_toolbar: Some(render_toolbar),
+                    render_sidebar: Some(render_sidebar),
                     on_command: cmd,
                     maximized: maximized(),
                 }
