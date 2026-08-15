@@ -393,17 +393,11 @@ fn leaf_header(
                 // The editor-type selector — Blender's leftmost header button.
                 // A native <select> for phase 1: it is keyboard-accessible and
                 // costs one message on change, which is the liveview budget.
-                select {
+                button {
                     class: "im-kind",
-                    onchange: move |e| cmd.call(("set_editor".to_string(), serde_json::json!({ "id": id, "editor": e.value() }))),
-                    for k in kinds.iter() {
-                        option {
-                            key: "{k.id}",
-                            value: "{k.id}",
-                            selected: k.id == editor_owned,
-                            "{k.label}"
-                        }
-                    }
+                    title: "editor type",
+                    "data-im-menu-click": "{crate::contextmenu::editor_menu_json(id, &kinds, &editor_owned)}",
+                    "{kinds.iter().find(|k| k.id == editor_owned).map(|k| k.label).unwrap_or(\"editor\")} ▾"
                 }
                 button {
                     class: "im-viewmenu",
