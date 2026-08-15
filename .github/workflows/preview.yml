@@ -29,12 +29,21 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     environment:
       name: pr-${{ github.event.number }}
-      url: ${{ steps.deploy.outputs.url }}
+      url: ${{ steps.url.outputs.url }}
     steps:
       - uses: actions/checkout@v4
 
+      # Fly's remote builder intermittently cannot reach its own registry
+      # ("dial tcp [fdaa::3]:5000: connection refused" while pushing layers) —
+      # nine of twelve runs failed that way in one afternoon, and a plain re-run
+      # often succeeds. So the deploy gets a second attempt rather than a red
+      # tick on a working branch. The second attempt deliberately takes a
+      # different path — building on the runner rather than on Fly's builder —
+      # so it is a fallback rather than the same roll of the dice. A genuine
+      # failure still fails twice.
       - name: Deploy preview
         id: deploy
+        continue-on-error: true
         # Pinned to an exact version, not @v1 — older tags silently ignore the
         # `config` / `deploy_options` inputs and autodetect the wrong builder.
         uses: superfly/fly-pr-review-apps@1.6.0
@@ -52,10 +61,46 @@ jobs:
           launch_options: --dockerfile Dockerfile
           deploy_options: --dockerfile Dockerfile
 
+      - name: Deploy preview (retry)
+        id: deploy_retry
+        if: steps.deploy.outcome == 'failure'
+        continue-on-error: true
+        # Pinned to an exact version, not @v1 — older tags silently ignore the
+        # `config` / `deploy_options` inputs and autodetect the wrong builder.
+        uses: superfly/fly-pr-review-apps@1.6.0
+        env:
+          # A preview-scoped token that can CREATE apps — not the production
+          # deploy token, which is scoped to one app.
+          FLY_API_TOKEN: ${{ secrets.FLY_PREVIEW_TOKEN }}
+        with:
+          name: powderman-pr-${{ github.event.number }}
+          config: fly.preview.toml
+          region: ewr
+          ha: false
+          # The retry builds on the runner and pushes straight to
+          # registry.fly.io, so the image never traverses Fly's internal
+          # network — which is the leg that keeps refusing the connection.
+          # Slower (no shared layer cache), but it does not depend on the
+          # component that is failing.
+          launch_options: --dockerfile Dockerfile --local-only
+          deploy_options: --dockerfile Dockerfile --local-only
+
+      - name: Fail if both attempts failed
+        if: steps.deploy.outcome == 'failure' && steps.deploy_retry.outcome == 'failure'
+        run: |
+          echo "::error::the preview deploy failed twice — not a flake"
+          exit 1
+
+      # Whichever attempt produced the app.
+      - name: Resolve the preview URL
+        id: url
+        run: |
+          echo "url=${{ steps.deploy.outputs.url || steps.deploy_retry.outputs.url }}" >> "$GITHUB_OUTPUT"
+
       - name: Verify the preview serves the workbench
         if: github.event.action != 'closed'
         env:
-          URL: ${{ steps.deploy.outputs.url }}
+          URL: ${{ steps.url.outputs.url }}
         run: |
           echo "checking $URL"
           # The machine may still be booting (or waking — previews idle-stop).
@@ -84,7 +129,7 @@ jobs:
         continue-on-error: true
         uses: actions/github-script@v7
         env:
-          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+          PREVIEW_URL: ${{ steps.url.outputs.url }}
         with:
           retries: 3
           script: |
