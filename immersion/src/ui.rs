@@ -95,6 +95,11 @@ pub struct AreasProps {
     /// not touch the tree, so it lives outside the command bus by design.
     #[props(default)]
     pub maximized: Option<AreaId>,
+    /// `action -> chord` for the actions the chrome exposes, already written
+    /// the platform's way. The header's buttons show theirs in the tooltip, so
+    /// a control and its shortcut are learned together.
+    #[props(default)]
+    pub chords: std::collections::HashMap<String, String>,
     /// A version of whatever host state the editors read. The deck memoizes on
     /// its props, so without this a change the layout does not encode — a
     /// setting, a rebind — would leave the editor bodies stale until something
@@ -111,6 +116,7 @@ impl PartialEq for AreasProps {
             && self.kinds == other.kinds
             && self.maximized == other.maximized
             && self.revision == other.revision
+            && self.chords == other.chords
     }
 }
 
@@ -256,7 +262,7 @@ fn render_leaf(
             span { class: "im-grip im-grip-bl", "data-im-grip": "bl" }
             span { class: "im-grip im-grip-br", "data-im-grip": "br" }
             if !regions.header_hidden && !regions.header_bottom {
-                {leaf_header(id, editor_owned.clone(), kinds.clone(), cmd, &regions, has_toolbar, has_sidebar, lone)}
+                {leaf_header(id, editor_owned.clone(), kinds.clone(), cmd, &regions, has_toolbar, has_sidebar, lone, &props.chords)}
             }
             if regions.header_hidden {
                 button {
@@ -282,7 +288,7 @@ fn render_leaf(
                 }
             }
             if !regions.header_hidden && regions.header_bottom {
-                {leaf_header(id, editor_owned.clone(), kinds.clone(), cmd, &regions, has_toolbar, has_sidebar, lone)}
+                {leaf_header(id, editor_owned.clone(), kinds.clone(), cmd, &regions, has_toolbar, has_sidebar, lone, &props.chords)}
             }
         }
     }
@@ -394,7 +400,9 @@ fn leaf_header(
     has_toolbar: bool,
     has_sidebar: bool,
     lone: bool,
+    chords: &std::collections::HashMap<String, String>,
 ) -> Element {
+    let tip = |action: &str| chords.get(action).cloned().unwrap_or_default();
     rsx! {
             div { class: "im-header",
                 // The editor-type selector — Blender's leftmost header button.
@@ -409,6 +417,8 @@ fn leaf_header(
                 button {
                     class: "im-viewmenu",
                     title: "view menu",
+                    "data-tip": "View menu",
+                    "data-tip-key": "{tip(\"pie\")}",
                     "data-im-menu-click": "{crate::contextmenu::view_menu_json(id, regions.toolbar, regions.sidebar, has_toolbar || has_sidebar)}",
                     "View"
                 }
@@ -417,6 +427,8 @@ fn leaf_header(
                         button {
                             class: if regions.toolbar { "im-btn active" } else { "im-btn" },
                             title: "toggle toolbar",
+                            "data-tip": "Toggle toolbar",
+                            "data-tip-key": "{tip(\"toggle_toolbar\")}",
                             onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "toolbar" }))),
                             "T"
                         }
@@ -425,6 +437,8 @@ fn leaf_header(
                         button {
                             class: if regions.sidebar { "im-btn active" } else { "im-btn" },
                             title: "toggle sidebar",
+                            "data-tip": "Toggle sidebar",
+                            "data-tip-key": "{tip(\"toggle_sidebar\")}",
                             onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "sidebar" }))),
                             "N"
                         }

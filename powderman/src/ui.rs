@@ -873,6 +873,7 @@ pub fn App() -> Element {
                         }
                     }),
                     revision: settings_revision(&settings()),
+                    chords: chord_map(&settings(), mac()),
                 }
             }
             StatusBar {
@@ -962,6 +963,15 @@ fn report_label(name: &str, params: &serde_json::Value) -> String {
         n if n.starts_with("workspace.") => "Workspace".to_string(),
         other => other.to_string(),
     }
+}
+
+/// `action -> chord`, written the platform's way, for the chrome to show in
+/// tooltips. Built from the effective keymap so a rebind moves the hint too.
+fn chord_map(settings: &serde_json::Value, mac: bool) -> std::collections::HashMap<String, String> {
+    effective_keymap(settings)
+        .into_iter()
+        .map(|b| (b.action, pretty_chord(&b.chord, mac)))
+        .collect()
 }
 
 /// A cheap version of the settings document, so the deck re-renders when a
