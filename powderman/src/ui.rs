@@ -357,6 +357,17 @@ fn settings_fields() -> Vec<Field> {
         .with_hint("hours shown, samples, smoothing")
         .with_default(serde_json::json!([1, 60, 3])),
         Field::new(
+            "/ui_scale",
+            "Resolution scale",
+            FieldKind::Slider {
+                min: 0.8,
+                max: 1.6,
+                step: 0.05,
+            },
+        )
+        .with_hint("size of the whole interface")
+        .with_default(serde_json::json!(1.0)),
+        Field::new(
             "/density",
             "Density",
             FieldKind::Radio(vec![
@@ -748,12 +759,15 @@ pub fn App() -> Element {
     );
 
     rsx! {
+        // Blender's Resolution Scale: the library sizes everything in rem, so
+        // the whole interface scales from the root font size.
+        style { "html {{ font-size: {(settings()[\"ui_scale\"].as_f64().unwrap_or(1.0)).clamp(0.8, 1.6) * 100.0}%; }}" }
         style { "{immersion::CSS}" }
         style { "{immersion::theme_css(settings()[\"theme\"].as_str().unwrap_or(\"Blender Dark\"))}" }
         style { "{CSS}" }
         div {
             class: if fullscreen() { "app im-fullscreen" } else { "app" },
-            style: "--im-accent: {settings()[\"accent\"].as_str().unwrap_or(\"#5680c2\")}; --accent-live: {settings()[\"accent\"].as_str().unwrap_or(\"#5680c2\")}",
+            style: "--im-accent: {settings()[\"accent\"].as_str().unwrap_or(\"#5680c2\")}; --accent-live: {settings()[\"accent\"].as_str().unwrap_or(\"#5680c2\")}; font-size: {(settings()[\"ui_scale\"].as_f64().unwrap_or(1.0)).clamp(0.8, 1.6) * 100.0}%",
             if splash_open() {
                 Splash {
                     brand: "powderman",

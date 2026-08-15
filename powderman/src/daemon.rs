@@ -124,6 +124,7 @@ pub fn settings() -> serde_json::Value {
         "density": "cozy",
         "tooltips_on": true,
         "theme": "Blender Dark",
+        "ui_scale": 1.0,
         // A vector setting: the chart window as [hours, samples, smoothing].
         "chart_window": [1, 60, 3],
         // Quick Favourites (Q). Seeded with a few useful ones; right-clicking
