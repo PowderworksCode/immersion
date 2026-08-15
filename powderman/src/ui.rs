@@ -869,6 +869,7 @@ pub fn App() -> Element {
                     s.herdr.clone().unwrap_or_else(|| "herdr unreachable".into()),
                     s.runs.len()
                 ),
+                badge: crate::demo::enabled().then(|| "demo".to_string()),
             }
         }
     }
