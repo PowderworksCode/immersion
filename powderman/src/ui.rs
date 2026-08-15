@@ -11,6 +11,7 @@
 //! would return instead of re-executing.
 
 use dioxus::prelude::*;
+use serde_json::{Value, json};
 
 use serde::{Deserialize, Serialize};
 
@@ -201,8 +202,8 @@ pub(crate) fn tile(k: &str, v: String, of: Option<String>) -> Element {
 
 use immersion::{
     AreaId, Areas, Chrome, ContextMenu, Dir, EditorKind, Field, FieldKind, Keymap, KeymapHelp,
-    Layout, LayoutFile, Palette, PaletteItem, Panel, Platform, PropertyEditor, Splash,
-    SplashRecent, StatusBar, Template, WorkspaceTabs, default_keymap, pretty_chord,
+    Layout, LayoutFile, MenuItem, Palette, PaletteItem, Panel, Platform, PropertyEditor, Splash,
+    SplashRecent, StatusBar, Template, WorkspaceTabs, default_keymap, menu_json, pretty_chord,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -1007,76 +1008,108 @@ pub(crate) fn effective_keymap(settings: &serde_json::Value) -> Vec<immersion::B
 
 /// The area pie (backquote): the operations worth reaching by muscle memory,
 /// laid out radially. "@area" is resolved by the shim to whichever area the
+/// The area pie (backquote): the operations worth reaching by muscle memory,
+/// laid out radially. "@area" is resolved by the shim to whichever area the
 /// pointer is over, so one definition serves every area.
 fn pie_menu_json() -> String {
-    r#"[{"label":"Split H","action":"split","params":{"id":"@area","dir":"row"}},
-        {"label":"Split V","action":"split","params":{"id":"@area","dir":"col"}},
-        {"label":"Duplicate","action":"duplicate_area","params":{"id":"@area"}},
-        {"label":"Close","action":"join","params":{"id":"@area"}},
-        {"label":"Toolbar","action":"toggle_region","params":{"id":"@area","region":"toolbar"}},
-        {"label":"Sidebar","action":"toggle_region","params":{"id":"@area","region":"sidebar"}},
-        {"label":"Maximize","action":"maximize","params":null},
-        {"label":"Palette","action":"palette","params":null}]"#
-        .replace('\n', "")
+    menu_json(&[
+        MenuItem::new("Split H", "split", json!({ "id": "@area", "dir": "row" })),
+        MenuItem::new("Split V", "split", json!({ "id": "@area", "dir": "col" })),
+        MenuItem::new("Duplicate", "duplicate_area", json!({ "id": "@area" })),
+        MenuItem::new("Close", "join", json!({ "id": "@area" })),
+        MenuItem::new(
+            "Toolbar",
+            "toggle_region",
+            json!({ "id": "@area", "region": "toolbar" }),
+        ),
+        MenuItem::new(
+            "Sidebar",
+            "toggle_region",
+            json!({ "id": "@area", "region": "sidebar" }),
+        ),
+        MenuItem::new("Maximize", "maximize", Value::Null),
+        MenuItem::new("Palette", "palette", Value::Null),
+    ])
 }
 
 /// The Quick Favourites menu (Q), from the settings list. Each entry is the
 /// (label, action, params) a menu row carries, so a favourite runs exactly as
+/// The Quick Favourites menu (Q), from the settings list. Each entry is the
+/// (label, action, params) a menu row carries, so a favourite runs exactly as
 /// the menu item it was added from.
 fn favorites_menu_json(settings: &serde_json::Value) -> String {
-    let items: Vec<serde_json::Value> = settings["favorites"]
+    let items: Vec<MenuItem> = settings["favorites"]
         .as_array()
         .cloned()
         .unwrap_or_default()
         .into_iter()
-        .filter(|f| f.get("action").is_some())
+        .filter_map(|f| {
+            let action = f.get("action")?.as_str()?.to_string();
+            let label = f
+                .get("label")
+                .and_then(|l| l.as_str())
+                .unwrap_or(&action)
+                .to_string();
+            Some(MenuItem::new(
+                &label,
+                &action,
+                f.get("params").cloned().unwrap_or(Value::Null),
+            ))
+        })
         .collect();
     if items.is_empty() {
-        return r#"[{"label":"(no favourites — right-click a menu item to add one)","action":"noop","params":null}]"#.to_string();
+        return menu_json(&[MenuItem::new(
+            "(no favourites — right-click a menu item to add one)",
+            "noop",
+            Value::Null,
+        )]);
     }
-    serde_json::to_string(&items).unwrap_or_else(|_| "[]".into())
+    menu_json(&items)
 }
 
 /// The menu-bar dropdowns — Blender's Window / Edit / Help, as click-open
 /// menus. Each item is an (action, params) the same router handles: host
-/// actions, layout commands, or a settings edit.
 fn window_menu(active: usize, mac: bool) -> String {
-    format!(
-        r#"[{{"label":"Duplicate workspace","action":"workspace.duplicate","params":{{}}}},
-           {{"label":"Close workspace","action":"workspace.close","params":{{"index":{active}}}}},
-           {{"sep":true}},
-           {{"label":"Next workspace","action":"workspace.cycle","params":{{"delta":1}},"chord":"{next}"}},
-           {{"label":"Previous workspace","action":"workspace.cycle","params":{{"delta":-1}},"chord":"{prev}"}},
-           {{"sep":true}},
-           {{"label":"Maximize area","action":"maximize","params":null,"chord":"{maxi}"}},
-           {{"label":"Fullscreen","action":"fullscreen","params":null,"chord":"{full}"}}]"#,
-        next = pretty_chord("Alt+PageDown", mac),
-        prev = pretty_chord("Alt+PageUp", mac),
-        maxi = pretty_chord("Mod+Shift+Space", mac),
-        full = pretty_chord("Mod+Shift+F", mac)
-    )
-    .replace('\n', "")
+    menu_json(&[
+        MenuItem::new("Duplicate workspace", "workspace.duplicate", json!({})),
+        MenuItem::new(
+            "Close workspace",
+            "workspace.close",
+            json!({ "index": active }),
+        ),
+        MenuItem::sep(),
+        MenuItem::new("Next workspace", "workspace.cycle", json!({ "delta": 1 }))
+            .with_chord(&pretty_chord("Alt+PageDown", mac)),
+        MenuItem::new(
+            "Previous workspace",
+            "workspace.cycle",
+            json!({ "delta": -1 }),
+        )
+        .with_chord(&pretty_chord("Alt+PageUp", mac)),
+        MenuItem::sep(),
+        MenuItem::new("Maximize area", "maximize", Value::Null)
+            .with_chord(&pretty_chord("Mod+Shift+Space", mac)),
+        MenuItem::new("Fullscreen", "fullscreen", Value::Null)
+            .with_chord(&pretty_chord("Mod+Shift+F", mac)),
+    ])
 }
 
 fn edit_menu(mac: bool) -> String {
-    format!(
-        r#"[{{"label":"Undo","action":"undo","params":null,"chord":"{u}"}},
-        {{"label":"Redo","action":"redo","params":null,"chord":"{r}"}},
-        {{"sep":true}},
-        {{"label":"Repeat last","action":"repeat_last","params":null,"chord":"{rep}"}},
-        {{"label":"Adjust last operation","action":"adjust_last","params":null,"chord":"F9"}}]"#,
-        u = pretty_chord("Mod+Z", mac),
-        r = pretty_chord("Mod+Shift+Z", mac),
-        rep = pretty_chord("Shift+R", mac),
-    )
-    .replace('\n', "")
+    menu_json(&[
+        MenuItem::new("Undo", "undo", Value::Null).with_chord(&pretty_chord("Mod+Z", mac)),
+        MenuItem::new("Redo", "redo", Value::Null).with_chord(&pretty_chord("Mod+Shift+Z", mac)),
+        MenuItem::sep(),
+        MenuItem::new("Repeat last", "repeat_last", Value::Null)
+            .with_chord(&pretty_chord("Shift+R", mac)),
+        MenuItem::new("Adjust last operation", "adjust_last", Value::Null).with_chord("F9"),
+    ])
 }
 
-fn help_menu(mac: bool) -> String {
-    let _ = mac;
-    r#"[{"label":"Command palette","action":"palette","params":null,"chord":"F3"},
-        {"label":"Keyboard shortcuts","action":"cheatsheet","params":null,"chord":"F1"}]"#
-        .replace('\n', "")
+fn help_menu(_mac: bool) -> String {
+    menu_json(&[
+        MenuItem::new("Command palette", "palette", Value::Null).with_chord("F3"),
+        MenuItem::new("Keyboard shortcuts", "cheatsheet", Value::Null).with_chord("F1"),
+    ])
 }
 
 /// The key hints the status bar keeps in view — the chords worth knowing, in

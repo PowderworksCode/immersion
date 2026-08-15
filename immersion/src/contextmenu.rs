@@ -14,6 +14,66 @@ use serde_json::Value;
 
 const CONTEXTMENU_JS: &str = include_str!("contextmenu.js");
 
+/// One row of a menu. Menus were assembled as JSON text, which nothing on this
+/// side checked and which broke the moment a label carried a quote — a run id
+/// or a workspace name would have been enough. They are values now, serialised
+/// by serde, and the shim's `MenuItem` is generated from this rather than
+/// written to match it.
+#[derive(Debug, Clone, Default, serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../ts/generated/")]
+pub struct MenuItem {
+    // `optional` so the generated type says `label?: string` — matching what
+    // serde actually emits, since these are skipped when absent. Without it the
+    // TypeScript would promise a key that is not there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "unknown")]
+    pub params: Option<Value>,
+    /// The chord to show right-aligned, already written the platform's way.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub chord: Option<String>,
+    /// A divider rather than a row. Always emitted, so the type can promise it.
+    pub sep: bool,
+}
+
+impl MenuItem {
+    /// A row that runs `action` with `params`.
+    pub fn new(label: &str, action: &str, params: Value) -> Self {
+        MenuItem {
+            label: Some(label.to_string()),
+            action: Some(action.to_string()),
+            params: Some(params),
+            ..Default::default()
+        }
+    }
+
+    /// Show a chord beside the label.
+    pub fn with_chord(mut self, chord: &str) -> Self {
+        self.chord = Some(chord.to_string());
+        self
+    }
+
+    /// A divider.
+    pub fn sep() -> Self {
+        MenuItem {
+            sep: true,
+            ..Default::default()
+        }
+    }
+}
+
+/// Serialise a menu for a `data-im-menu` attribute. Escaping is serde's problem
+/// now, not the caller's.
+pub fn menu_json(items: &[MenuItem]) -> String {
+    serde_json::to_string(items).unwrap_or_else(|_| "[]".into())
+}
+
 #[derive(serde::Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../ts/generated/", rename = "MenuPick")]
 pub struct Pick {
@@ -58,17 +118,18 @@ pub fn ContextMenu(props: ContextMenuProps) -> Element {
 /// list. Blender's leftmost header button is a menu of editor types, not a
 /// dropdown control, and a menu can show labels the way the registry names them.
 pub fn editor_menu_json(id: crate::AreaId, kinds: &[crate::EditorKind], current: &str) -> String {
-    let items: Vec<String> = kinds
+    let items: Vec<MenuItem> = kinds
         .iter()
         .map(|k| {
             let mark = if k.id == current { "• " } else { "" };
-            format!(
-                r#"{{"label":"{mark}{}","action":"set_editor","params":{{"id":{id},"editor":"{}"}}}}"#,
-                k.label, k.id
+            MenuItem::new(
+                &format!("{mark}{}", k.label),
+                "set_editor",
+                serde_json::json!({ "id": id, "editor": k.id }),
             )
         })
         .collect();
-    format!("[{}]", items.join(","))
+    menu_json(&items)
 }
 
 /// The area header's View dropdown — region toggles and the area operations,
@@ -77,43 +138,78 @@ pub fn editor_menu_json(id: crate::AreaId, kinds: &[crate::EditorKind], current:
 pub fn view_menu_json(id: crate::AreaId, toolbar: bool, sidebar: bool, regions: bool) -> String {
     let mut items = Vec::new();
     if regions {
-        items.push(format!(
-            r#"{{"label":"{} Toolbar","action":"toggle_region","params":{{"id":{id},"region":"toolbar"}},"chord":"T"}}"#,
-            if toolbar { "Hide" } else { "Show" }
-        ));
-        items.push(format!(
-            r#"{{"label":"{} Sidebar","action":"toggle_region","params":{{"id":{id},"region":"sidebar"}},"chord":"N"}}"#,
-            if sidebar { "Hide" } else { "Show" }
-        ));
-        items.push(r#"{"sep":true}"#.to_string());
+        let word = |on: bool| if on { "Hide" } else { "Show" };
+        items.push(
+            MenuItem::new(
+                &format!("{} Toolbar", word(toolbar)),
+                "toggle_region",
+                serde_json::json!({ "id": id, "region": crate::area::Region::Toolbar.as_str() }),
+            )
+            .with_chord("T"),
+        );
+        items.push(
+            MenuItem::new(
+                &format!("{} Sidebar", word(sidebar)),
+                "toggle_region",
+                serde_json::json!({ "id": id, "region": crate::area::Region::Sidebar.as_str() }),
+            )
+            .with_chord("N"),
+        );
+        items.push(MenuItem::sep());
     }
-    items.push(format!(
-        r#"{{"label":"Split horizontal","action":"split","params":{{"id":{id},"dir":"row"}}}}"#
-    ));
-    items.push(format!(
-        r#"{{"label":"Split vertical","action":"split","params":{{"id":{id},"dir":"col"}}}}"#
-    ));
-    items.push(format!(
-        r#"{{"label":"Duplicate","action":"duplicate_area","params":{{"id":{id}}}}}"#
-    ));
-    items.push(r#"{"sep":true}"#.to_string());
-    items.push(format!(
-        r#"{{"label":"Hide header","action":"toggle_region","params":{{"id":{id},"region":"header"}}}}"#
-    ));
-    items.push(format!(
-        r#"{{"label":"Flip header","action":"toggle_region","params":{{"id":{id},"region":"header_flip"}}}}"#
-    ));
-    items.push(r#"{"sep":true}"#.to_string());
-    items.push(format!(
-        r#"{{"label":"Close area","action":"join","params":{{"id":{id}}}}}"#
-    ));
-    format!("[{}]", items.join(","))
+    items.extend([
+        MenuItem::new(
+            "Split horizontal",
+            "split",
+            serde_json::json!({ "id": id, "dir": "row" }),
+        ),
+        MenuItem::new(
+            "Split vertical",
+            "split",
+            serde_json::json!({ "id": id, "dir": "col" }),
+        ),
+        MenuItem::new(
+            "Duplicate",
+            "duplicate_area",
+            serde_json::json!({ "id": id }),
+        ),
+        MenuItem::sep(),
+        MenuItem::new(
+            "Hide header",
+            "toggle_region",
+            serde_json::json!({ "id": id, "region": crate::area::Region::Header.as_str() }),
+        ),
+        MenuItem::new(
+            "Flip header",
+            "toggle_region",
+            serde_json::json!({ "id": id, "region": crate::area::Region::HeaderFlip.as_str() }),
+        ),
+        MenuItem::sep(),
+        MenuItem::new("Close area", "join", serde_json::json!({ "id": id })),
+    ]);
+    menu_json(&items)
 }
 
 /// The `data-im-menu` JSON for an area leaf — split either way, then close.
 /// Kept here so the area view and the menu never drift: both come from the id.
 pub fn area_menu_json(id: crate::AreaId) -> String {
-    format!(
-        r#"[{{"label":"Split horizontal","action":"split","params":{{"id":{id},"dir":"row"}}}},{{"label":"Split vertical","action":"split","params":{{"id":{id},"dir":"col"}}}},{{"label":"Duplicate","action":"duplicate_area","params":{{"id":{id}}}}},{{"sep":true}},{{"label":"Close area","action":"join","params":{{"id":{id}}}}}]"#
-    )
+    menu_json(&[
+        MenuItem::new(
+            "Split horizontal",
+            "split",
+            serde_json::json!({ "id": id, "dir": "row" }),
+        ),
+        MenuItem::new(
+            "Split vertical",
+            "split",
+            serde_json::json!({ "id": id, "dir": "col" }),
+        ),
+        MenuItem::new(
+            "Duplicate",
+            "duplicate_area",
+            serde_json::json!({ "id": id }),
+        ),
+        MenuItem::sep(),
+        MenuItem::new("Close area", "join", serde_json::json!({ "id": id })),
+    ])
 }

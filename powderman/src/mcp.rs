@@ -26,24 +26,10 @@ use rmcp::{
 };
 use serde_json::{Value, json};
 
-/// A split runs along a row or a column — the same two the command bus takes,
-/// as an enum so the tool schema offers the agent the choice rather than a
-/// free-text string it can get wrong.
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum Dir {
-    Row,
-    Col,
-}
-
-impl Dir {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Dir::Row => "row",
-            Dir::Col => "col",
-        }
-    }
-}
+// `Dir` and `Region` are the library's — a second definition here would be one
+// more thing to keep in step, which is exactly what the generated wire types
+// removed elsewhere.
+use immersion::Dir;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SplitArgs {
@@ -175,7 +161,7 @@ impl Workbench {
     ) -> Result<CallToolResult, McpError> {
         run(
             "split",
-            json!({ "id": a.id, "dir": a.dir.as_str(), "frac": a.frac.unwrap_or(0.5) }),
+            json!({ "id": a.id, "dir": a.dir, "frac": a.frac.unwrap_or(0.5) }),
         )
     }
 

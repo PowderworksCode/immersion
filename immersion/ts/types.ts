@@ -31,15 +31,8 @@ export type { Gesture as GestureMsg } from "./generated/Gesture";
 export type { KeymapMsg } from "./generated/KeymapMsg";
 export type { MenuPick } from "./generated/MenuPick";
 export type { Dir } from "./generated/Dir";
-
-/** One row of a menu — see the `*_menu_json` builders. */
-export interface MenuItem {
-  label?: string;
-  action?: string;
-  params?: unknown;
-  chord?: string;
-  sep?: boolean;
-}
+export type { MenuItem } from "./generated/MenuItem";
+export type { Region } from "./generated/Region";
 
 /** Send a typed message over the shim's channel. The channel disappears when
  *  the view unmounts; a reload re-installs, so a failure here is not an error. */

@@ -7,7 +7,7 @@ license.workspace = true
 description = "Durable workflows on SQLite. herdr runs the agents; systemd runs everything else."
 
 [dependencies]
-immersion = { path = "../immersion" }
+immersion = { path = "../immersion", features = ["schema"] }
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
