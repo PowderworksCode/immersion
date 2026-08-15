@@ -63,6 +63,44 @@
     true,
   );
 
+  // --- list filter ----------------------------------------------------------
+  // Type in an [data-im-filter] box to hide non-matching rows in its scope.
+  // Subsequence matching, like the palette: "tbf" reaches "treebank_fix". Pure
+  // DOM work — the server is never told, so it costs nothing per keystroke.
+  const subseq = (q, text) => {
+    if (!q) return true;
+    let i = 0;
+    for (const ch of text) {
+      if (ch === q[i]) i++;
+      if (i === q.length) return true;
+    }
+    return false;
+  };
+  // Typing in a filter box must not reach the server at all. Dioxus delegates
+  // events at the document, so a keydown anywhere is forwarded once ANY
+  // component registers a keydown listener — including keystrokes in a purely
+  // local field. Stopping propagation in the capture phase (before the
+  // delegated bubble listener) keeps the filter's typing entirely client-side.
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.target && e.target.dataset && e.target.dataset.imFilter !== undefined) {
+        e.stopPropagation();
+      }
+    },
+    true,
+  );
+
+  document.addEventListener("input", (e) => {
+    const box = e.target;
+    if (!box.dataset || box.dataset.imFilter === undefined) return;
+    const scope = box.closest(".im-filter-scope") || document;
+    const q = box.value.toLowerCase().trim();
+    for (const row of scope.querySelectorAll("[data-filter-text]")) {
+      row.style.display = subseq(q, (row.dataset.filterText || "").toLowerCase()) ? "" : "none";
+    }
+  });
+
   // --- tooltip --------------------------------------------------------------
   // A styled hover tooltip from a control's native `title` (or data-tip*),
   // 500ms delay (0ms on an instant hop between neighbours). Never talks to the
