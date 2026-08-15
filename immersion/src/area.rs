@@ -32,11 +32,16 @@ pub struct Regions {
     pub toolbar: bool,
     #[serde(default)]
     pub sidebar: bool,
+    /// Region widths in px; 0 means "use the default width".
+    #[serde(default)]
+    pub toolbar_w: u16,
+    #[serde(default)]
+    pub sidebar_w: u16,
 }
 
 impl Regions {
     fn is_default(&self) -> bool {
-        !self.toolbar && !self.sidebar
+        !self.toolbar && !self.sidebar && self.toolbar_w == 0 && self.sidebar_w == 0
     }
 }
 
@@ -300,6 +305,22 @@ impl Layout {
     /// one area onto another with the command key swaps them, so a run detail
     /// and a list can trade places without a join. Both must be leaves; a
     /// no-op (returns false) if either is missing or they are the same area.
+    /// Set a leaf's toolbar or sidebar width (px), clamped to a grabbable range.
+    pub fn set_region_width(&mut self, leaf: AreaId, region: &str, w: u16) -> bool {
+        match self.root.find_mut(leaf) {
+            Some(Area::Leaf { regions, .. }) => {
+                let w = w.clamp(32, 500);
+                match region {
+                    "toolbar" => regions.toolbar_w = w,
+                    "sidebar" => regions.sidebar_w = w,
+                    _ => return false,
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Toggle a leaf's toolbar (T) or sidebar (N) region.
     pub fn toggle_region(&mut self, leaf: AreaId, region: &str) -> bool {
         match self.root.find_mut(leaf) {

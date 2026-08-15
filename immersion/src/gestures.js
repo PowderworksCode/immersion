@@ -184,6 +184,47 @@
     }
   };
 
+  // --- region resize: drag a toolbar/sidebar edge --------------------------
+  // The toolbar grows to the right, the sidebar to the left. Preview the strip
+  // width locally; commit one set_region_width on release.
+
+  let region = null; // { strip, areaId, which, startW, startX }
+
+  const onRegionDown = (e, el) => {
+    const areaEl = el.closest(".im-area");
+    const strip = el.closest(".im-toolbar, .im-sidebar");
+    if (!areaEl || !strip) return;
+    region = {
+      strip,
+      areaId: Number(areaEl.dataset.imArea),
+      which: el.dataset.imRegionHandle,
+      startW: strip.getBoundingClientRect().width,
+      startX: e.clientX,
+    };
+    el.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+
+  const regionWidth = (e) => {
+    const dx = e.clientX - region.startX;
+    const w = region.which === "toolbar" ? region.startW + dx : region.startW - dx;
+    return Math.min(500, Math.max(32, w));
+  };
+
+  const onRegionMove = (e) => {
+    region.strip.style.width = regionWidth(e) + "px";
+  };
+
+  const onRegionUp = (e) => {
+    send({
+      t: "regionwidth",
+      id: region.areaId,
+      region: region.which,
+      w: Math.round(regionWidth(e)),
+    });
+    region = null;
+  };
+
   // --- wiring, delegated so re-rendered areas need no re-binding ----------
 
   document.addEventListener("pointerdown", (e) => {
@@ -191,13 +232,17 @@
     if (seamEl) return onSeamDown(e, seamEl);
     const gripEl = e.target.closest?.(".im-grip");
     if (gripEl) return onGripDown(e, gripEl);
+    const regionEl = e.target.closest?.(".im-region-handle");
+    if (regionEl) return onRegionDown(e, regionEl);
   });
   document.addEventListener("pointermove", (e) => {
     if (seam) onSeamMove(e);
     else if (grip) onGripMove(e);
+    else if (region) onRegionMove(e);
   });
   document.addEventListener("pointerup", (e) => {
     if (seam) onSeamUp(e);
     else if (grip) onGripUp(e);
+    else if (region) onRegionUp(e);
   });
 })();

@@ -132,6 +132,13 @@
   border-left: 1px solid var(--im-seam); background: var(--im-panel);
 }
 .im-btn.active { color: var(--im-accent); }
+/* Region resize handles — a grabbable strip on the region's inner edge. */
+.im-region-handle {
+  position: absolute; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 6;
+}
+.im-region-handle-r { right: -3px; }
+.im-region-handle-l { left: -3px; }
+.im-toolbar, .im-sidebar { position: relative; }
 
 /* Seam handles: an invisible grab strip over each split border. */
 .im-seam-handle { position: absolute; z-index: 5; }
