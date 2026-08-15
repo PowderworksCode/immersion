@@ -1,0 +1,38 @@
+# The client shims are TypeScript; the crate embeds the compiled JavaScript.
+#
+# That split is deliberate: `cargo build` must not need a JavaScript toolchain
+# (the container image that ships powderman has none), so the generated .js is
+# committed. This job keeps the two honest — it typechecks the source and fails
+# if the committed output has drifted from it.
+name: Shims
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: shims-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shims:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Generated shims are up to date
+        run: |
+          bun run scripts/build-shims.ts
+          git diff --exit-code -- immersion/src/*.js \
+            || { echo "::error::immersion/src/*.js is stale — run 'bun run build' and commit"; exit 1; }

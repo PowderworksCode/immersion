@@ -1,80 +1,77 @@
-// The number-scrub shim: drag a number field horizontally to change it.
-//
-// Blender's number drag, on the library's budget. Pointer-drag is continuous,
-// so the scrub previews locally — the shim writes the input's value as you drag
-// — and commits exactly once, on release, by dispatching the native `change`
-// event the widget's own onchange already listens for. No new message type: a
-// scrub reuses the same commit path a typed value takes.
-//
-// Press-and-drag past a threshold scrubs (blurring the field so no caret
-// shows); press-and-release without moving falls through to a normal click,
-// focusing the field to type. Ctrl/Cmd snaps to the step; Shift scrubs fine.
-
+// Generated from immersion/ts/scrub.ts — do not edit by hand.
+// Run `bun run build` after changing the TypeScript source.
 (() => {
-  if (window.__imScrub) return;
-  window.__imScrub = true;
+  // immersion/ts/types.ts
+  function send(msg) {
+    try {
+      dioxus.send(typeof msg === "string" ? msg : JSON.stringify(msg));
+    } catch {}
+  }
+  function once(flag) {
+    const w = window;
+    if (w[flag])
+      return false;
+    w[flag] = true;
+    return true;
+  }
 
-  const THRESHOLD = 3;
-  let s = null;
-
-  const num = (v, d) => {
-    const n = parseFloat(v);
-    return Number.isFinite(n) ? n : d;
-  };
-
-  document.addEventListener("pointerdown", (e) => {
-    const input = e.target.closest?.("[data-im-scrub]");
-    if (!input) return;
-    s = {
-      input,
-      startX: e.clientX,
-      startVal: num(input.value, 0),
-      step: num(input.dataset.scrubStep, 1),
-      min: input.dataset.scrubMin ? num(input.dataset.scrubMin, -Infinity) : -Infinity,
-      max: input.dataset.scrubMax ? num(input.dataset.scrubMax, Infinity) : Infinity,
-      pid: e.pointerId,
-      scrubbing: false,
+  // immersion/ts/scrub.ts
+  if (once("__imScrub")) {
+    const THRESHOLD = 3;
+    let s = null;
+    const num = (v, d) => {
+      const n = parseFloat(v ?? "");
+      return Number.isFinite(n) ? n : d;
     };
-  });
-
-  document.addEventListener(
-    "pointermove",
-    (e) => {
-      if (!s) return;
+    document.addEventListener("pointerdown", (e) => {
+      const input = e.target?.closest?.("[data-im-scrub]");
+      if (!input)
+        return;
+      s = {
+        input,
+        startX: e.clientX,
+        startVal: num(input.value, 0),
+        step: num(input.dataset.scrubStep, 1),
+        min: input.dataset.scrubMin ? num(input.dataset.scrubMin, -Infinity) : -Infinity,
+        max: input.dataset.scrubMax ? num(input.dataset.scrubMax, Infinity) : Infinity,
+        pid: e.pointerId,
+        scrubbing: false
+      };
+    });
+    document.addEventListener("pointermove", (e) => {
+      if (!s)
+        return;
       const dx = e.clientX - s.startX;
       if (!s.scrubbing) {
-        if (Math.abs(dx) < THRESHOLD) return;
+        if (Math.abs(dx) < THRESHOLD)
+          return;
         s.scrubbing = true;
         s.input.blur();
         try {
           s.input.setPointerCapture(s.pid);
-        } catch (_) {
-          /* capture is best-effort */
-        }
+        } catch {}
         document.body.style.cursor = "ew-resize";
       }
       e.preventDefault();
       const speed = e.shiftKey ? 0.05 : 0.25;
       let v = s.startVal + dx * s.step * speed;
-      if (e.ctrlKey || e.metaKey) v = Math.round(v / s.step) * s.step;
+      if (e.ctrlKey || e.metaKey)
+        v = Math.round(v / s.step) * s.step;
       v = Math.min(s.max, Math.max(s.min, v));
-      const dec = (String(s.step).split(".")[1] || "").length;
+      const dec = (String(s.step).split(".")[1] ?? "").length;
       s.input.value = v.toFixed(dec);
-    },
-    true,
-  );
-
-  document.addEventListener("pointerup", () => {
-    if (!s) return;
-    if (s.scrubbing) {
-      document.body.style.cursor = "";
-      // Commit through the widget's own onchange.
-      s.input.dispatchEvent(new Event("change", { bubbles: true }));
-    } else {
-      // A plain click: focus for typing.
-      s.input.focus();
-      s.input.select?.();
-    }
-    s = null;
-  });
+    }, true);
+    document.addEventListener("pointerup", () => {
+      if (!s)
+        return;
+      if (s.scrubbing) {
+        document.body.style.cursor = "";
+        s.input.dispatchEvent(new Event("change", { bubbles: true }));
+      } else {
+        s.input.focus();
+        s.input.select?.();
+      }
+      s = null;
+    });
+  }
 })();
