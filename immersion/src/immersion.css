@@ -481,3 +481,18 @@
 .im-area > .im-area-main + .im-header {
   border-bottom: 0; border-top: 1px solid var(--im-seam);
 }
+
+/* Pie menu — radial slices around the pointer. */
+.im-pie { position: fixed; inset: 0; z-index: 66; }
+.im-pie-slice {
+  position: fixed; transform: translate(-50%, -50%);
+  padding: .25rem .6rem; border-radius: 4px; white-space: nowrap;
+  background: var(--im-panel); border: 1px solid var(--im-border);
+  color: var(--im-text); font-size: .76rem; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.im-pie-slice.is-sel { background: var(--im-accent); color: #fff; border-color: var(--im-accent); }
+.im-pie-center {
+  position: fixed; transform: translate(-50%, -50%);
+  width: 6px; height: 6px; border-radius: 50%; background: var(--im-text-muted);
+}

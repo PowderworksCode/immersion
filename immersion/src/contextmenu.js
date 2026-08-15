@@ -211,6 +211,108 @@
     openMenu(items, { x: lastX || 40, y: lastY || 40 });
   };
 
+
+  // --- pie menu -------------------------------------------------------------
+  // Blender's radial menu: slices arranged around the pointer, the one nearest
+  // the cursor highlighted, picked by click (or by releasing a drag out onto
+  // it). Up to eight slices, ordered the way Blender lays them out — west,
+  // east, south, north, then the diagonals — so muscle memory has somewhere to
+  // form. Params carrying the string "@area" are resolved to the id of the area
+  // under the pointer, so one pie definition works for whichever area you are
+  // over.
+  const PIE_ANGLES = [180, 0, 90, 270, 135, 45, 225, 315];
+  const PIE_R = 92;
+  let pie = null;
+
+  const resolveArea = (params, areaId) => {
+    if (params == null || typeof params !== "object") return params;
+    const out = Array.isArray(params) ? [] : {};
+    for (const k of Object.keys(params)) {
+      const v = params[k];
+      out[k] = v === "@area" ? areaId : (typeof v === "object" ? resolveArea(v, areaId) : v);
+    }
+    return out;
+  };
+
+  const closePie = () => {
+    if (pie) {
+      pie.el.remove();
+      pie = null;
+    }
+    if (onKey) {
+      document.removeEventListener("keydown", onKey, true);
+      onKey = null;
+    }
+  };
+
+  window.__imOpenPie = (itemsJson) => {
+    const items = parse(itemsJson);
+    if (!items) return;
+    close();
+    closePie();
+    const cx = lastX || window.innerWidth / 2;
+    const cy = lastY || window.innerHeight / 2;
+    const under = document.elementFromPoint(cx, cy);
+    const areaEl = under && under.closest ? under.closest(".im-area") : null;
+    const areaId = areaEl ? Number(areaEl.dataset.imArea) : null;
+
+    const el = document.createElement("div");
+    el.className = "im-pie";
+    const slices = [];
+    items.slice(0, 8).forEach((it, i) => {
+      const ang = (PIE_ANGLES[i] * Math.PI) / 180;
+      const x = cx + Math.cos(ang) * PIE_R;
+      const y = cy + Math.sin(ang) * PIE_R;
+      const s = document.createElement("div");
+      s.className = "im-pie-slice";
+      s.textContent = it.label;
+      s.style.left = x + "px";
+      s.style.top = y + "px";
+      s.addEventListener("click", () => {
+        pick(it.action, JSON.stringify(resolveArea(it.params ?? null, areaId)));
+        closePie();
+      });
+      el.appendChild(s);
+      slices.push({ el: s, x, y });
+    });
+    const dot = document.createElement("div");
+    dot.className = "im-pie-center";
+    dot.style.left = cx + "px";
+    dot.style.top = cy + "px";
+    el.appendChild(dot);
+    document.body.appendChild(el);
+    pie = { el, slices, cx, cy };
+
+    // Highlight whichever slice the pointer is nearest.
+    const track = (e) => {
+      if (!pie) return;
+      let best = null;
+      let bestD = Infinity;
+      for (const s of pie.slices) {
+        const d = Math.hypot(e.clientX - s.x, e.clientY - s.y);
+        if (d < bestD) {
+          bestD = d;
+          best = s;
+        }
+      }
+      for (const s of pie.slices) s.el.classList.toggle("is-sel", s === best && bestD < 140);
+    };
+    el.addEventListener("pointermove", track);
+    document.addEventListener("pointermove", track, true);
+
+    onKey = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        closePie();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    el.addEventListener("pointerdown", (e) => {
+      // A press on the backdrop (not a slice) dismisses.
+      if (e.target === el) closePie();
+    });
+  };
+
   // Dismiss on any outside press.
   document.addEventListener(
     "pointerdown",
