@@ -34,6 +34,35 @@
     }
   };
 
+  // Copy / Paste value are clipboard operations — handled here, not sent to the
+  // server (which has no clipboard). dioxus.send only works from a synchronous
+  // handler, not a detached promise, so paste cannot read-then-send inside the
+  // click; instead the clipboard is prefetched when the menu opens and the pick
+  // sends the stashed value synchronously.
+  let clipStash = null;
+  const pick = (action, paramsStr) => {
+    const params = JSON.parse(paramsStr || "null");
+    if (action === "copy_value") {
+      const v = params && params.value;
+      navigator.clipboard
+        .writeText(typeof v === "string" ? v : JSON.stringify(v))
+        .catch(() => {});
+      return;
+    }
+    if (action === "paste_value") {
+      if (clipStash == null) return;
+      let v;
+      try {
+        v = JSON.parse(clipStash);
+      } catch (_) {
+        v = clipStash;
+      }
+      send("set_setting", { pointer: params.pointer, value: v });
+      return;
+    }
+    send(action, params);
+  };
+
   document.addEventListener("contextmenu", (e) => {
     const host = e.target.closest?.("[data-im-menu]");
     if (!host) return;
@@ -46,6 +75,11 @@
     if (!Array.isArray(items) || items.length === 0) return;
     e.preventDefault();
     close();
+    // Prefetch the clipboard so a Paste pick can send synchronously. The
+    // contextmenu event is a user gesture, which read permission needs.
+    if (items.some((it) => it.action === "paste_value")) {
+      navigator.clipboard.readText().then((t) => { clipStash = t; }).catch(() => {});
+    }
 
     menu = document.createElement("div");
     menu.className = "im-ctxmenu";
@@ -62,7 +96,7 @@
       row.dataset.action = it.action;
       row.dataset.params = JSON.stringify(it.params ?? null);
       row.addEventListener("click", () => {
-        send(row.dataset.action, JSON.parse(row.dataset.params));
+        pick(row.dataset.action, row.dataset.params);
         close();
       });
       menu.appendChild(row);
@@ -96,7 +130,7 @@
       } else if (ev.key === "Enter") {
         ev.preventDefault();
         const r = rs[sel];
-        if (r) send(r.dataset.action, JSON.parse(r.dataset.params));
+        if (r) pick(r.dataset.action, r.dataset.params);
         close();
       } else if (ev.key === "Escape") {
         ev.preventDefault();
