@@ -1,0 +1,55 @@
+# The gates every change has to pass: formatting, lints, tests, and the
+# straitjacket scan. These are exactly the four commands run locally before each
+# commit; putting them here means a pull request cannot merge on "it built on my
+# machine".
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        run: rustup component add rustfmt clippy
+
+      # The dependency build dominates the runtime; cache it on the lockfile.
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Tests
+        run: cargo test --all
+
+  straitjacket:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # The org's own action. It fetches a prebuilt binary from the public
+      # PowderworksCode release, so this job no longer compiles a tool to lint
+      # with — no Rust toolchain, no cache, seconds instead of minutes. Pinned
+      # to the release tag rather than `latest`, so a new rule lands when this
+      # line is bumped and not on an unrelated pull request.
+      - uses: PowderworksCode/straitjacket@v0.1.1
+        with:
+          version: v0.1.1
