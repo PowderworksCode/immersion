@@ -235,7 +235,10 @@ fn number_widget(
             "data-scrub-min": "{min_attr}",
             "data-scrub-max": "{max_attr}",
             onchange: move |e| {
-                if let Ok(n) = e.value().parse::<f64>() {
+                // The field may hold an expression (`3*2`); evaluating it here
+                // means the shim never has to, and the document still receives
+                // a number.
+                if let Some(n) = eval_number(&e.value()) {
                     // Keep integers integer in the document, so a limit reads
                     // `100`, not `100.0`, and round-trips to the host cleanly.
                     let v = if n.fract() == 0.0 { json!(n as i64) } else { json!(n) };
@@ -417,7 +420,7 @@ fn vector_part(
                 // One component changes; the whole array is rewritten, so the
                 // edit stays a single value at a single pointer.
                 onchange: move |e| {
-                    if let Ok(x) = e.value().parse::<f64>() {
+                    if let Some(x) = eval_number(&e.value()) {
                         let mut next: Vec<Value> =
                             (0..n).map(|k| arr.get(k).cloned().unwrap_or(json!(0))).collect();
                         next[i] = if x.fract() == 0.0 { json!(x as i64) } else { json!(x) };
@@ -466,6 +469,170 @@ fn color_widget(path: &str, val: &Value, on_edit: Callback<(String, Value)>) -> 
 /// Apply an edit to a document by JSON pointer, growing missing objects along
 /// the way. Hosts use this so a widget edit lands where the pointer says, even
 /// for a nested path the document did not have yet.
+/// Evaluate what someone typed into a number field: a plain number, or a small
+/// arithmetic expression — `3*2`, `1920/2`, `pi*100`. Blender allows this and
+/// it is genuinely useful, but it belongs here rather than in the shim: it runs
+/// once, on commit, on a message the server already receives. Only frame-path
+/// work — a drag preview, filtering as you type — has to live in the browser.
+///
+/// A shunting-yard pass over four operators, parentheses and three constants.
+/// Deliberately not a general evaluator: unparseable input returns None and the
+/// field keeps whatever it had.
+pub fn eval_number(src: &str) -> Option<f64> {
+    let s = src.trim().to_ascii_lowercase();
+    if s.is_empty() {
+        return None;
+    }
+    if let Ok(n) = s.parse::<f64>() {
+        return Some(n);
+    }
+    let tokens = tokenize(&s)?;
+    let rpn = to_rpn(tokens)?;
+    eval_rpn(&rpn).filter(|v| v.is_finite())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Tok {
+    Num(f64),
+    Op(char),
+    Open,
+    Close,
+}
+
+fn tokenize(s: &str) -> Option<Vec<Tok>> {
+    let mut out = Vec::new();
+    let b: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    // Set when a minus was a sign rather than an operator; consumed by the
+    // next operand.
+    let mut neg = false;
+    while i < b.len() {
+        let c = b[i];
+        match c {
+            ' ' | '\t' => i += 1,
+            '0'..='9' | '.' => {
+                let start = i;
+                while i < b.len() && (b[i].is_ascii_digit() || b[i] == '.') {
+                    i += 1;
+                }
+                let v: f64 = b[start..i].iter().collect::<String>().parse().ok()?;
+                out.push(Tok::Num(if neg { -v } else { v }));
+                neg = false;
+            }
+            '+' | '-' | '*' | '/' => {
+                // A leading or post-operator minus is a sign, not a
+                // subtraction. Inserting a zero would be wrong after a
+                // higher-precedence operator — `10*-2` would parse as
+                // `(10*0)-2` — so the sign is carried to the next operand
+                // instead, and a parenthesised group is negated by `-1 *`,
+                // which binds as tightly as the group does.
+                let unary = matches!(out.last(), None | Some(Tok::Op(_)) | Some(Tok::Open));
+                if c == '-' && unary {
+                    neg = true;
+                } else if c == '+' && unary {
+                    // A leading plus is just noise.
+                } else {
+                    out.push(Tok::Op(c));
+                }
+                i += 1;
+            }
+            '(' => {
+                if neg {
+                    out.push(Tok::Num(-1.0));
+                    out.push(Tok::Op('*'));
+                    neg = false;
+                }
+                out.push(Tok::Open);
+                i += 1;
+            }
+            ')' => {
+                out.push(Tok::Close);
+                i += 1;
+            }
+            'a'..='z' => {
+                let start = i;
+                while i < b.len() && b[i].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                let word: String = b[start..i].iter().collect();
+                let v = match word.as_str() {
+                    "pi" => std::f64::consts::PI,
+                    "tau" => std::f64::consts::TAU,
+                    "e" => std::f64::consts::E,
+                    _ => return None,
+                };
+                out.push(Tok::Num(if neg { -v } else { v }));
+                neg = false;
+            }
+            _ => return None,
+        }
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+fn prec(op: char) -> u8 {
+    match op {
+        '*' | '/' => 2,
+        _ => 1,
+    }
+}
+
+fn to_rpn(tokens: Vec<Tok>) -> Option<Vec<Tok>> {
+    let mut out = Vec::new();
+    let mut ops: Vec<Tok> = Vec::new();
+    for t in tokens {
+        match t {
+            Tok::Num(_) => out.push(t),
+            Tok::Op(o) => {
+                while let Some(Tok::Op(top)) = ops.last().copied() {
+                    if prec(top) >= prec(o) {
+                        out.push(ops.pop()?);
+                    } else {
+                        break;
+                    }
+                }
+                ops.push(Tok::Op(o));
+            }
+            Tok::Open => ops.push(t),
+            Tok::Close => loop {
+                match ops.pop()? {
+                    Tok::Open => break,
+                    other => out.push(other),
+                }
+            },
+        }
+    }
+    while let Some(op) = ops.pop() {
+        if op == Tok::Open {
+            return None; // unbalanced
+        }
+        out.push(op);
+    }
+    Some(out)
+}
+
+fn eval_rpn(rpn: &[Tok]) -> Option<f64> {
+    let mut st: Vec<f64> = Vec::new();
+    for t in rpn {
+        match t {
+            Tok::Num(n) => st.push(*n),
+            Tok::Op(o) => {
+                let b = st.pop()?;
+                let a = st.pop()?;
+                st.push(match o {
+                    '+' => a + b,
+                    '-' => a - b,
+                    '*' => a * b,
+                    '/' => a / b,
+                    _ => return None,
+                });
+            }
+            _ => return None,
+        }
+    }
+    (st.len() == 1).then(|| st[0])
+}
+
 pub fn apply_edit(doc: &mut Value, pointer: &str, value: Value) {
     let parts: Vec<&str> = pointer.trim_start_matches('/').split('/').collect();
     if parts.is_empty() || parts == [""] {
@@ -489,6 +656,46 @@ pub fn apply_edit(doc: &mut Value, pointer: &str, value: Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_number_field_takes_arithmetic() {
+        assert_eq!(eval_number("100"), Some(100.0));
+        assert_eq!(eval_number(" 2.5 "), Some(2.5));
+        assert_eq!(eval_number("3*2"), Some(6.0));
+        assert_eq!(eval_number("1920/2"), Some(960.0));
+        assert_eq!(
+            eval_number("2+3*4"),
+            Some(14.0),
+            "precedence, not left-to-right"
+        );
+        assert_eq!(eval_number("(2+3)*4"), Some(20.0));
+        assert_eq!(eval_number("-5"), Some(-5.0));
+        assert_eq!(
+            eval_number("10*-2"),
+            Some(-20.0),
+            "a sign, not a subtraction"
+        );
+        assert_eq!(eval_number("10/-2"), Some(-5.0));
+        assert_eq!(eval_number("2--3"), Some(5.0));
+        assert_eq!(eval_number("-(2+3)"), Some(-5.0));
+        assert_eq!(eval_number("10*-(1+1)"), Some(-20.0));
+        assert_eq!(eval_number("+7"), Some(7.0));
+        assert_eq!(eval_number("pi").map(|v| (v * 100.0).round()), Some(314.0));
+    }
+
+    #[test]
+    fn nonsense_leaves_the_field_alone() {
+        // None means "not a number" — the widget commits nothing and the field
+        // keeps what it had, rather than storing a zero.
+        for bad in ["abc", "", "   ", "3*", "(2+3", "2+3)", "1 2", "drop table"] {
+            assert_eq!(eval_number(bad), None, "{bad:?} should not evaluate");
+        }
+    }
+
+    #[test]
+    fn division_by_zero_is_not_a_value() {
+        assert_eq!(eval_number("1/0"), None, "infinity is not a field value");
+    }
 
     #[test]
     fn apply_edit_sets_a_top_level_key() {
