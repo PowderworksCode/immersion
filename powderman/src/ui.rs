@@ -195,8 +195,8 @@ fn tile(k: &str, v: String, of: Option<String>) -> Element {
 
 use immersion::{
     AreaId, Areas, Chrome, ContextMenu, Dir, EditorKind, Field, FieldKind, FilterBox, Keymap,
-    KeymapHelp, Layout, LayoutFile, Palette, PaletteItem, Panel, PropertyEditor, Splash,
-    SplashRecent, StatusBar, Template, WorkspaceTabs, default_keymap,
+    KeymapHelp, Layout, LayoutFile, Palette, PaletteItem, Panel, Platform, PropertyEditor, Splash,
+    SplashRecent, StatusBar, Template, WorkspaceTabs, default_keymap, pretty_chord,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -392,6 +392,10 @@ fn kinds() -> Vec<EditorKind> {
             id: "info",
             label: "Info log",
         },
+        EditorKind {
+            id: "keymap",
+            label: "Keymap",
+        },
     ]
 }
 
@@ -441,7 +445,12 @@ pub fn App() -> Element {
     // the status bar). Cleared after a few seconds by a token: each report
     // bumps a generation, and the timer only clears if its generation is still
     // current, so a newer report is never wiped by an older timer.
+    // The client reports its platform once; chords are written server-side
+    // from it, so a rebind updates everywhere without touching the DOM.
+    let mut mac = use_signal(|| false);
     let mut help_open = use_signal(|| false);
+    // Which binding is waiting for a chord, while the keymap editor captures.
+    let mut capturing = use_signal(|| None::<String>);
     // Adjust Last (F9): re-run the last command with edited params.
     let mut adjust_open = use_signal(|| false);
     let mut adjust_name = use_signal(String::new);
@@ -580,6 +589,24 @@ pub fn App() -> Element {
             },
         );
 
+    // Start capturing a chord for a binding: arm the shim, remember which
+    // action is waiting. The Keymap component reports the chord back.
+    let cap_start = use_callback(move |action: String| {
+        capturing.set(Some(action));
+        dioxus::document::eval("window.__imCaptureChord && window.__imCaptureChord();");
+    });
+    let cap_reset = use_callback(move |action: String| {
+        let mut km = settings()["keymap"]
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        km.remove(&action);
+        settings.set(crate::daemon::set_setting(
+            "/keymap",
+            serde_json::Value::Object(km),
+        ));
+    });
+
     let on_template = use_callback(move |i: usize| {
         if let Some(t) = templates().into_iter().nth(i) {
             cmd.call((
@@ -693,6 +720,13 @@ pub fn App() -> Element {
                 "actions" => ed_actions(&s),
                 "timers" => ed_timers(&s),
                 "info" => ed_info(&s),
+                "keymap" => ed_keymap(
+                    settings_doc.clone(),
+                    mac(),
+                    capturing(),
+                    cap_start,
+                    cap_reset,
+                ),
                 "run" => match arg {
                     Some(id) => ed_run_detail(&s, &id),
                     None => ed_run_picker(&s, area, open_run),
@@ -731,9 +765,9 @@ pub fn App() -> Element {
                     "powderman"
                 }
                 span { class: "menubar",
-                    button { class: "im-menubtn", "data-im-menu-click": "{window_menu(ws.read().active)}", "Window" }
-                    button { class: "im-menubtn", "data-im-menu-click": "{edit_menu()}", "Edit" }
-                    button { class: "im-menubtn", "data-im-menu-click": "{help_menu()}", "Help" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{window_menu(ws.read().active, mac())}", "Window" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{edit_menu(mac())}", "Edit" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{help_menu(mac())}", "Help" }
                 }
                 WorkspaceTabs {
                     names: ws.read().tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
@@ -752,11 +786,25 @@ pub fn App() -> Element {
                     " · {s.runs.len()} runs"
                 }
             }
-            Keymap { bindings: default_keymap(), on_action }
+            Platform { on_platform: move |m: bool| mac.set(m) }
+            Keymap {
+                bindings: effective_keymap(&settings()),
+                on_action,
+                on_capture: move |chord: String| {
+                    if let Some(action) = capturing() {
+                        settings.set(crate::daemon::set_setting(
+                            &format!("/keymap/{action}"),
+                            serde_json::json!(chord),
+                        ));
+                        capturing.set(None);
+                    }
+                },
+            }
             ContextMenu { on_command: on_menu }
             if help_open() {
                 KeymapHelp {
-                    bindings: default_keymap(),
+                    bindings: effective_keymap(&settings()),
+                    mac: mac(),
                     on_close: move |()| help_open.set(false),
                 }
             }
@@ -800,10 +848,11 @@ pub fn App() -> Element {
                             None
                         }
                     }),
+                    revision: settings_revision(&settings()),
                 }
             }
             StatusBar {
-                hints: status_hints(),
+                hints: status_hints(mac()),
                 message: report(),
                 right: format!(
                     "{} · {} runs",
@@ -890,6 +939,92 @@ fn report_label(name: &str, params: &serde_json::Value) -> String {
     }
 }
 
+/// A cheap version of the settings document, so the deck re-renders when a
+/// setting an editor shows has changed (the layout alone does not encode it).
+fn settings_revision(settings: &serde_json::Value) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    settings.to_string().hash(&mut h);
+    h.finish()
+}
+
+/// The keymap as it actually stands: the shipped defaults with the user's
+/// rebinds applied. An override is stored per action, so a rebind survives a
+/// change to the default and the editor can show what is customised.
+fn effective_keymap(settings: &serde_json::Value) -> Vec<immersion::Binding> {
+    let overrides = &settings["keymap"];
+    default_keymap()
+        .into_iter()
+        .map(|mut b| {
+            if let Some(chord) = overrides.get(&b.action).and_then(|c| c.as_str()) {
+                b.chord = chord.to_string();
+            }
+            b
+        })
+        .collect()
+}
+
+/// The Keymap editor: every binding, what it does, and its chord — with a
+/// capture button that listens for the next chord you press. Blender's keymap
+/// preferences, minus the filtering.
+fn ed_keymap(
+    settings: serde_json::Value,
+    mac: bool,
+    capturing: Option<String>,
+    on_capture_start: Callback<String>,
+    on_reset: Callback<String>,
+) -> Element {
+    let overrides = settings["keymap"].clone();
+    rsx! {
+        div { class: "keymap-editor im-filter-scope",
+            div { class: "keymap-head", FilterBox { placeholder: "filter shortcuts…" } }
+            for b in effective_keymap(&settings) {
+                {
+                    let custom = overrides.get(&b.action).is_some();
+                    let waiting = capturing.as_deref() == Some(b.action.as_str());
+                    keymap_row(b, mac, custom, waiting, on_capture_start, on_reset)
+                }
+            }
+        }
+    }
+}
+
+/// One row of the keymap editor. Its own function so the editor's view does not
+/// nest another four levels deep.
+fn keymap_row(
+    b: immersion::Binding,
+    mac: bool,
+    custom: bool,
+    waiting: bool,
+    on_capture_start: Callback<String>,
+    on_reset: Callback<String>,
+) -> Element {
+    let a1 = b.action.clone();
+    let a2 = b.action.clone();
+    rsx! {
+        div {
+            class: "keymap-row",
+            key: "{b.action}",
+            "data-filter-text": "{b.description} {b.action} {b.chord}",
+            span { class: "keymap-desc", "{b.description}" }
+            span { class: "im-hint-key keymap-chord", "{pretty_chord(&b.chord, mac)}" }
+            button {
+                class: if waiting { "keymap-set waiting" } else { "keymap-set" },
+                onclick: move |_| on_capture_start.call(a1.clone()),
+                if waiting { "press a key…" } else { "rebind" }
+            }
+            if custom {
+                button {
+                    class: "keymap-reset",
+                    title: "restore the default",
+                    onclick: move |_| on_reset.call(a2.clone()),
+                    "↺"
+                }
+            }
+        }
+    }
+}
+
 /// The area pie (backquote): the operations worth reaching by muscle memory,
 /// laid out radially. "@area" is resolved by the shim to whichever area the
 /// pointer is over, so one definition serves every area.
@@ -925,30 +1060,40 @@ fn favorites_menu_json(settings: &serde_json::Value) -> String {
 /// The menu-bar dropdowns — Blender's Window / Edit / Help, as click-open
 /// menus. Each item is an (action, params) the same router handles: host
 /// actions, layout commands, or a settings edit.
-fn window_menu(active: usize) -> String {
+fn window_menu(active: usize, mac: bool) -> String {
     format!(
         r#"[{{"label":"Duplicate workspace","action":"workspace.duplicate","params":{{}}}},
            {{"label":"Close workspace","action":"workspace.close","params":{{"index":{active}}}}},
            {{"sep":true}},
-           {{"label":"Next workspace","action":"workspace.cycle","params":{{"delta":1}},"chord":"Alt+PageDown"}},
-           {{"label":"Previous workspace","action":"workspace.cycle","params":{{"delta":-1}},"chord":"Alt+PageUp"}},
+           {{"label":"Next workspace","action":"workspace.cycle","params":{{"delta":1}},"chord":"{next}"}},
+           {{"label":"Previous workspace","action":"workspace.cycle","params":{{"delta":-1}},"chord":"{prev}"}},
            {{"sep":true}},
-           {{"label":"Maximize area","action":"maximize","params":null,"chord":"Mod+Shift+Space"}},
-           {{"label":"Fullscreen","action":"fullscreen","params":null,"chord":"Mod+Shift+F"}}]"#
+           {{"label":"Maximize area","action":"maximize","params":null,"chord":"{maxi}"}},
+           {{"label":"Fullscreen","action":"fullscreen","params":null,"chord":"{full}"}}]"#,
+        next = pretty_chord("Alt+PageDown", mac),
+        prev = pretty_chord("Alt+PageUp", mac),
+        maxi = pretty_chord("Mod+Shift+Space", mac),
+        full = pretty_chord("Mod+Shift+F", mac)
     )
     .replace('\n', "")
 }
 
-fn edit_menu() -> String {
-    r#"[{"label":"Undo","action":"undo","params":null,"chord":"Mod+Z"},
-        {"label":"Redo","action":"redo","params":null,"chord":"Mod+Shift+Z"},
-        {"sep":true},
-        {"label":"Repeat last","action":"repeat_last","params":null,"chord":"Shift+R"},
-        {"label":"Adjust last operation","action":"adjust_last","params":null,"chord":"F9"}]"#
-        .replace('\n', "")
+fn edit_menu(mac: bool) -> String {
+    format!(
+        r#"[{{"label":"Undo","action":"undo","params":null,"chord":"{u}"}},
+        {{"label":"Redo","action":"redo","params":null,"chord":"{r}"}},
+        {{"sep":true}},
+        {{"label":"Repeat last","action":"repeat_last","params":null,"chord":"{rep}"}},
+        {{"label":"Adjust last operation","action":"adjust_last","params":null,"chord":"F9"}}]"#,
+        u = pretty_chord("Mod+Z", mac),
+        r = pretty_chord("Mod+Shift+Z", mac),
+        rep = pretty_chord("Shift+R", mac),
+    )
+    .replace('\n', "")
 }
 
-fn help_menu() -> String {
+fn help_menu(mac: bool) -> String {
+    let _ = mac;
     r#"[{"label":"Command palette","action":"palette","params":null,"chord":"F3"},
         {"label":"Keyboard shortcuts","action":"cheatsheet","params":null,"chord":"F1"}]"#
         .replace('\n', "")
@@ -957,14 +1102,17 @@ fn help_menu() -> String {
 /// The key hints the status bar keeps in view — the chords worth knowing, in
 /// grammar form (the bar's shim renders `Mod` as the platform glyph). Global
 /// only for now; area-scoped hints arrive with regions.
-fn status_hints() -> Vec<(String, String)> {
-    vec![
-        ("Mod+Z".into(), "Undo".into()),
-        ("Mod+Shift+Z".into(), "Redo".into()),
-        ("F3".into(), "Commands".into()),
-        ("Mod+Shift+Space".into(), "Maximize".into()),
-        ("Alt+PageDown".into(), "Next workspace".into()),
+fn status_hints(mac: bool) -> Vec<(String, String)> {
+    [
+        ("Mod+Z", "Undo"),
+        ("Mod+Shift+Z", "Redo"),
+        ("F3", "Commands"),
+        ("Mod+Shift+Space", "Maximize"),
+        ("Alt+PageDown", "Next workspace"),
     ]
+    .into_iter()
+    .map(|(c, l)| (pretty_chord(c, mac), l.to_string()))
+    .collect()
 }
 
 // --- editors --------------------------------------------------------------
@@ -1310,5 +1458,27 @@ fn ed_settings(
                 on_edit: on_setting,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod keymap_tests {
+    use super::*;
+
+    #[test]
+    fn an_override_replaces_the_default_chord() {
+        let settings = serde_json::json!({ "keymap": { "favorites": "Mod+Shift+K" } });
+        let km = effective_keymap(&settings);
+        let fav = km
+            .iter()
+            .find(|b| b.action == "favorites")
+            .expect("favorites binding");
+        assert_eq!(fav.chord, "Mod+Shift+K");
+        // untouched bindings keep their defaults
+        let undo = km
+            .iter()
+            .find(|b| b.action == "undo")
+            .expect("undo binding");
+        assert_eq!(undo.chord, "Mod+Z");
     }
 }

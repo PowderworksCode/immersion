@@ -37,7 +37,10 @@ pub use client::{Chrome, ChromeProps};
 pub use command::{Command, Commands};
 pub use contextmenu::{ContextMenu, ContextMenuProps};
 pub use filter::{FilterBox, FilterBoxProps};
-pub use keymap::{Binding, Keymap, KeymapHelp, KeymapHelpProps, KeymapProps, default_keymap};
+pub use keymap::{
+    Binding, Keymap, KeymapHelp, KeymapHelpProps, KeymapProps, Platform, PlatformProps,
+    default_keymap, pretty_chord,
+};
 pub use layoutfile::{LayoutFile, LayoutFileProps};
 pub use palette::{Palette, PaletteItem, PaletteProps};
 pub use panel::{Panel, PanelProps};

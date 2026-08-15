@@ -8,6 +8,19 @@
 // action. Typing in a field is never intercepted unless a binding opts in.
 
 (() => {
+  // Read the chord list fresh each time it changes: a rebind rewrites
+  // window.__imChords, and the shim must honour it without a reload.
+  let chordsRef = null;
+  let resolvedMap = new Map();
+  const resolvedFor = () => {
+    const list = window.__imChords || [];
+    if (list !== chordsRef) {
+      chordsRef = list;
+      resolvedMap = new Map();
+      for (const c of list) resolvedMap.set(c.replace(/\bMod\b/g, mod), c);
+    }
+    return resolvedMap;
+  };
   const chords = window.__imChords || [];
   // navigator.platform alone is unreliable (deprecated, and empty under some
   // privacy settings — which then resolves Mod to Ctrl and kills every Cmd
@@ -43,10 +56,25 @@
     return parts.join("+");
   };
 
+  // Rebind capture: the host turns this on, the next real chord is reported
+  // back as a binding string (with the platform key written as "Mod", the way
+  // bindings are authored) instead of firing an action.
+  let capturing = false;
+  window.__imCaptureChord = () => { capturing = true; };
+
   document.addEventListener("keydown", (e) => {
     const chord = pressed(e);
     if (!chord) return;
-    const original = resolved.get(chord);
+    if (capturing) {
+      e.preventDefault();
+      capturing = false;
+      // Write the platform's primary modifier back as "Mod" so the stored
+      // binding means the same thing on every platform.
+      const grammar = chord.replace(new RegExp("\\b" + mod + "\\b"), "Mod");
+      try { dioxus.send(JSON.stringify({ t: "capture", chord: grammar })); } catch (err) { /* gone */ }
+      return;
+    }
+    const original = resolvedFor().get(chord);
     if (!original) return;
     // Don't steal keys from a field the user is typing in, unless the chord
     // carries a real modifier (Ctrl/Cmd/Alt) — those are commands, not text.
@@ -55,6 +83,6 @@
     const hasMod = e.ctrlKey || e.metaKey || e.altKey;
     if (typing && !hasMod) return;
     e.preventDefault();
-    try { dioxus.send(original); } catch (err) { /* channel gone; a reload re-installs */ }
+    try { dioxus.send(JSON.stringify({ t: "chord", chord: original })); } catch (err) { /* channel gone */ }
   });
 })();

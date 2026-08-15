@@ -265,3 +265,19 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
   cursor: pointer; opacity: .5;
 }
 .fullscreen-exit:hover { opacity: 1; color: var(--im-text); }
+
+/* Keymap editor. */
+.keymap-editor { display: flex; flex-direction: column; }
+.keymap-head { padding-bottom: .4rem; position: sticky; top: 0; background: var(--surface); z-index: 2; }
+.keymap-row {
+  display: grid; grid-template-columns: 1fr 9rem 5rem 1.6rem; gap: .5rem; align-items: center;
+  padding: .22rem .1rem; border-bottom: 1px solid var(--line); font-size: .78rem;
+}
+.keymap-desc { color: var(--ink); }
+.keymap-chord { justify-self: start; }
+.keymap-set, .keymap-reset {
+  border: 1px solid var(--im-border); border-radius: 3px; background: var(--im-input-bg);
+  color: var(--ink-2); cursor: pointer; font-size: .72rem; padding: .1rem .3rem;
+}
+.keymap-set:hover, .keymap-reset:hover { color: var(--ink); border-color: var(--im-accent); }
+.keymap-set.waiting { background: var(--im-accent); color: #fff; border-color: var(--im-accent); }
