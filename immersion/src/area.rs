@@ -462,6 +462,29 @@ impl Layout {
         }
     }
 
+    /// Retarget an area without changing its editor: the locator half of
+    /// `set_editor_arg`. An editor's target is where it is looking — a
+    /// pointer into the host's data, a path, a run id — and the header shows
+    /// it as a breadcrumb, so retargeting is the common move and switching
+    /// editor kinds is the rarer one. An empty target clears it.
+    pub fn set_target(&mut self, leaf: AreaId, target: &str) -> bool {
+        match self.root.find_mut(leaf) {
+            Some(Area::Leaf { arg, .. }) => {
+                *arg = (!target.is_empty()).then(|| target.to_string());
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// What a leaf is currently looking at, if anything.
+    pub fn target_of(&self, leaf: AreaId) -> Option<String> {
+        match self.root.find(leaf) {
+            Some(Area::Leaf { arg, .. }) => arg.clone(),
+            _ => None,
+        }
+    }
+
     /// Exchange what two areas show — editor and argument both. Corner-dragging
     /// one area onto another with the command key swaps them, so a run detail
     /// and a list can trade places without a join. Both must be leaves; a

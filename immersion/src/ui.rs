@@ -98,6 +98,11 @@ pub struct EditorKind {
     pub id: &'static str,
     /// What the dropdown shows.
     pub label: &'static str,
+    /// Whether this editor looks *at* something — a subtree, a file, a run.
+    /// Blender's header carries a data-block selector only for editors that
+    /// have one; ours shows the target chip on the same rule, so an editor
+    /// with nothing to point at is not given a control that does nothing.
+    pub targets: bool,
 }
 
 #[derive(Props, Clone)]
@@ -122,6 +127,11 @@ pub struct AreasProps {
     /// here, so there is exactly one way to mutate the layout — the property
     /// that lets undo, the keymap, and a future agent reach everything.
     pub on_command: Callback<(String, serde_json::Value)>,
+    /// A target chip was clicked: the host opens its own picker (only it
+    /// knows what can be pointed at) and answers with a `set_target` command.
+    /// Without it, chips render as read-only labels.
+    #[props(default)]
+    pub on_pick_target: Option<Callback<AreaId>>,
     /// When set to a live area id, only that area is shown, filling the deck —
     /// Blender's maximize. View state, not layout: it is per-client and does
     /// not touch the tree, so it lives outside the command bus by design.
@@ -265,7 +275,7 @@ fn render_leaf(
     let kinds = props.kinds.clone();
     let editor_owned = editor.to_string();
     let cmd = props.on_command;
-    let body = props.render.call((id, editor_owned.clone(), arg));
+    let body = props.render.call((id, editor_owned.clone(), arg.clone()));
     let menu = crate::contextmenu::area_menu_json(id);
     // Region content is the host's — a leaf shows a toolbar / sidebar only if
     // the host offers one and the region is toggled on.
@@ -307,7 +317,14 @@ fn render_leaf(
             span { class: "im-grip im-grip-bl", "data-im-grip": "bl" }
             span { class: "im-grip im-grip-br", "data-im-grip": "br" }
             if !regions.header_hidden && !regions.header_bottom {
-                {leaf_header(id, editor_owned.clone(), kinds.clone(), cmd, &regions, has_toolbar, has_sidebar, lone, &props.chords)}
+                {leaf_header(LeafHeader {
+                    id,
+                    editor: editor_owned.clone(),
+                    target: arg.clone(),
+                    kinds: kinds.clone(),
+                    cmd,
+                    on_pick_target: props.on_pick_target,
+                }, &regions, has_toolbar, has_sidebar, lone, &props.chords)}
             }
             if regions.header_hidden {
                 button {
@@ -333,7 +350,14 @@ fn render_leaf(
                 }
             }
             if !regions.header_hidden && regions.header_bottom {
-                {leaf_header(id, editor_owned.clone(), kinds.clone(), cmd, &regions, has_toolbar, has_sidebar, lone, &props.chords)}
+                {leaf_header(LeafHeader {
+                    id,
+                    editor: editor_owned.clone(),
+                    target: arg.clone(),
+                    kinds: kinds.clone(),
+                    cmd,
+                    on_pick_target: props.on_pick_target,
+                }, &regions, has_toolbar, has_sidebar, lone, &props.chords)}
             }
         }
     }
@@ -443,17 +467,37 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
 /// as its own function so it can be placed above or below the body (Blender's
 /// flip) without duplicating the markup.
 #[allow(clippy::too_many_arguments)]
-fn leaf_header(
+/// What the header needs about the leaf it belongs to. A struct because the
+/// argument list had reached the point where the next one would be a bug.
+struct LeafHeader {
     id: AreaId,
-    editor_owned: String,
+    editor: String,
+    target: Option<String>,
     kinds: Vec<EditorKind>,
     cmd: Callback<(String, serde_json::Value)>,
+    on_pick_target: Option<Callback<AreaId>>,
+}
+
+fn leaf_header(
+    leaf: LeafHeader,
     regions: &Regions,
     has_toolbar: bool,
     has_sidebar: bool,
     lone: bool,
     chords: &std::collections::HashMap<String, String>,
 ) -> Element {
+    let LeafHeader {
+        id,
+        editor: editor_owned,
+        target,
+        kinds,
+        cmd,
+        on_pick_target,
+    } = leaf;
+    let targets = kinds
+        .iter()
+        .find(|k| k.id == editor_owned)
+        .is_some_and(|k| k.targets);
     let tip = |action: &str| chords.get(action).cloned().unwrap_or_default();
     rsx! {
             div { class: "im-header",
@@ -465,6 +509,24 @@ fn leaf_header(
                     title: "editor type",
                     "data-im-menu-click": "{crate::contextmenu::editor_menu_json(id, &kinds, &editor_owned)}",
                     "{kinds.iter().find(|k| k.id == editor_owned).map(|k| k.label).unwrap_or(\"editor\")} ▾"
+                }
+                // The target chip — Blender's data-block selector. Shows what
+                // this editor is looking at, and opens the host's picker.
+                if targets {
+                    button {
+                        class: if target.is_some() { "im-target" } else { "im-target im-target-none" },
+                        title: match &target {
+                            Some(t) => format!("looking at {t} \u{2014} click to retarget"),
+                            None => "nothing selected \u{2014} click to pick".to_string(),
+                        },
+                        disabled: on_pick_target.is_none(),
+                        onclick: move |_| {
+                            if let Some(pick) = on_pick_target {
+                                pick.call(id);
+                            }
+                        },
+                        {crumb(target.as_deref())}
+                    }
                 }
                 button {
                     class: "im-viewmenu",
@@ -508,5 +570,57 @@ fn leaf_header(
                     }
                 }
             }
+    }
+}
+
+/// A target as a breadcrumb: the last two segments, so a deep pointer still
+/// fits a header. The full value is in the chip's tooltip.
+fn crumb(target: Option<&str>) -> String {
+    let Some(t) = target.filter(|t| !t.is_empty()) else {
+        return "\u{25c7} none".to_string();
+    };
+    let parts: Vec<&str> = t.split('/').filter(|p| !p.is_empty()).collect();
+    let tail = if parts.len() > 2 {
+        format!("\u{2026}/{}", parts[parts.len() - 2..].join("/"))
+    } else if parts.is_empty() {
+        t.to_string()
+    } else {
+        parts.join("/")
+    };
+    // An opaque id — a run's, say — has no segments to trim, and a full one
+    // is wider than the header it sits in. Its first characters identify it.
+    let tail = if !tail.contains('/') && tail.chars().count() > 12 {
+        format!("{}\u{2026}", tail.chars().take(8).collect::<String>())
+    } else {
+        tail
+    };
+    format!("\u{25c6} {tail}")
+}
+
+#[cfg(test)]
+mod crumb_tests {
+    use super::crumb;
+
+    #[test]
+    fn a_deep_pointer_still_fits_a_header() {
+        assert_eq!(crumb(None), "\u{25c7} none");
+        assert_eq!(crumb(Some("")), "\u{25c7} none");
+        assert_eq!(crumb(Some("/settings")), "\u{25c6} settings");
+        assert_eq!(
+            crumb(Some("/settings/favorites")),
+            "\u{25c6} settings/favorites"
+        );
+        assert_eq!(
+            crumb(Some("/state/runs/3/steps/7")),
+            "\u{25c6} \u{2026}/steps/7",
+            "long pointers keep the end, which is the part that identifies it"
+        );
+        // A run id is not a pointer: it keeps its own shape, shortened only
+        // when a full one would be wider than the header.
+        assert_eq!(crumb(Some("9f3a1c2e")), "\u{25c6} 9f3a1c2e");
+        assert_eq!(
+            crumb(Some("5c7e9a1b3d5f7091a3c5e7d9b1f3a5c7")),
+            "\u{25c6} 5c7e9a1b\u{2026}"
+        );
     }
 }

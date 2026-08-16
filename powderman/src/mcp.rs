@@ -110,6 +110,16 @@ pub struct RenameArgs {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SetTargetArgs {
+    /// The area to retarget.
+    pub id: u64,
+    /// What it should look at — a JSON pointer into the workbench documents
+    /// (`/settings/favorites`), a path for a file browser, or a run id. The
+    /// empty string clears the target.
+    pub target: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SwapArgs {
     /// One area id.
     pub a: u64,
@@ -305,6 +315,16 @@ impl Workbench {
         Parameters(a): Parameters<IndexArgs>,
     ) -> Result<CallToolResult, McpError> {
         run("workspace.close", json!({ "index": a.index }))
+    }
+
+    #[tool(
+        description = "Point an area at something without changing its editor: a JSON pointer, a path, or a run id. Empty clears it."
+    )]
+    async fn set_target(
+        &self,
+        Parameters(a): Parameters<SetTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        run("set_target", json!({ "id": a.id, "target": a.target }))
     }
 
     #[tool(description = "Split an area and show the same editor in the new half")]

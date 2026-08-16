@@ -281,3 +281,12 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 }
 .keymap-set:hover, .keymap-reset:hover { color: var(--ink); border-color: var(--im-accent); }
 .keymap-set.waiting { background: var(--im-accent); color: #fff; border-color: var(--im-accent); }
+
+/* The target picker: the data tree in the adjust panel's frame. */
+.target-panel { width: 32rem; max-width: 90vw; }
+.target-current {
+  font-family: var(--im-mono); font-size: .72rem; color: var(--im-text-muted);
+  padding: 0 0 .4rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.target-tree { height: 20rem; display: flex; flex-direction: column; overflow: hidden; }
+.target-tree .im-tree { flex: 1; }

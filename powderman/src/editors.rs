@@ -412,9 +412,20 @@ pub(crate) fn ed_settings(
 /// workbench's documents mounted under one root, every row addressable,
 /// right-click ▸ Copy data path. What `set_setting` edits and what the MCP
 /// tools read stops being invisible: this is the address space, on screen.
-pub(crate) fn ed_data(s: &State) -> Element {
+pub(crate) fn ed_data(s: &State, target: Option<String>) -> Element {
     let state_doc = serde_json::to_value(s).unwrap_or_default();
-    let children_of = Callback::new(move |pointer: String| data_children(&state_doc, &pointer));
+    // The target roots the view: an area pointed at /settings/favorites shows
+    // that subtree and nothing else, which is what makes several data areas
+    // useful side by side instead of three copies of the same scroll.
+    let root = target.unwrap_or_default();
+    let children_of = Callback::new(move |pointer: String| {
+        let at = if pointer.is_empty() {
+            root.clone()
+        } else {
+            pointer
+        };
+        data_children(&state_doc, &at)
+    });
     rsx! {
         div { class: "data-editor im-filter-scope",
             div { class: "keymap-head", FilterBox { placeholder: "filter fields\u{2026}" } }
@@ -425,7 +436,10 @@ pub(crate) fn ed_data(s: &State) -> Element {
 
 /// Children under the mounted root. `""` lists the mounts; below, the pointer
 /// starts with the mount's name and the rest addresses within that document.
-fn data_children(state_doc: &serde_json::Value, pointer: &str) -> Vec<immersion::TreeRow> {
+pub(crate) fn data_children(
+    state_doc: &serde_json::Value,
+    pointer: &str,
+) -> Vec<immersion::TreeRow> {
     if pointer.is_empty() {
         let mount = |name: &str, preview: &str| immersion::TreeRow {
             pointer: format!("/{name}"),
@@ -460,10 +474,69 @@ fn data_children(state_doc: &serde_json::Value, pointer: &str) -> Vec<immersion:
     rows
 }
 
+/// What an editor can be pointed at, and how those choices are listed.
+///
+/// The picker used to offer the raw data tree to every editor, which is wrong
+/// for anything whose target is not a JSON pointer: picking a run meant
+/// choosing `/state/runs/0/id` and storing the pointer, so the run editor
+/// looked up a run whose id was a path and found nothing. An editor knows
+/// what it can take; the picker asks.
+pub(crate) fn target_children(
+    editor: &str,
+    state_doc: &serde_json::Value,
+    state: &State,
+    pointer: &str,
+) -> Vec<immersion::TreeRow> {
+    match editor {
+        "files" => file_children(pointer),
+        // A run's target is its id, not its address in the snapshot, so the
+        // rows are runs and the value each carries is the id itself.
+        "run" => run_targets(state),
+        _ => data_children(state_doc, pointer),
+    }
+}
+
+/// What the picker calls the thing being chosen, so the modal says "Run for
+/// area 3" rather than a generic word for every editor.
+pub(crate) fn target_noun(editor: &str) -> &'static str {
+    match editor {
+        "files" => "File",
+        "run" => "Run",
+        _ => "Target",
+    }
+}
+
+/// The runs, as pickable rows: newest first, labelled the way the runs list
+/// labels them, so recognising one in the picker takes no translation.
+fn run_targets(s: &State) -> Vec<immersion::TreeRow> {
+    let mut runs = s.runs.clone();
+    runs.sort_by_key(|r| std::cmp::Reverse(r.updated_at));
+    runs.iter()
+        .map(|r| immersion::TreeRow {
+            pointer: r.id.clone(),
+            label: format!("{} {}", r.status, r.workflow),
+            preview: r
+                .note
+                .clone()
+                .or_else(|| r.error.clone())
+                .unwrap_or_else(|| short(&r.id, 8)),
+            has_children: false,
+        })
+        .collect()
+}
+
 /// The file browser: the tree view over a directory. Lazily loaded — a
 /// directory reads only when its branch opens.
-pub(crate) fn ed_files() -> Element {
-    let children_of = Callback::new(move |pointer: String| file_children(&pointer));
+pub(crate) fn ed_files(target: Option<String>) -> Element {
+    let root = target.unwrap_or_default();
+    let children_of = Callback::new(move |pointer: String| {
+        let at = if pointer.is_empty() {
+            root.clone()
+        } else {
+            pointer
+        };
+        file_children(&at)
+    });
     rsx! {
         div { class: "files-editor im-filter-scope",
             div { class: "keymap-head", FilterBox { placeholder: "filter files\u{2026}" } }
@@ -487,7 +560,7 @@ fn files_root() -> std::path::PathBuf {
 /// machine's own: a public instance listing its container's filesystem is an
 /// invitation, and it only gets worse when the code viewer can read what the
 /// browser lists.
-fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
+pub(crate) fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
     if crate::demo::enabled() {
         return crate::demo::file_children(pointer);
     }
@@ -583,5 +656,72 @@ mod file_browser {
         }
         unsafe { std::env::remove_var("POWDERMAN_FILES_ROOT") };
         std::fs::remove_dir_all(&tmp).ok();
+    }
+}
+
+#[cfg(test)]
+mod target_sources {
+    use super::*;
+
+    fn state_with_runs() -> State {
+        State {
+            runs: vec![
+                crate::ui::RunView {
+                    id: "aaaa1111".into(),
+                    workflow: "treebank_sweep".into(),
+                    status: "done".into(),
+                    note: Some("41 grammars".into()),
+                    error: None,
+                    updated_at: 100,
+                    steps: vec![],
+                },
+                crate::ui::RunView {
+                    id: "bbbb2222".into(),
+                    workflow: "treebank_fix".into(),
+                    status: "failed".into(),
+                    note: None,
+                    error: Some("verify failed".into()),
+                    updated_at: 300,
+                    steps: vec![],
+                },
+            ],
+            ..Default::default()
+        }
+    }
+
+    /// The bug this exists to stop: the run editor's target is a run id, and
+    /// the picker used to hand it a JSON pointer into the snapshot, so the
+    /// editor looked up a run whose id was `/state/runs/0/id` and reported
+    /// that no such run existed.
+    #[test]
+    fn the_run_picker_offers_run_ids_not_pointers() {
+        let s = state_with_runs();
+        let doc = serde_json::to_value(&s).unwrap();
+        let rows = target_children("run", &doc, &s, "");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].pointer, "bbbb2222", "newest first");
+        assert!(
+            rows.iter().all(|r| !r.pointer.starts_with('/')),
+            "a run target must be an id, not a path: {rows:?}"
+        );
+        assert!(rows.iter().all(|r| !r.has_children), "runs are leaves");
+        assert!(rows[0].label.contains("treebank_fix"));
+        assert_eq!(
+            rows[0].preview, "verify failed",
+            "an error stands in for a note"
+        );
+    }
+
+    #[test]
+    fn other_editors_keep_their_own_feeds() {
+        let s = state_with_runs();
+        let doc = serde_json::to_value(&s).unwrap();
+        // The data editor still walks the mounted documents.
+        let mounts = target_children("data", &doc, &s, "");
+        assert!(mounts.iter().any(|r| r.label == "/settings"), "{mounts:?}");
+        // And the picker names what it is picking.
+        assert_eq!(target_noun("run"), "Run");
+        assert_eq!(target_noun("files"), "File");
+        assert_eq!(target_noun("data"), "Target");
     }
 }

@@ -265,6 +265,19 @@ const BUILTINS: &[Command] = &[
         },
     },
     Command {
+        name: "set_target",
+        description: "Point an area at something without changing its editor",
+        navigational: false,
+        run: |ws, p| {
+            let id = u64_field(p, "id")?;
+            // The empty string clears the target, so "show everything again"
+            // needs no second command.
+            let target = str_field(p, "target").unwrap_or("");
+            let applied = ws.current_layout_mut().set_target(id, target);
+            took(applied, &format!("set_target {id}"))
+        },
+    },
+    Command {
         name: "open_editor",
         description: "Point an area at a specific thing (editor + argument)",
         navigational: false,

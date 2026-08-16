@@ -8,6 +8,7 @@ mod exec;
 mod herdr;
 mod mcp;
 mod metrics;
+mod panels;
 mod treebank;
 mod ui;
 mod workflows;
