@@ -28,6 +28,7 @@ mod panel;
 mod splash;
 mod statusbar;
 mod theme;
+mod tree;
 mod ui;
 mod widget;
 mod workspace;
@@ -50,6 +51,7 @@ pub use panel::{Panel, PanelProps};
 pub use splash::{Splash, SplashProps, SplashRecent, Template};
 pub use statusbar::{StatusBar, StatusBarProps};
 pub use theme::{Theme, theme_css, themes};
+pub use tree::{TreeRow, TreeView, TreeViewProps, value_children};
 pub use ui::{Areas, AreasProps, EditorKind, WorkspaceTabs, WorkspaceTabsProps};
 pub use widget::{
     EditorError, Field, FieldKind, PropertyEditor, PropertyEditorProps, apply_edit, eval_expr,

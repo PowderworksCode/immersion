@@ -453,6 +453,14 @@ fn kinds() -> Vec<EditorKind> {
             id: "keymap",
             label: "Keymap",
         },
+        EditorKind {
+            id: "data",
+            label: "Data",
+        },
+        EditorKind {
+            id: "files",
+            label: "Files",
+        },
     ]
 }
 
@@ -798,6 +806,8 @@ pub fn App() -> Element {
                 "settings" => {
                     crate::editors::ed_settings(settings_doc.clone(), on_setting, on_editor_error)
                 }
+                "data" => crate::editors::ed_data(&s),
+                "files" => crate::editors::ed_files(),
                 other => rsx! { div { class: "empty", "unknown editor {other}" } },
             }
         },
