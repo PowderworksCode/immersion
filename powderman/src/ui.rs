@@ -279,6 +279,35 @@ fn recents(s: &State) -> Vec<SplashRecent> {
 /// chord they are bound to, so the palette, a chord, and an agent all reach one
 /// router. Workspace switches are generated per tab, so the palette lists the
 /// rooms you can jump to by name.
+/// Host mutations that change server truth but are not bus commands: they
+/// need state the bus signature cannot reach (the undo stacks, the settings
+/// document). The parity contract for these is: attributed in the Info log,
+/// and reachable by an agent (an MCP tool per entry). The equivalence test
+/// below holds every action the UI can emit against this list.
+pub(crate) const HOST_ACTIONS: &[&str] = &[
+    "undo",
+    "redo",
+    "repeat_last",
+    "set_setting",
+    "favorite_add",
+    "load_layout",
+];
+
+/// Per-client view state — deliberately NOT server commands. Two browsers may
+/// maximize different areas; opening the palette in one must not open it in
+/// another. An agent has no use for these (it has no viewport), so their
+/// absence from MCP is by design, not drift.
+pub(crate) const CLIENT_VIEW_ACTIONS: &[&str] = &[
+    "maximize",
+    "fullscreen",
+    "palette",
+    "cheatsheet",
+    "adjust_last",
+    "pie",
+    "favorites",
+    "noop",
+];
+
 fn palette_items(ws: &immersion::Workspaces) -> Vec<PaletteItem> {
     let mut items = vec![
         PaletteItem::new("undo", "Undo")
@@ -491,7 +520,7 @@ pub fn App() -> Element {
     let adj_cancel = use_callback(move |()| adjust_open.set(false));
     let adj_apply = use_callback(move |()| {
         // Replace the last operation with the edited one: revert it, then re-run.
-        ws.set(crate::daemon::undo());
+        ws.set(crate::daemon::undo("ui"));
         ws.set(crate::daemon::dispatch(&adjust_name(), adjust_doc()));
         adjust_open.set(false);
     });
@@ -516,7 +545,7 @@ pub fn App() -> Element {
     });
 
     let on_setting = use_callback(move |(pointer, value): (String, serde_json::Value)| {
-        settings.set(crate::daemon::set_setting(&pointer, value));
+        settings.set(crate::daemon::set_setting("ui", &pointer, value));
     });
 
     // The command palette is per-client view state, like maximize — one client
@@ -534,9 +563,9 @@ pub fn App() -> Element {
     // host concerns the bus does not own.
     let on_action = use_callback(move |(action, params): (String, serde_json::Value)| {
         match action.as_str() {
-            "undo" => ws.set(crate::daemon::undo()),
-            "redo" => ws.set(crate::daemon::redo()),
-            "repeat_last" => ws.set(crate::daemon::repeat_last()),
+            "undo" => ws.set(crate::daemon::undo("ui")),
+            "redo" => ws.set(crate::daemon::redo("ui")),
+            "repeat_last" => ws.set(crate::daemon::repeat_last("ui")),
             "cheatsheet" => help_open.toggle(),
             "pie" => {
                 let js = format!(
@@ -586,31 +615,23 @@ pub fn App() -> Element {
                         .get("value")
                         .cloned()
                         .unwrap_or(serde_json::Value::Null);
-                    settings.set(crate::daemon::set_setting(pointer, value));
+                    settings.set(crate::daemon::set_setting("ui", pointer, value));
                 }
                 "noop" => {}
                 "favorite_add" => {
-                    // Right-clicking a menu row adds it here — deduped by label
-                    // and capped, so the list stays a quick menu, not a log.
-                    let mut favs = settings()["favorites"]
-                        .as_array()
-                        .cloned()
-                        .unwrap_or_default();
+                    // The dedup/cap logic lives in the daemon so an agent can
+                    // curate favourites too; the UI keeps only the report.
                     let label = params.get("label").and_then(|l| l.as_str()).unwrap_or("");
-                    if !label.is_empty() && !favs.iter().any(|f| f["label"] == params["label"]) {
-                        favs.push(params.clone());
-                        if favs.len() > 12 {
-                            favs.remove(0);
-                        }
-                        settings.set(crate::daemon::set_setting(
-                            "/favorites",
-                            serde_json::json!(favs),
-                        ));
+                    let (doc, added) = crate::daemon::favorite_add("ui", params.clone());
+                    settings.set(doc);
+                    if added {
                         do_report.call(format!("Added to favourites: {label}"));
                     }
                 }
-                "undo" | "redo" | "repeat_last" | "cheatsheet" | "adjust_last" | "maximize"
-                | "fullscreen" | "palette" | "favorites" | "pie" => {
+                // Routed by the declared lists, so the parity contract the
+                // equivalence test pins is also the router: a menu item naming
+                // any host or client-view action forwards without a new arm.
+                a if HOST_ACTIONS.contains(&a) || CLIENT_VIEW_ACTIONS.contains(&a) => {
                     on_action.call((action, params))
                 }
                 _ => cmd.call((action, params)),
@@ -630,6 +651,7 @@ pub fn App() -> Element {
             .unwrap_or_default();
         km.remove(&action);
         settings.set(crate::daemon::set_setting(
+            "ui",
             "/keymap",
             serde_json::Value::Object(km),
         ));
@@ -658,6 +680,7 @@ pub fn App() -> Element {
     // editor does — one value, two surfaces.
     let on_dont_show = use_callback(move |off: bool| {
         settings.set(crate::daemon::set_setting(
+            "ui",
             "/splash_on_start",
             serde_json::json!(!off),
         ));
@@ -809,7 +832,7 @@ pub fn App() -> Element {
                 LayoutFile {
                     layout_json: serde_json::to_string(&ws.read().clone()).unwrap_or_default(),
                     on_import: move |json: String| {
-                        ws.set(crate::daemon::set_workspaces_from_json(&json));
+                        ws.set(crate::daemon::set_workspaces_from_json("ui", &json));
                     },
                 }
                 span { class: "sub",
@@ -823,7 +846,7 @@ pub fn App() -> Element {
                 on_action,
                 on_capture: move |chord: String| {
                     if let Some(action) = capturing() {
-                        settings.set(crate::daemon::set_setting(
+                        settings.set(crate::daemon::set_setting("ui",
                             &format!("/keymap/{action}"),
                             serde_json::json!(chord),
                         ));
@@ -1172,5 +1195,114 @@ mod keymap_tests {
             .find(|b| b.action == "undo")
             .expect("undo binding");
         assert_eq!(undo.chord, "Mod+Z");
+    }
+}
+
+#[cfg(test)]
+mod parity_tests {
+    use super::*;
+
+    /// Pull every "action" out of a menu-JSON string. Menus are the JSON the
+    /// shim receives, so parsing them exercises exactly what a click emits.
+    fn menu_actions(json: &str) -> Vec<String> {
+        serde_json::from_str::<Vec<serde_json::Value>>(json)
+            .expect("menu JSON parses")
+            .into_iter()
+            .filter_map(|i| i.get("action")?.as_str().map(str::to_string))
+            .collect()
+    }
+
+    /// The parity invariant: every action any UI surface can emit — a default
+    /// binding, a palette row, a menu item, a pie slice — resolves to a bus
+    /// command, a host action, or a declared client-view action. A name in
+    /// none of the three is a control that silently does nothing; this is the
+    /// test that turns "one write path" from a convention into CI.
+    #[test]
+    fn every_ui_action_resolves() {
+        let commands = crate::workflows::commands();
+        let ws = immersion::Workspaces::new("test", Layout::single("runs"));
+        // Settings with one favourite, so the favourites surface is exercised
+        // rather than skipped on an empty default.
+        let settings = serde_json::json!({
+            "favorites": [{ "label": "Split", "action": "split",
+                            "params": { "id": 1, "dir": "row" } }]
+        });
+
+        let mut actions: Vec<(String, String)> = Vec::new(); // (surface, action)
+        for b in immersion::default_keymap() {
+            actions.push(("keymap".into(), b.action));
+        }
+        for p in palette_items(&ws) {
+            actions.push(("palette".into(), p.action));
+        }
+        for a in menu_actions(&window_menu(0, false)) {
+            actions.push(("window menu".into(), a));
+        }
+        for a in menu_actions(&edit_menu(false)) {
+            actions.push(("edit menu".into(), a));
+        }
+        for a in menu_actions(&help_menu(false)) {
+            actions.push(("help menu".into(), a));
+        }
+        for a in menu_actions(&pie_menu_json()) {
+            actions.push(("pie".into(), a));
+        }
+        for a in menu_actions(&favorites_menu_json(&settings)) {
+            actions.push(("favorites".into(), a));
+        }
+        let kinds = kinds();
+        for a in menu_actions(&immersion::editor_menu_json(1, &kinds, "runs")) {
+            actions.push(("editor menu".into(), a));
+        }
+        for a in menu_actions(&immersion::view_menu_json(1, true, true, true)) {
+            actions.push(("view menu".into(), a));
+        }
+        for a in menu_actions(&immersion::area_menu_json(1)) {
+            actions.push(("area menu".into(), a));
+        }
+
+        assert!(
+            actions.len() > 30,
+            "harvest looks broken: {}",
+            actions.len()
+        );
+        let mut orphans = Vec::new();
+        for (surface, action) in &actions {
+            let known = commands.get(action).is_some()
+                || HOST_ACTIONS.contains(&action.as_str())
+                || CLIENT_VIEW_ACTIONS.contains(&action.as_str());
+            if !known {
+                orphans.push(format!("{surface}: {action}"));
+            }
+        }
+        assert!(
+            orphans.is_empty(),
+            "actions with no resolution (bus, host, or client-view):\n  {}",
+            orphans.join("\n  ")
+        );
+    }
+
+    /// The complement: a host action that stops being routed is as broken as
+    /// an unrouted menu item. The on_action / on_menu matches cannot be
+    /// inspected directly, so this pins the contract they implement.
+    #[test]
+    fn host_and_client_lists_do_not_overlap_or_shadow_the_bus() {
+        let commands = crate::workflows::commands();
+        for a in HOST_ACTIONS {
+            assert!(
+                !CLIENT_VIEW_ACTIONS.contains(a),
+                "{a} is in both HOST_ACTIONS and CLIENT_VIEW_ACTIONS"
+            );
+            assert!(
+                commands.get(a).is_none(),
+                "{a} is both a host action and a bus command — one must win"
+            );
+        }
+        for a in CLIENT_VIEW_ACTIONS {
+            assert!(
+                commands.get(a).is_none(),
+                "{a} is both client-view and a bus command — one must win"
+            );
+        }
     }
 }

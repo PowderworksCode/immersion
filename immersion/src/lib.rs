@@ -35,7 +35,10 @@ mod workspace;
 pub use area::{Area, AreaId, Dir, Layout, MIN_RATIO, Region};
 pub use client::{Chrome, ChromeProps};
 pub use command::{Command, Commands};
-pub use contextmenu::{ContextMenu, ContextMenuProps, MenuItem, menu_json};
+pub use contextmenu::{
+    ContextMenu, ContextMenuProps, MenuItem, area_menu_json, editor_menu_json, menu_json,
+    view_menu_json,
+};
 pub use filter::{FilterBox, FilterBoxProps};
 pub use keymap::{
     Binding, Keymap, KeymapHelp, KeymapHelpProps, KeymapProps, Platform, PlatformProps,

@@ -157,7 +157,33 @@ pub fn settings() -> serde_json::Value {
 /// Apply one widget edit to the settings document and persist. Not on the
 /// layout undo stack — a preference is not something you undo with the same
 /// Ctrl-Z that reverts a split.
-pub fn set_setting(pointer: &str, value: serde_json::Value) -> serde_json::Value {
+/// Append to the Info log. One function so every mutation — bus command or
+/// host mutation (undo, a settings write) — lands in the same attributed
+/// stream. A log that only covered layout commands told a partial story:
+/// "who changed the theme" and "who reverted that split" were unanswerable.
+fn log_command(source: &str, name: &str, params: serde_json::Value, ok: bool) {
+    let s = shared();
+    let mut log = s.log.lock().expect("log");
+    log.push(crate::ui::LogEntry {
+        name: name.to_string(),
+        params,
+        at: engine::now_ms(),
+        ok,
+        source: source.to_string(),
+    });
+    let len = log.len();
+    if len > 200 {
+        log.drain(0..len - 200);
+    }
+}
+
+pub fn set_setting(source: &str, pointer: &str, value: serde_json::Value) -> serde_json::Value {
+    log_command(
+        source,
+        "set_setting",
+        serde_json::json!({ "pointer": pointer, "value": value }),
+        true,
+    );
     let mut doc = settings();
     immersion::apply_edit(&mut doc, pointer, value);
     let s = shared();
@@ -214,20 +240,7 @@ pub fn dispatch_from(
     let outcome = s.commands.run(&mut candidate, name, &params);
     // The Info log: every command through the one write path — UI and MCP
     // alike — with whether it took. Newest last, capped.
-    {
-        let mut log = s.log.lock().expect("log");
-        log.push(crate::ui::LogEntry {
-            name: name.to_string(),
-            params: params.clone(),
-            at: engine::now_ms(),
-            ok: outcome.is_ok(),
-            source: source.to_string(),
-        });
-        let len = log.len();
-        if len > 200 {
-            log.drain(0..len - 200);
-        }
-    }
+    log_command(source, name, params.clone(), outcome.is_ok());
     outcome?; // logged either way; surface the error after recording it
     // Success. Record for undo — but not for pure navigation (switching a tab
     // is not something you undo) — capping depth so history is bounded.
@@ -263,7 +276,7 @@ pub fn last_command() -> Option<(String, serde_json::Value)> {
 /// Re-run the most recent command that changed the layout (Blender's Repeat
 /// Last, Shift+R). Navigation and failed commands are skipped — repeating a
 /// tab-switch or a command that already errored is not what the key means.
-pub fn repeat_last() -> immersion::Workspaces {
+pub fn repeat_last(source: &str) -> immersion::Workspaces {
     let s = shared();
     let last = {
         let log = s.log.lock().expect("log");
@@ -273,7 +286,12 @@ pub fn repeat_last() -> immersion::Workspaces {
             .cloned()
     };
     match last {
-        Some(e) => dispatch(&e.name, e.params),
+        // Through the checked path with the caller's source, so the repeat is
+        // logged and attributed like the original was.
+        Some(e) => dispatch_from(source, &e.name, e.params).unwrap_or_else(|err| {
+            eprintln!("repeat_last failed: {err}");
+            workspaces()
+        }),
         None => workspaces(),
     }
 }
@@ -281,10 +299,11 @@ pub fn repeat_last() -> immersion::Workspaces {
 /// Replace the whole workbench from imported JSON (the layout export round
 /// trips back in here). A parse failure is a no-op — a malformed upload must
 /// not blank the workspace — and the swap is recorded for undo.
-pub fn set_workspaces_from_json(json: &str) -> immersion::Workspaces {
+pub fn set_workspaces_from_json(source: &str, json: &str) -> immersion::Workspaces {
     let s = shared();
     match serde_json::from_str::<immersion::Workspaces>(json) {
         Ok(new) => {
+            log_command(source, "load_layout", serde_json::Value::Null, true);
             let mut w = s.workspaces.lock().expect("workspaces");
             s.undo.lock().expect("undo").push(w.clone());
             *w = new;
@@ -292,10 +311,44 @@ pub fn set_workspaces_from_json(json: &str) -> immersion::Workspaces {
             w.clone()
         }
         Err(e) => {
+            log_command(source, "load_layout", serde_json::Value::Null, false);
             eprintln!("layout import failed: {e}");
             workspaces()
         }
     }
+}
+
+/// Add an entry to Quick Favourites — deduped by label and capped, so the
+/// list stays a quick menu, not a log. Moved here from the UI so an agent can
+/// curate favourites the way a right-click does; returns the new settings
+/// document and whether the entry was added (a duplicate is not).
+pub fn favorite_add(source: &str, entry: serde_json::Value) -> (serde_json::Value, bool) {
+    let doc = settings();
+    let mut favs = doc["favorites"].as_array().cloned().unwrap_or_default();
+    let label = entry.get("label").and_then(|l| l.as_str()).unwrap_or("");
+    let fresh = !label.is_empty() && !favs.iter().any(|f| f["label"] == entry["label"]);
+    log_command(source, "favorite_add", entry.clone(), fresh);
+    if !fresh {
+        return (doc, false);
+    }
+    favs.push(entry);
+    if favs.len() > 12 {
+        favs.remove(0);
+    }
+    // Through set_setting's own path minus the double log entry: the write
+    // and persistence live in one place.
+    let mut doc = doc;
+    immersion::apply_edit(&mut doc, "/favorites", serde_json::json!(favs));
+    let s = shared();
+    if let Ok(json) = serde_json::to_string(&doc) {
+        let conn = s.db.lock().expect("db");
+        let _ = conn.execute(
+            "INSERT INTO kv (key, value) VALUES ('settings', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = ?1",
+            rusqlite::params![json],
+        );
+    }
+    (doc, true)
 }
 
 fn persist_workspaces(s: &Shared, w: &immersion::Workspaces) {
@@ -311,25 +364,35 @@ fn persist_workspaces(s: &Shared, w: &immersion::Workspaces) {
 
 /// Step back one edit. The current value goes onto the redo stack, the last
 /// undo value becomes current. A no-op with an empty stack.
-pub fn undo() -> immersion::Workspaces {
+pub fn undo(source: &str) -> immersion::Workspaces {
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
-    if let Some(prev) = s.undo.lock().expect("undo").pop() {
+    let took = if let Some(prev) = s.undo.lock().expect("undo").pop() {
         s.redo.lock().expect("redo").push(w.clone());
         *w = prev;
         persist_workspaces(&s, &w);
-    }
+        true
+    } else {
+        false
+    };
+    // ok mirrors whether anything happened: an undo with an empty stack logs
+    // as a miss, which is what "why did nothing change" wants to see.
+    log_command(source, "undo", serde_json::Value::Null, took);
     w.clone()
 }
 
-pub fn redo() -> immersion::Workspaces {
+pub fn redo(source: &str) -> immersion::Workspaces {
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
-    if let Some(next) = s.redo.lock().expect("redo").pop() {
+    let took = if let Some(next) = s.redo.lock().expect("redo").pop() {
         s.undo.lock().expect("undo").push(w.clone());
         *w = next;
         persist_workspaces(&s, &w);
-    }
+        true
+    } else {
+        false
+    };
+    log_command(source, "redo", serde_json::Value::Null, took);
     w.clone()
 }
 
