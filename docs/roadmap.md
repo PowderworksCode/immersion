@@ -122,65 +122,96 @@ pub struct EditorError {          // EvalError generalized
   dropped: the host reports them, and an MCP caller gets them verbatim —
   agent parity for failure, not just success.
 
+## The data model, made visible
+
+Two additions extend the plan past Blender's chrome — and it turns out they
+are not extensions at all, but Blender's own architecture followed further
+than its screenshots. Blender's UI is generated from an underlying typed data
+tree (RNA): the Outliner has a **Data API** display mode that exposes that
+entire tree as browsable rows; every property answers right-click ▸ *Copy Full
+Data Path*; and every editor's header carries a selector for *which*
+data-block it is looking at, with a pin to hold it. We adopt all three,
+translated to serde.
+
+**The data editor.** Is the underlying structure a tree? Yes — a serde value
+is strictly a tree (no cycles, no shared references), and the workbench holds
+several of them. The data editor mounts them under one virtual root:
+
+```
+/layout      the workspace tree (what Areas renders)
+/settings    the settings document
+/keymap      overrides
+/favorites   quick favourites
+/state       the host snapshot (read-only): runs, fleet, machine
+```
+
+One editor shows that root as an expandable tree — Blender's Data API mode
+for our world. Every row knows its JSON pointer; right-click ▸ *Copy data
+path*. Read-only first; editing arrives later as ordinary bus commands
+(`set_setting` already edits `/settings` by pointer — the data editor makes
+the address space it operates on visible).
+
+**Editor targets as locators.** An area leaf today is `{editor, arg}`; the
+`arg` generalizes to a **target**: a pointer into the mounted root. The
+header menu shows it as a breadcrumb chip — info first (what is this editor
+looking at?), navigation second: clicking it opens a picker over the data
+tree, and choosing a node retargets the editor through one bus command
+(`set_target {id, pointer}`), which means agents retarget editors the same
+way people do. The run-detail editor is the existing proof (its arg is a run
+id — a locator by another name); the chart editor makes it essential (a chart
+targets the subtree it plots).
+
 ## The next editors
 
-Ordered so each builds on the last. All read-only where "read" is meaningful;
-text *editing* is explicitly out of this phase (the liveview budget rule makes
-an editing buffer a client-side project, and wrapping CodeMirror inside a
-codebase whose rule is "own your grammars" is a decision to take deliberately
-or not at all).
+Ordered so each builds on the last; read-only where "read" is meaningful.
+Text *editing* stays out of this phase (the old immersion wrapped CodeMirror
+for its CodePane — precedent if we ever choose wrapping deliberately).
 
-1. **Outliner** — Blender's Outliner generalized: a tree view over any serde
-   value, with expand/collapse state as layout data, filtering via the
-   existing FilterBox, selection as a command (`select`, on the bus, so an
-   agent can navigate). The filesystem viewer is the first instance (a
-   directory tree is a lazily-loaded serde value); the settings document and
-   a run's step tree are the second and third, free. Everything later —
-   diffs, PRs, charts — wants a tree somewhere.
-2. **Code viewer** — read-only, server-side syntax highlighting (`syntect`),
-   line numbers, goto-line via palette. The document is `{path, language,
-   text}`; scrolling is frame-path (client), everything else is server truth.
-3. **Diff viewer** — unified and side-by-side over two texts; then `git diff`
-   as the obvious host feed. Together with the outliner this makes powderman
-   able to *show its work* — a fix run's worktree, its diff — inside the
-   workbench instead of a terminal.
-4. **PR viewer** — a powderman editor, not a library one: `gh`-backed list /
-   detail / files, composed from outliner + code + diff. This is the proof
-   that the library pieces compose into a host-specific tool without new
-   library surface — the "toolkit" claim, tested.
-5. **Data display** — the chart editor. The design follows from the research
-   below: the document is a *declarative chart spec* (a serde value like
-   everything else), the editor renders it to SVG server-side, and commands
-   mutate the spec. Which spec grammar — a small owned one in the house
-   style, versus embedding a Vega-Lite subset — is the one open question, and
-   the doc takes a position: start with a small owned grammar (bar, line,
-   scatter, table; explicit axes; theme tokens for color), shaped so that a
-   Vega-Lite-subset importer is a mapping, not a rewrite.
+1. **The tree view**, once, as a library component — expandable rows over any
+   serde value, lazy children, filtering via FilterBox, selection on the bus.
+   Two instances immediately: the **data editor** (the mounted root above)
+   and the **file browser** (a directory tree is a lazily-loaded serde value
+   fed by the host). One component, two editors, and the target-picker
+   falls out of the same code.
+2. **Editor targets** — the locator chip and picker, once the tree exists to
+   pick from.
+3. **Code viewer** — read-only, `syntect` highlighting server-side, line
+   numbers, goto-line via the palette. Document: `{path, language, text}`.
+4. **Diff viewer** — the diff is computed in Rust (`similar`) and is server
+   truth; the *rendering* is [diff2html](https://github.com/rtfpessoa/diff2html),
+   vendored (76 KB min / 20 KB gzip + 20 KB CSS, MIT). It takes exactly what
+   `similar` emits — unified diff text — and draws GitHub-quality line-by-line
+   or side-by-side HTML with intra-line highlights. This is a deliberate,
+   sized exception to "own the drawing": diff *presentation* is a commodity
+   with one dominant idiom, and 20 KB of vendored renderer beats reinventing
+   line-matching. The shim receives the diff in one message and renders
+   locally — the budget rule holds.
+5. **Chart editor** — Vega-Lite, the real one. The criterion is not elegance
+   but *training-data mass*: [Vega-Lite](https://vega.github.io/vega-lite/)
+   is the grammar LLMs demonstrably know — it is what
+   [VegaChat](https://arxiv.org/abs/2601.15385) generates, what
+   [chat2plot](https://github.com/nyanp/chat2plot) emits, what Databricks'
+   [agent pipelines](https://www.databricks.com/blog/bringing-visualizations-life-multi-agent-systems-vega-lite)
+   speak, and the ecosystem's research default. An owned grammar would be
+   cleaner and *unknown to every model* — wrong trade here. Concretely:
+   - The chart document **is** a Vega-Lite spec (a serde value; `$schema`
+     and all). Agents write specs over the MCP tools that already exist;
+     `set_setting`-style pointer edits are the chart-editing API for free.
+   - Rendering is the vendored Vega stack served from the binary
+     (vega 512 KB + vega-lite 248 KB + vega-embed 60 KB ≈ 274 KB gzip
+     total, BSD-3) — a client shim mounts the spec, and re-renders on
+     commit. Data can be inline or a named feed the host resolves.
+   - Specs are validated server-side against the published Vega-Lite JSON
+     schema before they render; a bad spec surfaces through `EditorError`
+     like any other bad input, instead of a blank panel.
+   - `vl-convert` stays noted as the later server-side path for PNG/SVG
+     export; it is not needed to ship the editor.
+   - Powderman's machine charts become the first consumer: charts-as-specs
+     replace charts-as-code, and the demo gets visibly better.
 
-### Why declarative specs, and the LLM angle
-
-The charting ecosystem converged during 2025–26 on exactly the pattern this
-codebase already uses: **LLMs and agents author declarative JSON specs; a
-renderer owns the drawing.** [VegaChat](https://arxiv.org/abs/2601.15385)
-generates and validates Vega-Lite from natural language;
-[chat2plot](https://github.com/nyanp/chat2plot) has the LLM emit a JSON plot
-spec precisely because generated *code* is unsafe and unvalidatable;
-[Highcharts](https://5of10.com/articles/best-chart-library-for-llm-output/)
-now ships production MCP servers; Databricks builds
-[multi-agent Vega-Lite pipelines](https://www.databricks.com/blog/bringing-visualizations-life-multi-agent-systems-vega-lite).
-The shared reasons: a spec can be schema-validated before it renders, edited
-incrementally, diffed, and carried in a constrained context window —
-[Vega-Lite](https://vega.github.io/vega-lite/)'s compactness is cited as the
-deciding property.
-
-For immersion this is not an adaptation, it is the default: a chart spec is a
-serde document, mutated by commands, readable and writable by an agent over
-the MCP tools that already exist. `set_setting` with a pointer into a chart
-spec *is* the chart-editing API. Rust-side rendering has precedent if we ever
-want Vega-Lite itself ([vl-convert](https://github.com/vega/vl-convert),
-[avenger](https://github.com/jonmmease/avenger)), but both are heavy; the
-owned-grammar start keeps the renderer a few hundred lines of SVG generation
-against theme tokens, which is the same trade we made for expressions.
+Vendoring note: both exceptions ride the existing pattern — assets served by
+the daemon (`include_bytes!`), pinned versions committed with checksums, no
+CDN at runtime.
 
 ## What we are not doing (this phase)
 
@@ -190,6 +221,10 @@ against theme tokens, which is the same trade we made for expressions.
   zero seed in code; same here, same reason.
 - **Text editing.** Read-only viewers first. Revisit only with a deliberate
   decision on own-vs-wrap.
+- **PR viewer.** Deferred by decision. It remains the natural test of the
+  composition claim (outliner + code + diff + gh feed, no new library
+  surface), and everything it needs ships in steps 1–4 — but it is not this
+  phase's work.
 - **Publishing / second host.** Powderman-first, extract later. The cost —
   API decisions go untested by a second consumer — is accepted and named.
 - **Multi-user rooms.** The old immersion had durable rooms and presence;
@@ -207,14 +242,18 @@ Each step is a PR-sized unit; each leaves main coherent.
 2. **Errors surface** — `EditorError`, widget components with invalid state,
    report-slot wiring, command failures reported. The expression parser's
    messages become visible, which is why the parser got good messages.
-3. **Outliner** editor + filesystem feed in powderman.
-4. **Code viewer** (`syntect`), then **diff viewer**, then the **PR viewer**
-   composition in powderman.
-5. **Chart editor** with the owned spec grammar; powderman's machine charts
-   become its first consumer (charts-as-documents replace charts-as-code).
-6. **Chrome backlog** interleaved: preferences editor, task progress,
+3. **Tree view** component → **data editor** (mounted root, copy-data-path)
+   and **file browser** (lazy fs feed) as its first two instances.
+4. **Editor targets** — locator chip in the header menu, picker over the
+   tree, `set_target` on the bus.
+5. **Code viewer** (`syntect`), then the **diff viewer** (`similar` +
+   vendored diff2html).
+6. **Chart editor** — Vega-Lite specs as documents, vendored Vega stack,
+   schema validation through `EditorError`; powderman's machine charts
+   migrate onto it.
+7. **Chrome backlog** interleaved: preferences editor, task progress,
    tab reorder, sweep-drag, area-scoped hints, collapsible panels.
 
 The order encodes the priorities: make the existing claims true (1–2) before
-widening the surface (3–5), and let the chrome polish ride along rather than
-lead.
+widening the surface, put the data model on screen before the editors that
+navigate by it (3–4), and let the chrome polish ride along rather than lead.
