@@ -12,38 +12,9 @@
 
 import { once } from "./types";
 
-// Blender lets you type arithmetic into a number field: `3*2`, `1920/2`,
-// `pi*2`. Evaluate it here, on commit, and hand the widget a plain number —
-// the server never sees the expression, and an unparseable one is left alone
-// for the field's own validation to reject.
-const CONSTS: Record<string, number> = { pi: Math.PI, e: Math.E, tau: Math.PI * 2 };
-
-export const evalExpr = (raw: string): number | null => {
-  const src = raw.trim().toLowerCase();
-  if (src === "") return null;
-  // A plain number is the common case and needs no parsing.
-  const plain = Number(src);
-  if (Number.isFinite(plain)) return plain;
-  // Only digits, the four operators, parens, dots and known constant names —
-  // anything else is not arithmetic and must not be evaluated.
-  // Word boundaries, or the `e` in `1e3` is read as Euler's number and
-  // `2*1e3` quietly evaluates to 25.4 instead of 2000. Numeric literals —
-  // exponent and all — collapse to 0 before the check, so an exponent is
-  // arithmetic while a stray letter still is not.
-  const named = src
-    .replace(/\b(pi|tau|e)\b/g, "0")
-    .replace(/\d+(\.\d*)?(e[-+]?\d+)?/g, "0");
-  if (!/^[-+*/()0.\s]+$/.test(named)) return null;
-  const expr = src.replace(/\b(pi|tau|e)\b/g, (m) => String(CONSTS[m] ?? 0));
-  try {
-    // eslint-disable-next-line no-new-func -- the input is restricted to
-    // arithmetic by the test above; this evaluates numbers, not code.
-    const v = Function(`"use strict";return (${expr})`)() as unknown;
-    return typeof v === "number" && Number.isFinite(v) ? v : null;
-  } catch {
-    return null;
-  }
-};
+// Expression entry (`3*2`, `pi*100`) is NOT here: it runs once, on commit, on
+// a message the server already receives, so it lives in Rust (`eval_number`).
+// Only frame-path work — the drag preview below — has to be in the browser.
 
 interface Scrub {
   input: HTMLInputElement;
@@ -103,19 +74,6 @@ if (once("__imScrub")) {
       v = Math.min(s.max, Math.max(s.min, v));
       const dec = (String(s.step).split(".")[1] ?? "").length;
       s.input.value = v.toFixed(dec);
-    },
-    true,
-  );
-
-  // Typing commits through `change`; evaluate an expression before the widget
-  // reads the value, so `3*2` reaches the document as 6.
-  document.addEventListener(
-    "change",
-    (e) => {
-      const input = e.target as HTMLInputElement | null;
-      if (!input?.dataset || input.dataset.imScrub === undefined) return;
-      const v = evalExpr(input.value);
-      if (v !== null && String(v) !== input.value.trim()) input.value = String(v);
     },
     true,
   );
