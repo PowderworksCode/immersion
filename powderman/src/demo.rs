@@ -389,6 +389,83 @@ pub async fn sample_loop(db: Db) {
     }
 }
 
+/// A fabricated file tree. The demo must not list the machine it runs on —
+/// names and sizes alone map a container, and the code viewer will make what
+/// the browser lists readable — so the public instance browses a plausible
+/// checkout that does not exist. Same contract as the seeded runs: it looks
+/// like the real thing and is entirely made up.
+///
+/// `(path, size)`; a path ending in `/` is a directory. Children are derived
+/// from the paths, so adding a row is one line.
+const FILES: &[(&str, u64)] = &[
+    ("/README.md", 4_182),
+    ("/Cargo.toml", 1_204),
+    ("/docs/", 0),
+    ("/docs/roadmap.md", 11_930),
+    ("/docs/keymap-web-safety.md", 3_418),
+    ("/immersion/", 0),
+    ("/immersion/Cargo.toml", 892),
+    ("/immersion/src/", 0),
+    ("/immersion/src/area.rs", 18_204),
+    ("/immersion/src/command.rs", 12_866),
+    ("/immersion/src/tree.rs", 7_741),
+    ("/immersion/src/widget.rs", 24_110),
+    ("/immersion/ts/", 0),
+    ("/immersion/ts/gestures.ts", 6_882),
+    ("/immersion/ts/types.ts", 2_140),
+    ("/powderman/", 0),
+    ("/powderman/Cargo.toml", 1_536),
+    ("/powderman/src/", 0),
+    ("/powderman/src/daemon.rs", 28_774),
+    ("/powderman/src/editors.rs", 16_402),
+    ("/powderman/src/mcp.rs", 14_918),
+    ("/powderman/src/ui.rs", 42_330),
+];
+
+/// Children of one directory in the fabricated tree.
+pub fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
+    let mut rows = fabricated_rows(pointer);
+    // Directories first, like the real browser: two file views that sort
+    // differently read as two different tools.
+    rows.sort_by_key(|r| (!r.has_children, r.label.clone()));
+    rows
+}
+
+fn fabricated_rows(pointer: &str) -> Vec<immersion::TreeRow> {
+    let prefix = if pointer.is_empty() {
+        "/".to_string()
+    } else {
+        format!("{pointer}/")
+    };
+    FILES
+        .iter()
+        .filter_map(|(path, size)| {
+            let rest = path.strip_prefix(&prefix)?;
+            // One level only: a deeper path belongs to a child directory, and
+            // the trailing slash of a directory row is not a level of its own.
+            let name = rest.trim_end_matches('/');
+            if name.is_empty() || name.contains('/') {
+                return None;
+            }
+            let is_dir = path.ends_with('/');
+            Some(immersion::TreeRow {
+                pointer: format!("{prefix}{name}"),
+                label: if is_dir {
+                    format!("{name}/")
+                } else {
+                    name.to_string()
+                },
+                preview: if is_dir {
+                    String::new()
+                } else {
+                    crate::editors::human_size(*size)
+                },
+                has_children: is_dir,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,6 +480,24 @@ mod tests {
             .expect("db")
             .query_row(sql, [], |r| r.get(0))
             .expect("count")
+    }
+
+    #[test]
+    fn the_fabricated_tree_walks_one_level_at_a_time() {
+        let root = file_children("");
+        let names: Vec<&str> = root.iter().map(|r| r.label.as_str()).collect();
+        assert!(names.contains(&"docs/"), "{names:?}");
+        assert!(names.contains(&"README.md"), "{names:?}");
+        assert!(
+            !names.iter().any(|n| n.contains('/') && !n.ends_with('/')),
+            "a deeper path leaked into the root level: {names:?}"
+        );
+        let src = file_children("/immersion/src");
+        assert!(src.iter().all(|r| !r.has_children), "no dirs at that level");
+        assert!(src.iter().any(|r| r.label == "tree.rs"));
+        // Nothing outside the fabricated set, whatever is asked for.
+        assert!(file_children("/etc").is_empty());
+        assert!(file_children("/../..").is_empty());
     }
 
     #[test]

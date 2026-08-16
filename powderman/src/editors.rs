@@ -461,8 +461,7 @@ fn data_children(state_doc: &serde_json::Value, pointer: &str) -> Vec<immersion:
 }
 
 /// The file browser: the tree view over a directory. Lazily loaded — a
-/// directory reads only when its branch opens — and rooted at the daemon's
-/// working directory, which is where the things a run touches live.
+/// directory reads only when its branch opens.
 pub(crate) fn ed_files() -> Element {
     let children_of = Callback::new(move |pointer: String| file_children(&pointer));
     rsx! {
@@ -473,17 +472,38 @@ pub(crate) fn ed_files() -> Element {
     }
 }
 
-/// One directory level. The pointer is a path relative to the root; minted by
-/// us, but a stray ".." would walk out of the tree, so it is refused rather
-/// than resolved. Directories first, dotfiles last within each group, and a
-/// level caps at 500 entries — a node_modules should not freeze the page.
+/// Where the browser is rooted. `POWDERMAN_FILES_ROOT` confines it; without
+/// one it is the daemon's working directory, which is where the things a run
+/// touches live. Canonicalized, because containment is checked against it.
+fn files_root() -> std::path::PathBuf {
+    let raw = std::env::var("POWDERMAN_FILES_ROOT")
+        .map(std::path::PathBuf::from)
+        .or_else(|_| std::env::current_dir())
+        .unwrap_or_else(|_| std::path::PathBuf::from("/"));
+    raw.canonicalize().unwrap_or(raw)
+}
+
+/// One directory level. The demo serves a fabricated tree instead of the
+/// machine's own: a public instance listing its container's filesystem is an
+/// invitation, and it only gets worse when the code viewer can read what the
+/// browser lists.
 fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
+    if crate::demo::enabled() {
+        return crate::demo::file_children(pointer);
+    }
     const CAP: usize = 500;
-    if pointer.split('/').any(|seg| seg == "..") {
+    let root = files_root();
+    let dir = root.join(pointer.trim_start_matches('/'));
+    // Containment, checked rather than assumed: resolve the path and require
+    // it to still be under the root. A "../.." in a crafted pointer and a
+    // symlink pointing outward both fail here, which is why the check is on
+    // the resolved path and not on the text of the pointer.
+    let Ok(dir) = dir.canonicalize() else {
+        return Vec::new();
+    };
+    if !dir.starts_with(&root) {
         return Vec::new();
     }
-    let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-    let dir = root.join(pointer.trim_start_matches('/'));
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Vec::new();
     };
@@ -491,11 +511,11 @@ fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
         .filter_map(|e| {
             let e = e.ok()?;
             let name = e.file_name().to_string_lossy().into_owned();
-            // Symlinks are leaves: following one could leave the root, and a
-            // link's target is better opened where it really lives.
+            // Symlinks are leaves: a link's target is better opened where it
+            // really lives, and not following one keeps the walk inside root
+            // without a second canonicalize per entry.
             let meta = e.path().symlink_metadata().ok()?;
-            let is_dir = meta.is_dir();
-            Some((is_dir, name.starts_with('.'), name, meta.len()))
+            Some((meta.is_dir(), name.starts_with('.'), name, meta.len()))
         })
         .collect();
     rows.sort_by(|a, b| (!a.0, a.1, &a.2).cmp(&(!b.0, b.1, &b.2)));
@@ -525,11 +545,43 @@ fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
     out
 }
 
-fn human_size(len: u64) -> String {
+pub(crate) fn human_size(len: u64) -> String {
     match len {
         0..=1023 => format!("{len} B"),
         1024..=1048575 => format!("{:.1} K", len as f64 / 1024.0),
         1048576..=1073741823 => format!("{:.1} M", len as f64 / 1048576.0),
         _ => format!("{:.1} G", len as f64 / 1073741824.0),
+    }
+}
+
+#[cfg(test)]
+mod file_browser {
+    /// Containment is the property that matters: whatever pointer arrives,
+    /// the browser must not read outside its root. Checked on the resolved
+    /// path, so a crafted "../.." fails even though the text looks harmless
+    /// after joining.
+    #[test]
+    fn a_pointer_cannot_climb_out_of_the_root() {
+        let tmp = std::env::temp_dir().join("im-files-root-test");
+        let inner = tmp.join("inside");
+        std::fs::create_dir_all(&inner).expect("mkdir");
+        std::fs::write(inner.join("kept.txt"), b"hi").expect("write");
+        // SAFETY: single-threaded test process; the var is read on the next
+        // line and nothing else in this test touches the environment.
+        unsafe { std::env::set_var("POWDERMAN_FILES_ROOT", &tmp) };
+
+        let inside = super::file_children("/inside");
+        assert!(
+            inside.iter().any(|r| r.label == "kept.txt"),
+            "the root's own files list: {inside:?}"
+        );
+        for escape in ["/..", "/../..", "/inside/../..", "/../etc"] {
+            assert!(
+                super::file_children(escape).is_empty(),
+                "{escape} escaped the root"
+            );
+        }
+        unsafe { std::env::remove_var("POWDERMAN_FILES_ROOT") };
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }

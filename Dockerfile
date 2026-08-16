@@ -40,10 +40,14 @@ COPY --from=build /src/target/release/powderman /usr/local/bin/powderman
 # Fly routes to internal_port 8080; the DB is on the ephemeral container fs (a
 # preview keeps no state); schedules are OFF (never fire the 06:00 sweep); the
 # MCP host guard is open because Fly reaches the app under its *.fly.dev name.
+# The file browser is confined to /data rather than the container root: demo
+# mode serves a fabricated tree anyway, and this is the belt to that braces —
+# a deploy that ever runs without POWDERMAN_DEMO still cannot list /etc.
 ENV POWDERMAN_PORT=8080 \
     POWDERMAN_DB=/data/powderman.db \
     POWDERMAN_SCHEDULES=0 \
-    POWDERMAN_MCP_ALLOWED_HOSTS=*
+    POWDERMAN_MCP_ALLOWED_HOSTS=* \
+    POWDERMAN_FILES_ROOT=/data
 RUN mkdir -p /data
 EXPOSE 8080
 CMD ["powderman"]
