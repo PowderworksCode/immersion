@@ -26,9 +26,15 @@ export const evalExpr = (raw: string): number | null => {
   if (Number.isFinite(plain)) return plain;
   // Only digits, the four operators, parens, dots and known constant names —
   // anything else is not arithmetic and must not be evaluated.
-  const named = src.replace(/pi|tau|e/g, "0");
-  if (!/^[-+*/()0-9.\s]+$/.test(named)) return null;
-  const expr = src.replace(/pi|tau|e/g, (m) => String(CONSTS[m] ?? 0));
+  // Word boundaries, or the `e` in `1e3` is read as Euler's number and
+  // `2*1e3` quietly evaluates to 25.4 instead of 2000. Numeric literals —
+  // exponent and all — collapse to 0 before the check, so an exponent is
+  // arithmetic while a stray letter still is not.
+  const named = src
+    .replace(/\b(pi|tau|e)\b/g, "0")
+    .replace(/\d+(\.\d*)?(e[-+]?\d+)?/g, "0");
+  if (!/^[-+*/()0.\s]+$/.test(named)) return null;
+  const expr = src.replace(/\b(pi|tau|e)\b/g, (m) => String(CONSTS[m] ?? 0));
   try {
     // eslint-disable-next-line no-new-func -- the input is restricted to
     // arithmetic by the test above; this evaluates numbers, not code.

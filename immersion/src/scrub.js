@@ -68,10 +68,10 @@
     const plain = Number(src);
     if (Number.isFinite(plain))
       return plain;
-    const named = src.replace(/pi|tau|e/g, "0");
-    if (!/^[-+*/()0-9.\s]+$/.test(named))
+    const named = src.replace(/\b(pi|tau|e)\b/g, "0").replace(/\d+(\.\d*)?(e[-+]?\d+)?/g, "0");
+    if (!/^[-+*/()0.\s]+$/.test(named))
       return null;
-    const expr = src.replace(/pi|tau|e/g, (m) => String(CONSTS[m] ?? 0));
+    const expr = src.replace(/\b(pi|tau|e)\b/g, (m) => String(CONSTS[m] ?? 0));
     try {
       const v = Function(`"use strict";return (${expr})`)();
       return typeof v === "number" && Number.isFinite(v) ? v : null;
