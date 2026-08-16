@@ -5,7 +5,8 @@
 # inert here — which is why this runs in demo mode rather than pretending
 # otherwise. POWDERMAN_DEMO=1 seeds a fabricated history so the workbench has
 # something to render, badges the status bar DEMO, and refuses triggers. See
-# powderman/src/demo.rs.
+# powderman/src/demo.rs — including the file browser, which serves a
+# fabricated checkout rather than listing the container it runs on.
 #
 # The database is on the machine's ephemeral disk, deliberately: no volume
 # means every deploy starts from the same seed, so whatever visitors do to the
