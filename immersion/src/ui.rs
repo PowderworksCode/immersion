@@ -13,7 +13,7 @@
 use dioxus::prelude::*;
 use serde::Deserialize;
 
-use crate::area::{Area, AreaId, Dir, Layout, Regions};
+use crate::area::{Area, AreaId, Dir, Layout, Region, Regions};
 
 /// What the gesture shim commits, one message per completed drag. Each maps to
 /// a bus command, so a drag and a header-button click are the same operation.
@@ -53,7 +53,7 @@ pub enum Gesture {
     RegionWidth {
         #[ts(type = "number")]
         id: AreaId,
-        region: String,
+        region: crate::area::Region,
         w: u16,
     },
 }
@@ -83,7 +83,7 @@ impl Gesture {
             Gesture::Swap { a, b } => ("swap", serde_json::json!({ "a": a, "b": b })),
             Gesture::RegionWidth { id, region, w } => (
                 "set_region_width",
-                serde_json::json!({ "id": id, "region": region, "w": w }),
+                serde_json::json!({ "id": id, "region": region.as_str(), "w": w }),
             ),
         }
     }
@@ -321,13 +321,13 @@ fn render_leaf(
                 if let Some(t) = toolbar {
                     div { class: "im-toolbar", style: "{toolbar_style}",
                         {t}
-                        span { class: "im-region-handle im-region-handle-r", "data-im-region-handle": "toolbar" }
+                        span { class: "im-region-handle im-region-handle-r", "data-im-region-handle": "{Region::Toolbar.as_str()}" }
                     }
                 }
                 div { class: "im-body", {body} }
                 if let Some(sb) = sidebar {
                     div { class: "im-sidebar", style: "{sidebar_style}",
-                        span { class: "im-region-handle im-region-handle-l", "data-im-region-handle": "sidebar" }
+                        span { class: "im-region-handle im-region-handle-l", "data-im-region-handle": "{Region::Sidebar.as_str()}" }
                         {sb}
                     }
                 }
@@ -364,9 +364,16 @@ impl PartialEq for WorkspaceTabsProps {
 
 /// The `data-im-menu` JSON for a workspace tab — duplicate it, or close it.
 fn tab_menu_json(index: usize) -> String {
-    format!(
-        r#"[{{"label":"Duplicate","action":"workspace.duplicate","params":{{}}}},{{"sep":true}},{{"label":"Close","action":"workspace.close","params":{{"index":{index}}}}}]"#
-    )
+    use crate::contextmenu::{MenuItem, menu_json};
+    menu_json(&[
+        MenuItem::new("Duplicate", "workspace.duplicate", serde_json::json!({})),
+        MenuItem::sep(),
+        MenuItem::new(
+            "Close",
+            "workspace.close",
+            serde_json::json!({ "index": index }),
+        ),
+    ])
 }
 
 #[component]
@@ -474,7 +481,7 @@ fn leaf_header(
                             title: "toggle toolbar",
                             "data-tip": "Toggle toolbar",
                             "data-tip-key": "{tip(\"toggle_toolbar\")}",
-                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "toolbar" }))),
+                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": Region::Toolbar.as_str() }))),
                             "T"
                         }
                     }
@@ -484,7 +491,7 @@ fn leaf_header(
                             title: "toggle sidebar",
                             "data-tip": "Toggle sidebar",
                             "data-tip-key": "{tip(\"toggle_sidebar\")}",
-                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": "sidebar" }))),
+                            onclick: move |_| cmd.call(("toggle_region".to_string(), serde_json::json!({ "id": id, "region": Region::Sidebar.as_str() }))),
                             "N"
                         }
                     }

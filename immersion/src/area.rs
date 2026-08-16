@@ -14,8 +14,38 @@ use serde::{Deserialize, Serialize};
 
 pub type AreaId = u64;
 
+/// Which strip of an area a command is about. These were bare strings on the
+/// wire and in eighteen call sites, so "sidbar" was a silent no-op rather than
+/// a compile error; as an enum both ends have to spell it right.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 #[ts(export, export_to = "../ts/generated/")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Region {
+    Toolbar,
+    Sidebar,
+    /// The header, hidden to a stub.
+    Header,
+    /// The header, moved to the opposite edge.
+    HeaderFlip,
+}
+
+impl Region {
+    /// The name this travels under, so the menu builders and the shim agree
+    /// without either restating the spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Region::Toolbar => "toolbar",
+            Region::Sidebar => "sidebar",
+            Region::Header => "header",
+            Region::HeaderFlip => "header_flip",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../ts/generated/")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Dir {
     /// Children side by side.
@@ -437,13 +467,14 @@ impl Layout {
     /// and a list can trade places without a join. Both must be leaves; a
     /// no-op (returns false) if either is missing or they are the same area.
     /// Set a leaf's toolbar or sidebar width (px), clamped to a grabbable range.
-    pub fn set_region_width(&mut self, leaf: AreaId, region: &str, w: u16) -> bool {
+    pub fn set_region_width(&mut self, leaf: AreaId, region: Region, w: u16) -> bool {
         match self.root.find_mut(leaf) {
             Some(Area::Leaf { regions, .. }) => {
                 let w = w.clamp(32, 500);
                 match region {
-                    "toolbar" => regions.toolbar_w = w,
-                    "sidebar" => regions.sidebar_w = w,
+                    Region::Toolbar => regions.toolbar_w = w,
+                    Region::Sidebar => regions.sidebar_w = w,
+                    // Only the side strips have a width.
                     _ => return false,
                 }
                 true
@@ -453,15 +484,14 @@ impl Layout {
     }
 
     /// Toggle a leaf's toolbar (T) or sidebar (N) region.
-    pub fn toggle_region(&mut self, leaf: AreaId, region: &str) -> bool {
+    pub fn toggle_region(&mut self, leaf: AreaId, region: Region) -> bool {
         match self.root.find_mut(leaf) {
             Some(Area::Leaf { regions, .. }) => {
                 match region {
-                    "toolbar" => regions.toolbar = !regions.toolbar,
-                    "sidebar" => regions.sidebar = !regions.sidebar,
-                    "header" => regions.header_hidden = !regions.header_hidden,
-                    "header_flip" => regions.header_bottom = !regions.header_bottom,
-                    _ => return false,
+                    Region::Toolbar => regions.toolbar = !regions.toolbar,
+                    Region::Sidebar => regions.sidebar = !regions.sidebar,
+                    Region::Header => regions.header_hidden = !regions.header_hidden,
+                    Region::HeaderFlip => regions.header_bottom = !regions.header_bottom,
                 }
                 true
             }

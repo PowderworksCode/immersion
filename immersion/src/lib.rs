@@ -32,10 +32,10 @@ mod ui;
 mod widget;
 mod workspace;
 
-pub use area::{Area, AreaId, Dir, Layout, MIN_RATIO};
+pub use area::{Area, AreaId, Dir, Layout, MIN_RATIO, Region};
 pub use client::{Chrome, ChromeProps};
 pub use command::{Command, Commands};
-pub use contextmenu::{ContextMenu, ContextMenuProps};
+pub use contextmenu::{ContextMenu, ContextMenuProps, MenuItem, menu_json};
 pub use filter::{FilterBox, FilterBoxProps};
 pub use keymap::{
     Binding, Keymap, KeymapHelp, KeymapHelpProps, KeymapProps, Platform, PlatformProps,

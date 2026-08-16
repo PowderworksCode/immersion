@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 
-use crate::area::{Area, Dir};
+use crate::area::{Area, Dir, Region};
 use crate::workspace::Workspaces;
 
 /// One named operation on the workbench.
@@ -109,6 +109,11 @@ fn str_field<'a>(p: &'a Value, key: &str) -> Result<&'a str> {
         .ok_or_else(|| anyhow!("param {key} must be a string"))
 }
 
+fn region_field(p: &Value, key: &str) -> Result<Region> {
+    serde_json::from_value(p.get(key).cloned().unwrap_or(Value::Null))
+        .map_err(|_| anyhow!("param {key} must be a region name"))
+}
+
 fn dir_field(p: &Value, key: &str) -> Result<Dir> {
     match str_field(p, key)? {
         "row" => Ok(Dir::Row),
@@ -174,7 +179,7 @@ const BUILTINS: &[Command] = &[
         run: |ws, p| {
             ws.current_layout_mut().set_region_width(
                 u64_field(p, "id")?,
-                str_field(p, "region")?,
+                region_field(p, "region")?,
                 u64_field(p, "w")? as u16,
             );
             Ok(())
@@ -187,7 +192,7 @@ const BUILTINS: &[Command] = &[
         navigational: true,
         run: |ws, p| {
             ws.current_layout_mut()
-                .toggle_region(u64_field(p, "id")?, str_field(p, "region")?);
+                .toggle_region(u64_field(p, "id")?, region_field(p, "region")?);
             Ok(())
         },
     },
