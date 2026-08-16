@@ -90,7 +90,7 @@ if (once("__imGestures")) {
   };
 
   const onSeamUp = (e: PointerEvent): void => {
-    send({ t: "ratio", id: seam.splitId, index: seam.index, ratio: seamRatio(e) });
+    send({ t: "ratio", id: seam.splitId, index: seam.index, ratio: seamRatio(e) } satisfies GestureMsg);
     seam = null;
   };
 
@@ -183,14 +183,14 @@ if (once("__imGestures")) {
     grip = null;
     if (!g || !g.mode) return;
     if (g.mode === "split") {
-      send({ t: "split", id: g.areaId, dir: g.dir, frac: g.frac });
+      send({ t: "split", id: g.areaId, dir: g.dir, frac: g.frac } satisfies GestureMsg);
     } else if (g.mode === "join" && g.target !== null) {
       // The server validates siblinghood; an invalid join is silently a
       // no-op there, which the reverted overlay already communicated here.
-      send({ t: "join", survivor: g.areaId, victim: g.target });
+      send({ t: "join", survivor: g.areaId, victim: g.target } satisfies GestureMsg);
     } else if (g.mode === "swap" && g.target !== null) {
       // Swap needs no siblinghood — any two areas can trade editors.
-      send({ t: "swap", a: g.areaId, b: g.target });
+      send({ t: "swap", a: g.areaId, b: g.target } satisfies GestureMsg);
     }
   };
 
@@ -231,7 +231,7 @@ if (once("__imGestures")) {
       id: region.areaId,
       region: region.which,
       w: Math.round(regionWidth(e)),
-    });
+    } satisfies GestureMsg);
     region = null;
   };
 

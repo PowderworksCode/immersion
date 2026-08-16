@@ -23,18 +23,14 @@ declare global {
   }
 }
 
-/** A gesture the deck commits on pointerup — see `Gesture` in ui.rs. */
-export type GestureMsg =
-  | { t: "ratio"; id: number; index: number; ratio: number }
-  | { t: "split"; id: number; dir: "row" | "col"; frac: number }
-  | { t: "join"; survivor: number; victim: number }
-  | { t: "swap"; a: number; b: number }
-  | { t: "regionwidth"; id: number; region: string; w: number };
-
-/** A keypress or a captured rebind — see `Msg` in keymap.rs. */
-export type KeymapMsg =
-  | { t: "chord"; chord: string }
-  | { t: "capture"; chord: string };
+// The wire is declared in Rust and generated from it — see the `TS` derives on
+// Gesture, Msg and Pick. A shape can no longer drift on one side only: change
+// the Rust and `cargo test` rewrites these, and CI fails if the checked-in
+// bindings are stale.
+export type { Gesture as GestureMsg } from "./generated/Gesture";
+export type { KeymapMsg } from "./generated/KeymapMsg";
+export type { MenuPick } from "./generated/MenuPick";
+export type { Dir } from "./generated/Dir";
 
 /** One row of a menu — see the `*_menu_json` builders. */
 export interface MenuItem {
@@ -43,12 +39,6 @@ export interface MenuItem {
   params?: unknown;
   chord?: string;
   sep?: boolean;
-}
-
-/** A menu pick — see `Pick` in contextmenu.rs. */
-export interface MenuPick {
-  action: string;
-  params: unknown;
 }
 
 /** Send a typed message over the shim's channel. The channel disappears when
