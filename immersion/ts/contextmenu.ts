@@ -153,6 +153,25 @@ if (once("__imCtxMenu")) {
       } else if (ev.key === "Escape") {
         ev.preventDefault();
         close();
+      } else if (ev.key.length === 1 && /[a-z0-9]/i.test(ev.key)) {
+        // Accelerators: a letter jumps to the first item starting with it, and
+        // picks straight away when only one matches — the way a desktop menu
+        // has always worked. Repeating the letter cycles the matches.
+        const want = ev.key.toLowerCase();
+        const hits = rs.filter((r) => (r.textContent ?? "").trim().toLowerCase().startsWith(want));
+        if (hits.length === 0) return;
+        ev.preventDefault();
+        if (hits.length === 1) {
+          const only = hits[0];
+          if (only) pick(only.dataset.action ?? "", only.dataset.params);
+          close();
+          return;
+        }
+        const cur = rs[sel];
+        const from = cur && hits.includes(cur) ? hits.indexOf(cur) + 1 : 0;
+        const next = hits[from % hits.length];
+        if (next) sel = rs.indexOf(next);
+        paint();
       }
     };
     document.addEventListener("keydown", onKey, true);
