@@ -220,7 +220,11 @@ fn number_widget(
     rsx! {
         input {
             class: "im-input im-number im-scrub",
-            r#type: "number",
+            // Text, not number: a number input rejects "3*2" before the shim
+            // can evaluate it. The shim resolves the expression on commit and
+            // the parse below still guards what reaches the document.
+            r#type: "text",
+            inputmode: "decimal",
             value: "{cur}",
             min: min_s,
             max: max_s,
@@ -399,7 +403,13 @@ fn vector_part(
             span { class: "im-vec-label", "{label}" }
             input {
                 class: "im-input im-number im-scrub",
-                r#type: "number",
+                // Text, not number, for the same reason the scalar field is:
+                // a number input does not merely reject "3*2", it strips the
+                // operator and commits 32. The shim resolves the expression
+                // on commit and the parse below guards what reaches the
+                // document.
+                r#type: "text",
+                inputmode: "decimal",
                 value: "{cur}",
                 step: "{step_s}",
                 "data-im-scrub": "1",
