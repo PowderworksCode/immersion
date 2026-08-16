@@ -515,6 +515,23 @@ fn tokenize(s: &str) -> Option<Vec<Tok>> {
                 while i < b.len() && (b[i].is_ascii_digit() || b[i] == '.') {
                     i += 1;
                 }
+                // An `e` that follows digits and precedes digits is an
+                // exponent, not Euler's number: `2*1e3` is 2000, while the
+                // `e` in `2*e` is still the constant. Without this the whole
+                // expression is rejected, which the shim this replaces did
+                // not do.
+                if i < b.len() && b[i] == 'e' {
+                    let mut j = i + 1;
+                    if j < b.len() && (b[j] == '+' || b[j] == '-') {
+                        j += 1;
+                    }
+                    if j < b.len() && b[j].is_ascii_digit() {
+                        while j < b.len() && b[j].is_ascii_digit() {
+                            j += 1;
+                        }
+                        i = j;
+                    }
+                }
                 let v: f64 = b[start..i].iter().collect::<String>().parse().ok()?;
                 out.push(Tok::Num(if neg { -v } else { v }));
                 neg = false;
@@ -681,6 +698,12 @@ mod tests {
         assert_eq!(eval_number("10*-(1+1)"), Some(-20.0));
         assert_eq!(eval_number("+7"), Some(7.0));
         assert_eq!(eval_number("pi").map(|v| (v * 100.0).round()), Some(314.0));
+        // Exponent notation, which the shim handled and a bare digit scanner
+        // would reject: the `e` here is part of the literal, not the constant.
+        assert_eq!(eval_number("1e3"), Some(1000.0));
+        assert_eq!(eval_number("2*1e3"), Some(2000.0));
+        assert_eq!(eval_number("2e-3"), Some(0.002));
+        assert_eq!(eval_number("2*e").map(|v| (v * 100.0).round()), Some(544.0));
     }
 
     #[test]
