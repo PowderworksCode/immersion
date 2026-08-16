@@ -110,6 +110,42 @@ pub struct RenameArgs {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SwapArgs {
+    /// One area id.
+    pub a: u64,
+    /// The other; the two exchange what they show.
+    pub b: u64,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RegionArgs {
+    /// The area whose region is toggled.
+    pub id: u64,
+    /// `toolbar`, `sidebar`, `header`, or `header_flip`.
+    pub region: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RegionWidthArgs {
+    /// The area whose region is resized.
+    pub id: u64,
+    /// `toolbar` or `sidebar`.
+    pub region: String,
+    /// The new width in pixels.
+    pub w: u64,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct WorkspaceAddArgs {
+    /// The tab name.
+    pub name: String,
+    /// The starting layout tree. Omit for a single-area default; the shape is
+    /// the `layout` value `get_state` returns.
+    #[serde(default)]
+    pub layout: serde_json::Value,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SetSettingArgs {
     /// JSON pointer into the settings document (e.g. `/theme`, `/ui_scale`,
     /// `/keymap/undo`). `get_state` shows the whole document.
@@ -271,6 +307,57 @@ impl Workbench {
         run("workspace.close", json!({ "index": a.index }))
     }
 
+    #[tool(description = "Split an area and show the same editor in the new half")]
+    async fn duplicate_area(
+        &self,
+        Parameters(a): Parameters<IdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        run("duplicate_area", json!({ "id": a.id }))
+    }
+
+    #[tool(description = "Swap what two areas show")]
+    async fn swap(&self, Parameters(a): Parameters<SwapArgs>) -> Result<CallToolResult, McpError> {
+        run("swap", json!({ "a": a.a, "b": a.b }))
+    }
+
+    #[tool(description = "Show or hide an area's toolbar, sidebar, or header")]
+    async fn toggle_region(
+        &self,
+        Parameters(a): Parameters<RegionArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        run("toggle_region", json!({ "id": a.id, "region": a.region }))
+    }
+
+    #[tool(description = "Resize an area's toolbar or sidebar")]
+    async fn set_region_width(
+        &self,
+        Parameters(a): Parameters<RegionWidthArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        run(
+            "set_region_width",
+            json!({ "id": a.id, "region": a.region, "w": a.w }),
+        )
+    }
+
+    #[tool(description = "Add a workspace tab")]
+    async fn workspace_add(
+        &self,
+        Parameters(a): Parameters<WorkspaceAddArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        run(
+            "workspace.add",
+            json!({ "name": a.name, "layout": a.layout }),
+        )
+    }
+
+    #[tool(description = "Duplicate a workspace tab")]
+    async fn workspace_duplicate(
+        &self,
+        Parameters(a): Parameters<IndexArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        run("workspace.duplicate", json!({ "index": a.index }))
+    }
+
     #[tool(
         description = "Write one value into the settings document by JSON pointer — theme, ui_scale, keymap overrides, favourites. The same operation the Settings editor performs."
     )]
@@ -300,6 +387,15 @@ impl Workbench {
                 "already present (deduped by label)"
             }
             .to_string(),
+        )]))
+    }
+
+    #[tool(
+        description = "Re-run the most recent layout-changing command (Blender's Repeat Last). Navigation and failed commands are skipped."
+    )]
+    async fn repeat_last(&self) -> Result<CallToolResult, McpError> {
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string(&crate::daemon::repeat_last("agent")).unwrap_or_default(),
         )]))
     }
 
@@ -443,5 +539,80 @@ fn host_config() -> StreamableHttpServerConfig {
             config.with_allowed_hosts(hosts)
         }
         _ => config,
+    }
+}
+
+#[cfg(test)]
+mod parity {
+    use super::*;
+
+    /// MCP tool names are snake_case; command names use dots
+    /// (`workspace.add`). One spelling rule, applied in one place.
+    fn tool_name(command: &str) -> String {
+        command.replace('.', "_")
+    }
+
+    /// Commands and host actions an agent is deliberately not given, each with
+    /// the reason it is absent. Anything not listed here must have a tool —
+    /// adding an entry is a decision someone has to write down, which is the
+    /// point.
+    const NOT_FOR_AGENTS: &[(&str, &str)] = &[(
+        "load_layout",
+        "replaces the whole workbench from an uploaded file; an agent that \
+         wants a layout builds it with workspace_add",
+    )];
+
+    /// The parity invariant, counted rather than remembered: everything a
+    /// person can do to server truth, an agent can do too. Six commands were
+    /// missing tools when this test was written — duplicate_area, swap,
+    /// toggle_region, set_region_width, workspace.add, workspace.duplicate —
+    /// which is exactly the drift the test exists to stop.
+    #[test]
+    fn every_command_and_host_action_has_an_mcp_tool() {
+        let router = Workbench::tool_router();
+        let mut missing = Vec::new();
+
+        let commands = crate::workflows::commands();
+        let host = crate::ui::host_actions();
+        for name in commands.iter().map(|c| c.name).chain(host) {
+            if NOT_FOR_AGENTS.iter().any(|(n, _)| *n == name) {
+                continue;
+            }
+            if !router.has_route(&tool_name(name)) {
+                missing.push(name.to_string());
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "no MCP tool for: {}\n\
+             Add a tool, or add the name to NOT_FOR_AGENTS with the reason.",
+            missing.join(", ")
+        );
+    }
+
+    /// The other direction: an exemption that no longer names anything real is
+    /// stale documentation, and a tool for a command that stopped existing is
+    /// a dead route an agent can still call.
+    #[test]
+    fn the_exemption_list_stays_current() {
+        let commands = crate::workflows::commands();
+        for (name, _why) in NOT_FOR_AGENTS {
+            let known = commands.get(name).is_some()
+                || !matches!(crate::ui::route(name), crate::ui::Route::Bus);
+            assert!(known, "NOT_FOR_AGENTS names {name}, which no longer exists");
+        }
+    }
+
+    /// Client-view actions are per-client by design — an agent has no
+    /// viewport. A tool for one would be a lie about what it does.
+    #[test]
+    fn client_view_actions_have_no_tools() {
+        let router = Workbench::tool_router();
+        for a in crate::ui::client_view_actions() {
+            assert!(
+                !router.has_route(&tool_name(a)),
+                "{a} is client-view state but has an MCP tool"
+            );
+        }
     }
 }

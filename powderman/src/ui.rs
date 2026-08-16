@@ -279,34 +279,122 @@ fn recents(s: &State) -> Vec<SplashRecent> {
 /// chord they are bound to, so the palette, a chord, and an agent all reach one
 /// router. Workspace switches are generated per tab, so the palette lists the
 /// rooms you can jump to by name.
-/// Host mutations that change server truth but are not bus commands: they
-/// need state the bus signature cannot reach (the undo stacks, the settings
-/// document). The parity contract for these is: attributed in the Info log,
-/// and reachable by an agent (an MCP tool per entry). The equivalence test
-/// below holds every action the UI can emit against this list.
-pub(crate) const HOST_ACTIONS: &[&str] = &[
-    "undo",
-    "redo",
-    "repeat_last",
-    "set_setting",
-    "favorite_add",
-    "load_layout",
-];
+/// A host mutation: changes server truth, but needs state the bus signature
+/// cannot reach (the undo stacks, the settings document). The parity contract
+/// for these is that each is attributed in the Info log and reachable by an
+/// agent — `mcp::parity` counts the tools, so a new variant here fails CI
+/// until it has one.
+///
+/// An enum rather than a list of strings so the router's match is exhaustive:
+/// adding a variant does not compile until every surface handles it. That is
+/// the difference between a convention and an invariant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostAction {
+    Undo,
+    Redo,
+    RepeatLast,
+    SetSetting,
+    FavoriteAdd,
+    LoadLayout,
+}
+
+impl HostAction {
+    const ALL: &'static [HostAction] = &[
+        HostAction::Undo,
+        HostAction::Redo,
+        HostAction::RepeatLast,
+        HostAction::SetSetting,
+        HostAction::FavoriteAdd,
+        HostAction::LoadLayout,
+    ];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            HostAction::Undo => "undo",
+            HostAction::Redo => "redo",
+            HostAction::RepeatLast => "repeat_last",
+            HostAction::SetSetting => "set_setting",
+            HostAction::FavoriteAdd => "favorite_add",
+            HostAction::LoadLayout => "load_layout",
+        }
+    }
+}
 
 /// Per-client view state — deliberately NOT server commands. Two browsers may
 /// maximize different areas; opening the palette in one must not open it in
-/// another. An agent has no use for these (it has no viewport), so their
-/// absence from MCP is by design, not drift.
-pub(crate) const CLIENT_VIEW_ACTIONS: &[&str] = &[
-    "maximize",
-    "fullscreen",
-    "palette",
-    "cheatsheet",
-    "adjust_last",
-    "pie",
-    "favorites",
-    "noop",
-];
+/// another. An agent has no viewport, so the absence of these from MCP is by
+/// design, and `mcp::parity` asserts they stay absent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClientAction {
+    Maximize,
+    Fullscreen,
+    Palette,
+    Cheatsheet,
+    AdjustLast,
+    Pie,
+    Favorites,
+    Noop,
+}
+
+impl ClientAction {
+    const ALL: &'static [ClientAction] = &[
+        ClientAction::Maximize,
+        ClientAction::Fullscreen,
+        ClientAction::Palette,
+        ClientAction::Cheatsheet,
+        ClientAction::AdjustLast,
+        ClientAction::Pie,
+        ClientAction::Favorites,
+        ClientAction::Noop,
+    ];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            ClientAction::Maximize => "maximize",
+            ClientAction::Fullscreen => "fullscreen",
+            ClientAction::Palette => "palette",
+            ClientAction::Cheatsheet => "cheatsheet",
+            ClientAction::AdjustLast => "adjust_last",
+            ClientAction::Pie => "pie",
+            ClientAction::Favorites => "favorites",
+            ClientAction::Noop => "noop",
+        }
+    }
+}
+
+/// Where an action goes. One resolution function, used by the router that
+/// executes actions AND by the test that proves every surface emits something
+/// resolvable — so the two cannot disagree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Route {
+    /// A named command on the bus.
+    Bus,
+    Host(HostAction),
+    ClientView(ClientAction),
+}
+
+pub(crate) fn route(action: &str) -> Route {
+    if let Some(h) = HostAction::ALL.iter().find(|h| h.name() == action) {
+        return Route::Host(*h);
+    }
+    if let Some(c) = ClientAction::ALL.iter().find(|c| c.name() == action) {
+        return Route::ClientView(*c);
+    }
+    Route::Bus
+}
+
+/// The names, derived from the enums rather than repeated beside them: a list
+/// written twice is a list that drifts. Only the parity tests enumerate them —
+/// the running code matches on the enums.
+#[cfg(test)]
+pub(crate) fn host_actions() -> Vec<&'static str> {
+    HostAction::ALL.iter().map(|h| h.name()).collect()
+}
+
+#[cfg(test)]
+pub(crate) fn client_view_actions() -> Vec<&'static str> {
+    ClientAction::ALL.iter().map(|c| c.name()).collect()
+}
 
 fn palette_items(ws: &immersion::Workspaces) -> Vec<PaletteItem> {
     let mut items = vec![
@@ -583,19 +671,43 @@ pub fn App() -> Element {
     // Keymap actions. Layout commands go to the bus; undo/redo/maximize are
     // host concerns the bus does not own.
     let on_action = use_callback(move |(action, params): (String, serde_json::Value)| {
-        match action.as_str() {
-            "undo" => ws.set(crate::daemon::undo("ui")),
-            "redo" => ws.set(crate::daemon::redo("ui")),
-            "repeat_last" => ws.set(crate::daemon::repeat_last("ui")),
-            "cheatsheet" => help_open.toggle(),
-            "pie" => {
+        // Exhaustive over the enums: a new host or client action does not
+        // compile until it is handled here.
+        match route(&action) {
+            Route::Host(HostAction::Undo) => ws.set(crate::daemon::undo("ui")),
+            Route::Host(HostAction::Redo) => ws.set(crate::daemon::redo("ui")),
+            Route::Host(HostAction::RepeatLast) => ws.set(crate::daemon::repeat_last("ui")),
+            Route::Host(HostAction::SetSetting) => {
+                let pointer = params.get("pointer").and_then(|p| p.as_str()).unwrap_or("");
+                let value = params
+                    .get("value")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                settings.set(crate::daemon::set_setting("ui", pointer, value));
+            }
+            Route::Host(HostAction::FavoriteAdd) => {
+                // The dedup/cap logic lives in the daemon so an agent can
+                // curate favourites too; the UI keeps only the report.
+                let label = params.get("label").and_then(|l| l.as_str()).unwrap_or("");
+                let (doc, added) = crate::daemon::favorite_add("ui", params.clone());
+                settings.set(doc);
+                if added {
+                    do_report.call(format!("Added to favourites: {label}"));
+                }
+            }
+            // The layout-file shim owns this one: it arrives as file text on
+            // that component's own channel, not as an action with params.
+            Route::Host(HostAction::LoadLayout) => {}
+            Route::ClientView(ClientAction::Noop) => {}
+            Route::ClientView(ClientAction::Cheatsheet) => help_open.toggle(),
+            Route::ClientView(ClientAction::Pie) => {
                 let js = format!(
                     "window.__imOpenPie && window.__imOpenPie({});",
                     serde_json::to_string(&pie_menu_json()).unwrap_or_default()
                 );
                 dioxus::document::eval(&js);
             }
-            "favorites" => {
+            Route::ClientView(ClientAction::Favorites) => {
                 // Hand the list to the menu shim, which raises it at the
                 // pointer and sends the pick back over its own channel.
                 let items = favorites_menu_json(&settings());
@@ -605,59 +717,31 @@ pub fn App() -> Element {
                 );
                 dioxus::document::eval(&js);
             }
-            "adjust_last" => {
+            Route::ClientView(ClientAction::AdjustLast) => {
                 if let Some((name, params)) = crate::daemon::last_command() {
                     adjust_name.set(name);
                     adjust_doc.set(params);
                     adjust_open.set(true);
                 }
             }
-            "fullscreen" => fullscreen.toggle(),
-            "maximize" => {
+            Route::ClientView(ClientAction::Fullscreen) => fullscreen.toggle(),
+            Route::ClientView(ClientAction::Maximize) => {
                 // Toggle: maximize the first area if none is, else restore.
                 let cur = maximized();
                 let first = ws.read().current().layout.root.leaves().first().copied();
                 maximized.set(if cur.is_some() { None } else { first });
             }
-            "palette" => palette_open.set(true),
-            _ => ws.set(crate::daemon::dispatch(&action, params)),
+            Route::ClientView(ClientAction::Palette) => palette_open.set(true),
+            Route::Bus => cmd.call((action, params)),
         }
     });
 
-    // Menu picks reach three places: a settings edit (a field's Reset/Paste),
-    // a host action (undo, cheatsheet, maximize — things the bus does not own),
-    // or a layout command. Route by name so a menu item can be any of them.
-    let on_menu =
-        use_callback(
-            move |(action, params): (String, serde_json::Value)| match action.as_str() {
-                "set_setting" => {
-                    let pointer = params.get("pointer").and_then(|p| p.as_str()).unwrap_or("");
-                    let value = params
-                        .get("value")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null);
-                    settings.set(crate::daemon::set_setting("ui", pointer, value));
-                }
-                "noop" => {}
-                "favorite_add" => {
-                    // The dedup/cap logic lives in the daemon so an agent can
-                    // curate favourites too; the UI keeps only the report.
-                    let label = params.get("label").and_then(|l| l.as_str()).unwrap_or("");
-                    let (doc, added) = crate::daemon::favorite_add("ui", params.clone());
-                    settings.set(doc);
-                    if added {
-                        do_report.call(format!("Added to favourites: {label}"));
-                    }
-                }
-                // Routed by the declared lists, so the parity contract the
-                // equivalence test pins is also the router: a menu item naming
-                // any host or client-view action forwards without a new arm.
-                a if HOST_ACTIONS.contains(&a) || CLIENT_VIEW_ACTIONS.contains(&a) => {
-                    on_action.call((action, params))
-                }
-                _ => cmd.call((action, params)),
-            },
-        );
+    // A menu pick is just an action: a settings edit, a host mutation, a
+    // client-view toggle, or a bus command. One resolution decides which, so
+    // a menu item can be any of them without a new arm here.
+    let on_menu = use_callback(move |(action, params): (String, serde_json::Value)| {
+        on_action.call((action, params));
+    });
 
     // Start capturing a chord for a binding: arm the shim, remember which
     // action is waiting. The Keymap component reports the chord back.
@@ -1295,9 +1379,7 @@ mod parity_tests {
         );
         let mut orphans = Vec::new();
         for (surface, action) in &actions {
-            let known = commands.get(action).is_some()
-                || HOST_ACTIONS.contains(&action.as_str())
-                || CLIENT_VIEW_ACTIONS.contains(&action.as_str());
+            let known = commands.get(action).is_some() || !matches!(route(action), Route::Bus);
             if !known {
                 orphans.push(format!("{surface}: {action}"));
             }
@@ -1315,17 +1397,17 @@ mod parity_tests {
     #[test]
     fn host_and_client_lists_do_not_overlap_or_shadow_the_bus() {
         let commands = crate::workflows::commands();
-        for a in HOST_ACTIONS {
+        for a in host_actions() {
             assert!(
-                !CLIENT_VIEW_ACTIONS.contains(a),
-                "{a} is in both HOST_ACTIONS and CLIENT_VIEW_ACTIONS"
+                !client_view_actions().contains(&a),
+                "{a} is both a host action and client-view state"
             );
             assert!(
                 commands.get(a).is_none(),
                 "{a} is both a host action and a bus command — one must win"
             );
         }
-        for a in CLIENT_VIEW_ACTIONS {
+        for a in client_view_actions() {
             assert!(
                 commands.get(a).is_none(),
                 "{a} is both client-view and a bus command — one must win"
