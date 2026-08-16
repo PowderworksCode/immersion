@@ -2,6 +2,7 @@ mod cron;
 mod daemon;
 mod db;
 mod demo;
+mod editors;
 mod engine;
 mod exec;
 mod herdr;
