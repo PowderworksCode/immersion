@@ -560,6 +560,11 @@ fn kinds() -> Vec<EditorKind> {
             label: "Files",
             targets: true,
         },
+        EditorKind {
+            id: "code",
+            label: "Code",
+            targets: true,
+        },
     ]
 }
 
@@ -917,6 +922,7 @@ pub fn App() -> Element {
                 }
                 "data" => crate::editors::ed_data(&s, arg.clone()),
                 "files" => crate::editors::ed_files(arg.clone()),
+                "code" => crate::editors::ed_code(arg.clone()),
                 other => rsx! { div { class: "empty", "unknown editor {other}" } },
             }
         },

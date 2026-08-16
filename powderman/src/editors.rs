@@ -488,7 +488,9 @@ pub(crate) fn target_children(
     pointer: &str,
 ) -> Vec<immersion::TreeRow> {
     match editor {
-        "files" => file_children(pointer),
+        // Both browse the filesystem; the code viewer's target is a file
+        // rather than a directory, but the walk to reach one is the same.
+        "files" | "code" => file_children(pointer),
         // A run's target is its id, not its address in the snapshot, so the
         // rows are runs and the value each carries is the id itself.
         "run" => run_targets(state),
@@ -500,7 +502,7 @@ pub(crate) fn target_children(
 /// area 3" rather than a generic word for every editor.
 pub(crate) fn target_noun(editor: &str) -> &'static str {
     match editor {
-        "files" => "File",
+        "files" | "code" => "File",
         "run" => "Run",
         _ => "Target",
     }
@@ -723,5 +725,177 @@ mod target_sources {
         assert_eq!(target_noun("run"), "Run");
         assert_eq!(target_noun("files"), "File");
         assert_eq!(target_noun("data"), "Target");
+    }
+}
+
+/// The code viewer: one file, highlighted, read-only.
+///
+/// Highlighting happens here rather than in the browser. A viewer has no
+/// frame-path work — no typing, no selection to track, scrolling is the
+/// browser's — so there is nothing the client needs to own, and the server
+/// already has the file. That keeps the page's javascript budget for the
+/// things that genuinely need it.
+pub(crate) fn ed_code(target: Option<String>) -> Element {
+    let Some(path) = target.filter(|t| !t.is_empty()) else {
+        return rsx! {
+            div { class: "empty", "Pick a file to show here \u{2014} the target chip in the header." }
+        };
+    };
+    match read_source(&path) {
+        Ok(src) => rsx! {
+            div { class: "code-view",
+                div { class: "code-path", "{path}" }
+                {highlight(&path, &src)}
+            }
+        },
+        Err(e) => rsx! { div { class: "empty", "{e}" } },
+    }
+}
+
+/// Read a file for display, with the limits a viewer needs: inside the root,
+/// small enough to render, and text.
+fn read_source(rel: &str) -> Result<String, String> {
+    // 2 MB: past that the page is the bottleneck, not the reading, and a
+    // viewer that hangs the workbench is worse than one that declines.
+    const MAX: u64 = 2 * 1024 * 1024;
+    let root = files_root();
+    let path = root.join(rel.trim_start_matches('/'));
+    let path = path
+        .canonicalize()
+        .map_err(|_| format!("no such file: {rel}"))?;
+    if !path.starts_with(&root) {
+        return Err("outside the file root".to_string());
+    }
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        return Err(format!("{rel} is a directory"));
+    }
+    if meta.len() > MAX {
+        return Err(format!(
+            "{rel} is {} \u{2014} too large to display",
+            human_size(meta.len())
+        ));
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    // A NUL in the first block is the usual tell, and it is the check `grep`
+    // makes: rendering a binary as text produces a page of replacement
+    // characters and no information.
+    if bytes.iter().take(8000).any(|b| *b == 0) {
+        return Err(format!("{rel} is binary"));
+    }
+    String::from_utf8(bytes).map_err(|_| format!("{rel} is not valid UTF-8"))
+}
+
+/// Syntax-highlight into rows, one per line, with line numbers. The theme is
+/// syntect's own; matching it to the workbench palette is a later pass — the
+/// question this answers first is whether reading code here works at all.
+fn highlight(path: &str, src: &str) -> Element {
+    use syntect::easy::HighlightLines;
+    use syntect::highlighting::ThemeSet;
+    use syntect::parsing::SyntaxSet;
+    use syntect::util::LinesWithEndings;
+
+    // Loading these is the expensive part of syntect, so they are built once
+    // and shared rather than per render.
+    static ASSETS: std::sync::OnceLock<(SyntaxSet, ThemeSet)> = std::sync::OnceLock::new();
+    let (syntaxes, themes) = ASSETS.get_or_init(|| {
+        (
+            SyntaxSet::load_defaults_newlines(),
+            ThemeSet::load_defaults(),
+        )
+    });
+
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    let syntax = syntaxes
+        .find_syntax_by_extension(ext)
+        .unwrap_or_else(|| syntaxes.find_syntax_plain_text());
+    let theme = &themes.themes["base16-eighties.dark"];
+    let mut h = HighlightLines::new(syntax, theme);
+
+    let rows: Vec<(usize, Vec<(String, String)>)> = LinesWithEndings::from(src)
+        .enumerate()
+        .map(|(i, line)| {
+            let spans = h
+                .highlight_line(line, syntaxes)
+                .map(|parts| {
+                    parts
+                        .into_iter()
+                        .map(|(style, text)| {
+                            let c = style.foreground;
+                            (
+                                format!("color:#{:02x}{:02x}{:02x}", c.r, c.g, c.b),
+                                text.trim_end_matches('\n').to_string(),
+                            )
+                        })
+                        .collect()
+                })
+                // A line syntect cannot parse still has to appear; losing it
+                // would silently renumber everything below.
+                .unwrap_or_else(|_| vec![(String::new(), line.trim_end().to_string())]);
+            (i + 1, spans)
+        })
+        .collect();
+
+    rsx! {
+        div { class: "code-lines",
+            for (n, spans) in rows {
+                div { class: "code-line", key: "{n}",
+                    span { class: "code-n", "{n}" }
+                    span { class: "code-src",
+                        for (i, (style, text)) in spans.into_iter().enumerate() {
+                            span { key: "{i}", style: "{style}", "{text}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod code_viewer {
+    /// The viewer reads files, so its limits are its security surface: inside
+    /// the root, not a directory, not binary, not enormous.
+    #[test]
+    fn it_declines_what_it_should_not_show() {
+        let tmp = std::env::temp_dir().join("im-code-view-test");
+        std::fs::create_dir_all(tmp.join("dir")).expect("mkdir");
+        std::fs::write(tmp.join("ok.rs"), b"fn main() {}\n").expect("write");
+        std::fs::write(tmp.join("bin.dat"), [0x7f, 0x45, 0x00, 0x01]).expect("write");
+        // SAFETY: single-threaded test; nothing else here reads the env.
+        unsafe { std::env::set_var("POWDERMAN_FILES_ROOT", &tmp) };
+
+        assert_eq!(
+            super::read_source("/ok.rs").as_deref(),
+            Ok("fn main() {}\n")
+        );
+        for (path, expect) in [
+            ("/dir", "is a directory"),
+            ("/bin.dat", "is binary"),
+            ("/nope.rs", "no such file"),
+            ("/../etc/passwd", "no such file"),
+        ] {
+            let err = super::read_source(path).expect_err(path);
+            assert!(err.contains(expect), "{path}: got {err:?}");
+        }
+        unsafe { std::env::remove_var("POWDERMAN_FILES_ROOT") };
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn every_line_survives_highlighting() {
+        // Line numbers are only trustworthy if no line is dropped, including
+        // blank ones and a file with no trailing newline.
+        let src = "fn a() {}\n\nlet x = 1;\nno_newline";
+        let el = super::highlight("x.rs", src);
+        assert!(el.is_ok(), "highlighting produced an element");
+        assert_eq!(
+            syntect::util::LinesWithEndings::from(src).count(),
+            4,
+            "the fixture is four lines"
+        );
     }
 }
