@@ -36,17 +36,34 @@ if (once("__imGestures")) {
   const onSeamDown = (e: PointerEvent, el: HTMLElement): void => {
     const splitEl = el.closest<HTMLElement>(".im-split");
     if (!splitEl) return;
-    const cells = splitEl.querySelectorAll(":scope > .im-cell");
-    if (cells.length !== 2) return;
+    const cells = splitEl.querySelectorAll<HTMLElement>(":scope > .im-cell");
+    const idx = Number(el.dataset.imSeamIndex ?? 0);
+    // The seam moves the pair either side of it; the rest keep their sizes.
+    const a = cells[idx];
+    const b = cells[idx + 1];
+    if (!a || !b) return;
     seam = {
       el,
       splitId: Number(el.dataset.imSeam),
+      index: Number(el.dataset.imSeamIndex ?? 0),
       dir: el.dataset.imDir,
       splitEl,
-      a: cells[0],
-      b: cells[1],
+      a,
+      b,
       rect: splitEl.getBoundingClientRect(),
+      aStart: 0,
+      span: 1,
     };
+    {
+      // Where this pair sits within the split, as fractions of the whole.
+      const r = splitEl.getBoundingClientRect();
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      const horiz = el.dataset.imDir === "row";
+      const total = horiz ? r.width : r.height;
+      seam.aStart = ((horiz ? ar.left - r.left : ar.top - r.top) || 0) / total;
+      seam.span = (((horiz ? ar.width + br.width : ar.height + br.height) || 0)) / total;
+    }
     el.setPointerCapture(e.pointerId);
     e.preventDefault();
   };
@@ -61,14 +78,19 @@ if (once("__imGestures")) {
 
   const onSeamMove = (e: PointerEvent): void => {
     const frac = seamRatio(e);
-    seam.a.style.flexBasis = (frac * 100) + "%";
-    seam.b.style.flexBasis = ((1 - frac) * 100) + "%";
-    if (seam.dir === "row") seam.el.style.left = (frac * 100) + "%";
-    else seam.el.style.top = (frac * 100) + "%";
+    // Preview only the pair the seam divides; their combined span is fixed, so
+    // the neighbours outside it do not move.
+    const aStart = seam.aStart as number;
+    const span = seam.span as number;
+    const within = Math.min(Math.max(frac - aStart, 0.02 * span), span - 0.02 * span);
+    seam.a.style.flexBasis = within * 100 + "%";
+    seam.b.style.flexBasis = (span - within) * 100 + "%";
+    if (seam.dir === "row") seam.el.style.left = (aStart + within) * 100 + "%";
+    else seam.el.style.top = (aStart + within) * 100 + "%";
   };
 
   const onSeamUp = (e: PointerEvent): void => {
-    send({ t: "ratio", id: seam.splitId, ratio: seamRatio(e) });
+    send({ t: "ratio", id: seam.splitId, index: seam.index, ratio: seamRatio(e) });
     seam = null;
   };
 

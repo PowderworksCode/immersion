@@ -75,11 +75,15 @@ pub enum Area {
     Split {
         id: AreaId,
         dir: Dir,
-        /// Fraction of the rectangle the first child gets, clamped to keep
-        /// both children grabbable.
-        ratio: f32,
-        a: Box<Area>,
-        b: Box<Area>,
+        /// Each child's fraction of the rectangle, in order. Same length as
+        /// `children`, summing to 1.
+        sizes: Vec<f32>,
+        /// Two or more children. A split never contains a split of the same
+        /// direction — `normalize` flattens those — so three areas in a row
+        /// are one split of three, not a split of a split. That is what makes
+        /// two layouts that look identical *be* identical: there is no hidden
+        /// nesting left to tell them apart.
+        children: Vec<Area>,
     },
 }
 
@@ -104,7 +108,7 @@ impl Area {
         }
         match self {
             Area::Leaf { .. } => None,
-            Area::Split { a, b, .. } => a.find(id).or_else(|| b.find(id)),
+            Area::Split { children, .. } => children.iter().find_map(|c| c.find(id)),
         }
     }
 
@@ -114,26 +118,118 @@ impl Area {
         }
         match self {
             Area::Leaf { .. } => None,
-            Area::Split { a, b, .. } => a.find_mut(id).or_else(|| b.find_mut(id)),
+            Area::Split { children, .. } => children.iter_mut().find_map(|c| c.find_mut(id)),
         }
     }
 
     pub fn leaves(&self) -> Vec<AreaId> {
         match self {
             Area::Leaf { id, .. } => vec![*id],
-            Area::Split { a, b, .. } => {
-                let mut v = a.leaves();
-                v.extend(b.leaves());
-                v
-            }
+            Area::Split { children, .. } => children.iter().flat_map(|c| c.leaves()).collect(),
         }
     }
 
     fn max_id(&self) -> AreaId {
         match self {
             Area::Leaf { id, .. } => *id,
-            Area::Split { id, a, b, .. } => (*id).max(a.max_id()).max(b.max_id()),
+            Area::Split { id, children, .. } => {
+                children.iter().map(Area::max_id).fold(*id, AreaId::max)
+            }
         }
+    }
+
+    /// Flatten same-direction nesting, so the value is canonical: a row of
+    /// three areas is one split of three, however it was built. Without this,
+    /// splitting A then B and splitting B then A produce identical-looking
+    /// screens from different values — and then a seam drag or a join behaves
+    /// differently depending on history the user cannot see. That is the
+    /// complaint people actually have about tree-based tiling; this removes it
+    /// without giving up the tree.
+    fn normalize(&mut self) {
+        let Area::Split {
+            dir,
+            sizes,
+            children,
+            ..
+        } = self
+        else {
+            return;
+        };
+        for c in children.iter_mut() {
+            c.normalize();
+        }
+        let dir = *dir;
+        let mut new_sizes = Vec::with_capacity(children.len());
+        let mut new_children = Vec::with_capacity(children.len());
+        for (i, child) in children.drain(..).enumerate() {
+            let slot = sizes.get(i).copied().unwrap_or(0.0);
+            match child {
+                // A child split of the same direction dissolves into this one,
+                // its children's sizes scaled into the slot it occupied.
+                Area::Split {
+                    dir: cdir,
+                    sizes: csizes,
+                    children: cchildren,
+                    ..
+                } if cdir == dir => {
+                    for (j, gc) in cchildren.into_iter().enumerate() {
+                        new_sizes.push(csizes.get(j).copied().unwrap_or(0.0) * slot);
+                        new_children.push(gc);
+                    }
+                }
+                other => {
+                    new_sizes.push(slot);
+                    new_children.push(other);
+                }
+            }
+        }
+        *sizes = new_sizes;
+        *children = new_children;
+        renormalize(sizes);
+        collapse(self);
+    }
+}
+
+/// Drop a child and give its span to a neighbour, so the sizes still sum to 1.
+fn remove_child(children: &mut Vec<Area>, sizes: &mut Vec<f32>, i: usize) {
+    if i >= children.len() {
+        return;
+    }
+    let gone = sizes.remove(i);
+    children.remove(i);
+    if sizes.is_empty() {
+        return;
+    }
+    // The span goes to the neighbour it was taken from — the one before it,
+    // or the first if it was the first.
+    let neighbour = i.saturating_sub(1).min(sizes.len() - 1);
+    sizes[neighbour] += gone;
+    renormalize(sizes);
+}
+
+/// A split with one child is not a split; it is that child.
+fn collapse(node: &mut Area) {
+    let only = match node {
+        Area::Split { children, .. } if children.len() == 1 => children.pop(),
+        _ => None,
+    };
+    if let Some(child) = only {
+        *node = child;
+    }
+}
+
+/// Keep the sizes a partition of 1, so rendering never has to guess.
+fn renormalize(sizes: &mut [f32]) {
+    let total: f32 = sizes.iter().sum();
+    if total <= 0.0 {
+        let even = 1.0 / sizes.len().max(1) as f32;
+        for s in sizes.iter_mut() {
+            *s = even;
+        }
+        return;
+    }
+    for s in sizes.iter_mut() {
+        *s /= total;
     }
 }
 
@@ -205,13 +301,16 @@ impl Layout {
             arg: arg.clone(),
             regions: Regions::default(),
         };
+        let r = clamp(ratio);
         *node = Area::Split {
             id: split_id,
             dir,
-            ratio: clamp(ratio),
-            a: Box::new(original),
-            b: Box::new(fresh),
+            sizes: vec![r, 1.0 - r],
+            children: vec![original, fresh],
         };
+        // Flatten the split we may have just nested inside one of the same
+        // direction, so the value stays canonical.
+        self.root.normalize();
         Some(new_id)
     }
 
@@ -220,23 +319,27 @@ impl Layout {
     /// hole. Joining the last area is refused; a screen must show something.
     pub fn join(&mut self, victim: AreaId) -> bool {
         fn walk(node: &mut Area, victim: AreaId) -> bool {
-            if let Area::Split { a, b, .. } = node {
-                if a.id() == victim {
-                    *node = (**b).clone();
-                    return true;
-                }
-                if b.id() == victim {
-                    *node = (**a).clone();
-                    return true;
-                }
-                return walk(a, victim) || walk(b, victim);
+            let Area::Split {
+                children, sizes, ..
+            } = node
+            else {
+                return false;
+            };
+            if let Some(i) = children.iter().position(|c| c.id() == victim) {
+                remove_child(children, sizes, i);
+                collapse(node);
+                return true;
             }
-            false
+            children.iter_mut().any(|c| walk(c, victim))
         }
         if self.root.id() == victim {
             return false;
         }
-        walk(&mut self.root, victim)
+        let hit = walk(&mut self.root, victim);
+        if hit {
+            self.root.normalize();
+        }
+        hit
     }
 
     /// The join gesture: drag from `survivor` over `victim`; the survivor
@@ -247,38 +350,54 @@ impl Layout {
     /// gesture phase that can compute it, and until then refusing is honest
     /// where guessing would corrupt someone's layout.
     pub fn join_into(&mut self, survivor: AreaId, victim: AreaId) -> bool {
-        fn is_leaf(a: &Area) -> bool {
-            matches!(a, Area::Leaf { .. })
-        }
         fn walk(node: &mut Area, survivor: AreaId, victim: AreaId) -> bool {
-            if let Area::Split { a, b, .. } = node {
-                let siblings = (a.id() == survivor && b.id() == victim)
-                    || (a.id() == victim && b.id() == survivor);
-                if siblings && is_leaf(a) && is_leaf(b) {
-                    let keep = if a.id() == survivor {
-                        (**a).clone()
-                    } else {
-                        (**b).clone()
-                    };
-                    *node = keep;
-                    return true;
-                }
-                return walk(a, survivor, victim) || walk(b, survivor, victim);
+            let Area::Split {
+                children, sizes, ..
+            } = node
+            else {
+                return false;
+            };
+            let s_i = children.iter().position(|c| c.id() == survivor);
+            let v_i = children.iter().position(|c| c.id() == victim);
+            if let (Some(si), Some(vi)) = (s_i, v_i)
+                && si.abs_diff(vi) == 1
+            {
+                // The survivor takes the victim's span, which is what the
+                // gesture showed while the drag was live.
+                sizes[si] += sizes[vi];
+                remove_child(children, sizes, vi);
+                collapse(node);
+                return true;
             }
-            false
+            children.iter_mut().any(|c| walk(c, survivor, victim))
         }
-        walk(&mut self.root, survivor, victim)
+        let hit = walk(&mut self.root, survivor, victim);
+        if hit {
+            self.root.normalize();
+        }
+        hit
     }
 
-    /// Move the seam of a split.
-    pub fn set_ratio(&mut self, split: AreaId, ratio: f32) -> bool {
-        match self.root.find_mut(split) {
-            Some(Area::Split { ratio: r, .. }) => {
-                *r = clamp(ratio);
-                true
-            }
-            _ => false,
+    /// Move a seam. `index` names the boundary between children `index` and
+    /// `index + 1`, and `pos` is where it lands as a fraction of the whole
+    /// split — which is exactly what the drag measured. Only the two children
+    /// either side of the seam change; the rest keep their sizes, which is the
+    /// behaviour a row of three areas should have and the binary tree could
+    /// not give.
+    pub fn set_seam(&mut self, split: AreaId, index: usize, pos: f32) -> bool {
+        let Some(Area::Split { sizes, .. }) = self.root.find_mut(split) else {
+            return false;
+        };
+        if index + 1 >= sizes.len() {
+            return false;
         }
+        let lo: f32 = sizes[..index].iter().sum();
+        let span = sizes[index] + sizes[index + 1];
+        let hi = lo + span;
+        let pos = pos.clamp(lo + MIN_RATIO * span, hi - MIN_RATIO * span);
+        sizes[index] = pos - lo;
+        sizes[index + 1] = hi - pos;
+        true
     }
 
     /// Change what an area shows, in place. The area survives — same id, same
@@ -386,6 +505,98 @@ mod tests {
         }
     }
 
+    /// The point of the whole n-ary change: two ways of building the same
+    /// three-column screen produce the same value, so nothing about a layout's
+    /// history can leak into how it behaves.
+    #[test]
+    fn three_in_a_row_is_one_split_however_it_was_built() {
+        // Split the left area, then split the left one again.
+        let mut a = Layout::single("x");
+        let second = a.split(1, Dir::Row, 0.5).unwrap();
+        a.split(1, Dir::Row, 0.5).unwrap();
+        // Split the left area, then split the RIGHT one.
+        let mut b = Layout::single("x");
+        let b2 = b.split(1, Dir::Row, 0.5).unwrap();
+        b.split(b2, Dir::Row, 0.5).unwrap();
+
+        // Both are one split of three leaves — no nesting either way.
+        for l in [&a, &b] {
+            match &l.root {
+                Area::Split {
+                    children, sizes, ..
+                } => {
+                    assert_eq!(children.len(), 3, "three columns, one split");
+                    assert_eq!(sizes.len(), 3);
+                    assert!(children.iter().all(|c| matches!(c, Area::Leaf { .. })));
+                }
+                other => panic!("expected one split, got {other:?}"),
+            }
+        }
+        let _ = second;
+    }
+
+    #[test]
+    fn a_seam_moves_only_its_own_pair() {
+        let mut l = Layout::single("x");
+        l.split(1, Dir::Row, 0.5).unwrap();
+        l.split(1, Dir::Row, 0.5).unwrap();
+        let (id, before) = match &l.root {
+            Area::Split { id, sizes, .. } => (*id, sizes.clone()),
+            _ => panic!("split"),
+        };
+        // Move the first seam; the third column keeps its size.
+        assert!(l.set_seam(id, 0, 0.1));
+        match &l.root {
+            Area::Split { sizes, .. } => {
+                assert!(
+                    (sizes[2] - before[2]).abs() < 1e-6,
+                    "outer column untouched"
+                );
+                assert!(
+                    (sizes.iter().sum::<f32>() - 1.0).abs() < 1e-5,
+                    "still a partition"
+                );
+            }
+            _ => panic!("split"),
+        }
+    }
+
+    #[test]
+    fn joining_a_middle_area_leaves_two() {
+        let mut l = Layout::single("x");
+        l.split(1, Dir::Row, 0.5).unwrap();
+        let mid = l.split(1, Dir::Row, 0.5).unwrap();
+        assert!(l.join(mid));
+        match &l.root {
+            Area::Split {
+                children, sizes, ..
+            } => {
+                assert_eq!(children.len(), 2);
+                assert!((sizes.iter().sum::<f32>() - 1.0).abs() < 1e-5);
+            }
+            other => panic!("expected a split of two, got {other:?}"),
+        }
+        // And joining down to one collapses the split away entirely.
+        let last = l.root.leaves()[1];
+        assert!(l.join(last));
+        assert!(matches!(l.root, Area::Leaf { .. }));
+    }
+
+    #[test]
+    fn a_cross_direction_split_still_nests() {
+        let mut l = Layout::single("x");
+        let right = l.split(1, Dir::Row, 0.5).unwrap();
+        l.split(right, Dir::Col, 0.5).unwrap();
+        match &l.root {
+            Area::Split { dir, children, .. } => {
+                assert_eq!(*dir, Dir::Row);
+                assert_eq!(children.len(), 2, "a column inside a row is still nesting");
+                assert!(matches!(children[1], Area::Split { dir: Dir::Col, .. }));
+            }
+            other => panic!("expected a row, got {other:?}"),
+        }
+    }
+
     #[test]
     fn swap_editors_exchanges_two_leaves() {
         let mut l = Layout::single("runs");
@@ -446,15 +657,18 @@ mod tests {
     }
 
     #[test]
-    fn ratios_never_let_an_area_vanish() {
+    fn seams_never_let_an_area_vanish() {
         let mut l = Layout::single("a");
         l.split(1, Dir::Row, 0.5).unwrap();
         let split_id = l.root.id();
-        assert!(l.set_ratio(split_id, 0.0001));
-        let Area::Split { ratio, .. } = l.root else {
+        assert!(l.set_seam(split_id, 0, 0.0001));
+        let Area::Split { sizes, .. } = l.root else {
             unreachable!()
         };
-        assert!(ratio >= MIN_RATIO);
+        assert!(
+            sizes[0] >= MIN_RATIO,
+            "the squeezed area keeps a grabbable slice"
+        );
     }
 
     #[test]

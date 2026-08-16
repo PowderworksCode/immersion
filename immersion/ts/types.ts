@@ -25,7 +25,7 @@ declare global {
 
 /** A gesture the deck commits on pointerup — see `Gesture` in ui.rs. */
 export type GestureMsg =
-  | { t: "ratio"; id: number; ratio: number }
+  | { t: "ratio"; id: number; index: number; ratio: number }
   | { t: "split"; id: number; dir: "row" | "col"; frac: number }
   | { t: "join"; survivor: number; victim: number }
   | { t: "swap"; a: number; b: number }

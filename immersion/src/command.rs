@@ -156,11 +156,14 @@ const BUILTINS: &[Command] = &[
     },
     Command {
         name: "ratio",
-        description: "Move the seam between two areas",
+        description: "Move a seam between two areas",
         navigational: false,
         run: |ws, p| {
-            ws.current_layout_mut()
-                .set_ratio(u64_field(p, "id")?, f32_field(p, "ratio")?);
+            ws.current_layout_mut().set_seam(
+                u64_field(p, "id")?,
+                u64_field(p, "index").unwrap_or(0) as usize,
+                f32_field(p, "ratio")?,
+            );
             Ok(())
         },
     },

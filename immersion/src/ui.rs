@@ -20,19 +20,38 @@ use crate::area::{Area, AreaId, Dir, Layout, Regions};
 #[derive(Deserialize)]
 #[serde(tag = "t", rename_all = "lowercase")]
 enum Gesture {
-    Ratio { id: AreaId, ratio: f32 },
-    Split { id: AreaId, dir: Dir, frac: f32 },
-    Join { survivor: AreaId, victim: AreaId },
-    Swap { a: AreaId, b: AreaId },
-    RegionWidth { id: AreaId, region: String, w: u16 },
+    Ratio {
+        id: AreaId,
+        index: usize,
+        ratio: f32,
+    },
+    Split {
+        id: AreaId,
+        dir: Dir,
+        frac: f32,
+    },
+    Join {
+        survivor: AreaId,
+        victim: AreaId,
+    },
+    Swap {
+        a: AreaId,
+        b: AreaId,
+    },
+    RegionWidth {
+        id: AreaId,
+        region: String,
+        w: u16,
+    },
 }
 
 impl Gesture {
     fn command(self) -> (&'static str, serde_json::Value) {
         match self {
-            Gesture::Ratio { id, ratio } => {
-                ("ratio", serde_json::json!({ "id": id, "ratio": ratio }))
-            }
+            Gesture::Ratio { id, index, ratio } => (
+                "ratio",
+                serde_json::json!({ "id": id, "index": index, "ratio": ratio }),
+            ),
             Gesture::Split { id, dir, frac } => {
                 let d = if matches!(dir, Dir::Row) {
                     "row"
@@ -174,34 +193,47 @@ fn render_node(node: &Area, props: &AreasProps, lone: bool) -> Element {
         Area::Split {
             id,
             dir,
-            ratio,
-            a,
-            b,
+            sizes,
+            children,
         } => {
-            let (cls, pct) = match dir {
-                Dir::Row => ("im-split im-row", ratio * 100.0),
-                Dir::Col => ("im-split im-col", ratio * 100.0),
+            let (cls, handle_dir) = match dir {
+                Dir::Row => ("im-split im-row", "row"),
+                Dir::Col => ("im-split im-col", "col"),
             };
-            let (handle_dir, handle_pos) = match dir {
-                Dir::Row => ("row", format!("left: {pct}%")),
-                Dir::Col => ("col", format!("top: {pct}%")),
-            };
+            // Seams sit at the running total of the sizes before them, so a
+            // split of three has two handles and each moves only its own pair.
+            let mut cum = 0.0f32;
+            let seams: Vec<(usize, f32)> = sizes
+                .iter()
+                .take(sizes.len().saturating_sub(1))
+                .map(|s| {
+                    cum += *s;
+                    cum * 100.0
+                })
+                .enumerate()
+                .collect();
             rsx! {
                 div { class: "{cls}", key: "{id}",
-                    div { class: "im-cell", style: "flex-basis: {pct}%",
-                        {render_node(a, props, false)}
+                    for (i, child) in children.iter().enumerate() {
+                        div {
+                            class: "im-cell",
+                            key: "{child.id()}",
+                            style: "flex-basis: {sizes.get(i).copied().unwrap_or(0.0) * 100.0}%",
+                            {render_node(child, props, false)}
+                        }
                     }
-                    div { class: "im-cell", style: "flex-basis: {100.0 - pct}%",
-                        {render_node(b, props, false)}
-                    }
-                    // The resize handle rides the seam. It is chrome, not
-                    // layout: absolutely positioned over the border so the
-                    // cells' geometry stays a pure function of the ratio.
-                    div {
-                        class: "im-seam-handle im-seam-{handle_dir}",
-                        style: "{handle_pos}",
-                        "data-im-seam": "{id}",
-                        "data-im-dir": "{handle_dir}",
+                    // The resize handles ride the seams. They are chrome, not
+                    // layout: absolutely positioned over each border so the
+                    // cells' geometry stays a pure function of the sizes.
+                    for (i, pos) in seams.iter().copied() {
+                        div {
+                            class: "im-seam-handle im-seam-{handle_dir}",
+                            key: "seam-{i}",
+                            style: if handle_dir == "row" { "left: {pos}%" } else { "top: {pos}%" },
+                            "data-im-seam": "{id}",
+                            "data-im-seam-index": "{i}",
+                            "data-im-dir": "{handle_dir}",
+                        }
                     }
                 }
             }
