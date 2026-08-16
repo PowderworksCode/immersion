@@ -53,3 +53,9 @@ jobs:
       - uses: PowderworksCode/straitjacket@v0.1.1
         with:
           version: v0.1.1
+          # The install step fetches the release binary and its SHA256SUMS from
+          # GitHub. Unauthenticated, that is rate-limited on shared runners and
+          # fails as "could not download SHA256SUMS" — a red X that has nothing
+          # to do with the diff. The default token lifts the limit; the release
+          # is public, so this grants no new access.
+          token: ${{ secrets.GITHUB_TOKEN }}
