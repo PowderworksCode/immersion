@@ -412,9 +412,20 @@ pub(crate) fn ed_settings(
 /// workbench's documents mounted under one root, every row addressable,
 /// right-click ▸ Copy data path. What `set_setting` edits and what the MCP
 /// tools read stops being invisible: this is the address space, on screen.
-pub(crate) fn ed_data(s: &State) -> Element {
+pub(crate) fn ed_data(s: &State, target: Option<String>) -> Element {
     let state_doc = serde_json::to_value(s).unwrap_or_default();
-    let children_of = Callback::new(move |pointer: String| data_children(&state_doc, &pointer));
+    // The target roots the view: an area pointed at /settings/favorites shows
+    // that subtree and nothing else, which is what makes several data areas
+    // useful side by side instead of three copies of the same scroll.
+    let root = target.unwrap_or_default();
+    let children_of = Callback::new(move |pointer: String| {
+        let at = if pointer.is_empty() {
+            root.clone()
+        } else {
+            pointer
+        };
+        data_children(&state_doc, &at)
+    });
     rsx! {
         div { class: "data-editor im-filter-scope",
             div { class: "keymap-head", FilterBox { placeholder: "filter fields\u{2026}" } }
@@ -425,7 +436,10 @@ pub(crate) fn ed_data(s: &State) -> Element {
 
 /// Children under the mounted root. `""` lists the mounts; below, the pointer
 /// starts with the mount's name and the rest addresses within that document.
-fn data_children(state_doc: &serde_json::Value, pointer: &str) -> Vec<immersion::TreeRow> {
+pub(crate) fn data_children(
+    state_doc: &serde_json::Value,
+    pointer: &str,
+) -> Vec<immersion::TreeRow> {
     if pointer.is_empty() {
         let mount = |name: &str, preview: &str| immersion::TreeRow {
             pointer: format!("/{name}"),
@@ -462,8 +476,16 @@ fn data_children(state_doc: &serde_json::Value, pointer: &str) -> Vec<immersion:
 
 /// The file browser: the tree view over a directory. Lazily loaded — a
 /// directory reads only when its branch opens.
-pub(crate) fn ed_files() -> Element {
-    let children_of = Callback::new(move |pointer: String| file_children(&pointer));
+pub(crate) fn ed_files(target: Option<String>) -> Element {
+    let root = target.unwrap_or_default();
+    let children_of = Callback::new(move |pointer: String| {
+        let at = if pointer.is_empty() {
+            root.clone()
+        } else {
+            pointer
+        };
+        file_children(&at)
+    });
     rsx! {
         div { class: "files-editor im-filter-scope",
             div { class: "keymap-head", FilterBox { placeholder: "filter files\u{2026}" } }
@@ -487,7 +509,7 @@ fn files_root() -> std::path::PathBuf {
 /// machine's own: a public instance listing its container's filesystem is an
 /// invitation, and it only gets worse when the code viewer can read what the
 /// browser lists.
-fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
+pub(crate) fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
     if crate::demo::enabled() {
         return crate::demo::file_children(pointer);
     }

@@ -392,6 +392,19 @@
   font-family: var(--im-mono); font-size: .72rem;
 }
 
+/* The target chip — Blender's data-block selector. Reads as a breadcrumb,
+   not a button, until hovered. */
+.im-target {
+  font: inherit; font-size: .72rem;
+  background: var(--im-input-bg); color: var(--im-text);
+  border: 1px solid var(--im-border); border-radius: 3px;
+  padding: 0 .4rem; margin-left: .3rem; cursor: pointer;
+  max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.im-target:hover { border-color: var(--im-accent); }
+.im-target-none { color: var(--im-text-muted); }
+.im-target:disabled { cursor: default; opacity: .6; }
+
 .im-input.im-invalid {
   border-color: var(--im-invalid);
   color: var(--im-invalid);

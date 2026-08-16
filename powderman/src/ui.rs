@@ -202,8 +202,8 @@ pub(crate) fn tile(k: &str, v: String, of: Option<String>) -> Element {
 
 use immersion::{
     AreaId, Areas, Chrome, ContextMenu, Dir, EditorKind, Field, FieldKind, Keymap, KeymapHelp,
-    Layout, LayoutFile, MenuItem, Palette, PaletteItem, Panel, Platform, PropertyEditor, Splash,
-    SplashRecent, StatusBar, Template, WorkspaceTabs, default_keymap, menu_json, pretty_chord,
+    Layout, LayoutFile, MenuItem, Palette, PaletteItem, Panel, Platform, Splash, SplashRecent,
+    StatusBar, Template, WorkspaceTabs, default_keymap, menu_json, pretty_chord,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -508,46 +508,57 @@ fn kinds() -> Vec<EditorKind> {
         EditorKind {
             id: "machine",
             label: "Machine",
+            targets: false,
         },
         EditorKind {
             id: "fleet",
             label: "Fleet",
+            targets: false,
         },
         EditorKind {
             id: "runs",
             label: "Runs",
+            targets: false,
         },
         EditorKind {
             id: "actions",
             label: "Actions",
+            targets: false,
         },
         EditorKind {
             id: "timers",
             label: "Timers",
+            targets: false,
         },
         EditorKind {
             id: "run",
             label: "Run detail",
+            targets: true,
         },
         EditorKind {
             id: "settings",
             label: "Settings",
+            targets: false,
         },
         EditorKind {
             id: "info",
             label: "Info log",
+            targets: false,
         },
         EditorKind {
             id: "keymap",
             label: "Keymap",
+            targets: false,
         },
         EditorKind {
             id: "data",
             label: "Data",
+            targets: true,
         },
         EditorKind {
             id: "files",
             label: "Files",
+            targets: true,
         },
     ]
 }
@@ -660,6 +671,9 @@ pub fn App() -> Element {
     // The command palette is per-client view state, like maximize — one client
     // searching commands does not open the palette in another.
     let mut palette_open = use_signal(|| false);
+    // Which area is being retargeted, if any. Per-client like the palette: two
+    // people picking targets should not fight over one modal.
+    let mut picking_for = use_signal(|| None::<AreaId>);
 
     // Maximize is per-client view state (two browsers may maximize different
     // areas), so it is a local signal, not a command on the shared tree.
@@ -760,6 +774,17 @@ pub fn App() -> Element {
             "/keymap",
             serde_json::Value::Object(km),
         ));
+    });
+
+    let on_pick_target = use_callback(move |id: AreaId| picking_for.set(Some(id)));
+    let pick_target = use_callback(move |(id, target): (AreaId, String)| {
+        // Through the bus like everything else, so an agent retargets an area
+        // the same way the picker does.
+        cmd.call((
+            "set_target".to_string(),
+            serde_json::json!({ "id": id, "target": target }),
+        ));
+        picking_for.set(None);
     });
 
     let on_template = use_callback(move |i: usize| {
@@ -890,8 +915,8 @@ pub fn App() -> Element {
                 "settings" => {
                     crate::editors::ed_settings(settings_doc.clone(), on_setting, on_editor_error)
                 }
-                "data" => crate::editors::ed_data(&s),
-                "files" => crate::editors::ed_files(),
+                "data" => crate::editors::ed_data(&s, arg.clone()),
+                "files" => crate::editors::ed_files(arg.clone()),
                 other => rsx! { div { class: "empty", "unknown editor {other}" } },
             }
         },
@@ -971,8 +996,28 @@ pub fn App() -> Element {
                     on_close: move |()| help_open.set(false),
                 }
             }
+            if let Some(id) = picking_for() {
+                crate::panels::TargetPicker {
+                    area: id,
+                    current: ws.read().current().layout.target_of(id),
+                    editor: ws
+                        .read()
+                        .current()
+                        .layout
+                        .root
+                        .find(id)
+                        .and_then(|a| match a {
+                            immersion::Area::Leaf { editor, .. } => Some(editor.clone()),
+                            _ => None,
+                        })
+                        .unwrap_or_default(),
+                    state: s.clone(),
+                    on_pick: pick_target,
+                    on_cancel: use_callback(move |()| picking_for.set(None)),
+                }
+            }
             if adjust_open() {
-                AdjustPanel {
+                crate::panels::AdjustPanel {
                     name: adjust_name(),
                     doc: adjust_doc(),
                     on_edit: adj_edit,
@@ -1005,6 +1050,7 @@ pub fn App() -> Element {
                     render_toolbar: Some(render_toolbar),
                     render_sidebar: Some(render_sidebar),
                     on_command: cmd,
+                    on_pick_target,
                     maximized: maximized().or_else(|| {
                         if fullscreen() {
                             ws.read().current().layout.root.leaves().first().copied()
@@ -1030,37 +1076,10 @@ pub fn App() -> Element {
     }
 }
 
-/// The Adjust Last panel: the last command's params as an editable form, with
-/// Cancel and Apply. Extracted so the App view does not nest another four
-/// levels deep.
-#[component]
-fn AdjustPanel(
-    name: String,
-    doc: serde_json::Value,
-    on_edit: Callback<(String, serde_json::Value)>,
-    on_error: Callback<immersion::EditorError>,
-    on_cancel: Callback<()>,
-    on_apply: Callback<()>,
-) -> Element {
-    let fields = fields_from_params(&doc);
-    rsx! {
-        div { class: "adjust-backdrop", onclick: move |_| on_cancel.call(()),
-            div { class: "adjust-panel", onclick: move |e| e.stop_propagation(),
-                div { class: "adjust-title", "Adjust: {name}" }
-                PropertyEditor { doc, fields, on_edit, on_error }
-                div { class: "adjust-actions",
-                    button { class: "adjust-cancel", onclick: move |_| on_cancel.call(()), "Cancel" }
-                    button { class: "adjust-apply", onclick: move |_| on_apply.call(()), "Apply" }
-                }
-            }
-        }
-    }
-}
-
 /// Turn a command'"'"'s params into an editable form: a field per key, its widget
 /// chosen by the value's type. Adjust Last renders this over the last command's
 /// params so you can re-run it with tweaks.
-fn fields_from_params(params: &serde_json::Value) -> Vec<Field> {
+pub(crate) fn fields_from_params(params: &serde_json::Value) -> Vec<Field> {
     let mut fields = Vec::new();
     if let Some(obj) = params.as_object() {
         for (k, v) in obj {
