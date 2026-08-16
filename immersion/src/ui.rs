@@ -587,6 +587,13 @@ fn crumb(target: Option<&str>) -> String {
     } else {
         parts.join("/")
     };
+    // An opaque id — a run's, say — has no segments to trim, and a full one
+    // is wider than the header it sits in. Its first characters identify it.
+    let tail = if !tail.contains('/') && tail.chars().count() > 12 {
+        format!("{}\u{2026}", tail.chars().take(8).collect::<String>())
+    } else {
+        tail
+    };
     format!("\u{25c6} {tail}")
 }
 
@@ -608,7 +615,12 @@ mod crumb_tests {
             "\u{25c6} \u{2026}/steps/7",
             "long pointers keep the end, which is the part that identifies it"
         );
-        // A run id is not a pointer, and must survive unmangled.
+        // A run id is not a pointer: it keeps its own shape, shortened only
+        // when a full one would be wider than the header.
         assert_eq!(crumb(Some("9f3a1c2e")), "\u{25c6} 9f3a1c2e");
+        assert_eq!(
+            crumb(Some("5c7e9a1b3d5f7091a3c5e7d9b1f3a5c7")),
+            "\u{25c6} 5c7e9a1b\u{2026}"
+        );
     }
 }

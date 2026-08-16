@@ -50,23 +50,21 @@ pub(crate) fn TargetPicker(
     on_pick: Callback<(AreaId, String)>,
     on_cancel: Callback<()>,
 ) -> Element {
-    // A files editor picks paths; everything else picks pointers into the
-    // workbench's documents. Same component, different feed.
-    let files = editor == "files";
+    // Each editor offers only what it can actually be pointed at — runs for
+    // the run editor, paths for the file browser, pointers for the rest.
     let state_doc = serde_json::to_value(&state).unwrap_or_default();
+    let kind = editor.clone();
+    let feed = state.clone();
     let children_of = Callback::new(move |pointer: String| {
-        if files {
-            crate::editors::file_children(&pointer)
-        } else {
-            crate::editors::data_children(&state_doc, &pointer)
-        }
+        crate::editors::target_children(&kind, &state_doc, &feed, &pointer)
     });
+    let noun = crate::editors::target_noun(&editor);
     let mut chosen = use_signal(|| current.clone().unwrap_or_default());
     let on_row = Callback::new(move |row: immersion::TreeRow| chosen.set(row.pointer));
     rsx! {
         div { class: "adjust-backdrop", onclick: move |_| on_cancel.call(()),
             div { class: "adjust-panel target-panel", onclick: move |e| e.stop_propagation(),
-                div { class: "adjust-title", "Target for area {area}" }
+                div { class: "adjust-title", "{noun} for area {area}" }
                 div { class: "target-current", "{chosen()}" }
                 div { class: "target-tree im-filter-scope",
                     div { class: "keymap-head", FilterBox { placeholder: "filter\u{2026}" } }
@@ -82,7 +80,7 @@ pub(crate) fn TargetPicker(
                     button {
                         class: "adjust-apply",
                         onclick: move |_| on_pick.call((area, chosen())),
-                        "Set target"
+                        "Set {noun.to_lowercase()}"
                     }
                 }
             }
