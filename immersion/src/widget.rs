@@ -96,6 +96,11 @@ pub struct PropertyEditorProps {
     pub fields: Vec<Field>,
     /// `(json pointer, new value)`. The host applies it to its own document.
     pub on_edit: Callback<(String, Value)>,
+    /// A field refused input — the host echoes it to the status report, the
+    /// second surface beside the field's own flag. Optional: a host that
+    /// ignores errors just gets the field-local flag.
+    #[props(default)]
+    pub on_error: Option<Callback<EditorError>>,
 }
 
 impl PartialEq for PropertyEditorProps {
@@ -110,10 +115,11 @@ pub fn PropertyEditor(props: PropertyEditorProps) -> Element {
         dioxus::document::eval(SCRUB_JS);
         dioxus::document::eval(COLORPICKER_JS);
     });
+    let on_error = props.on_error.unwrap_or_else(|| Callback::new(|_| {}));
     rsx! {
         div { class: "im-props",
             for f in props.fields.iter().cloned() {
-                {field_row(f, &props.doc, props.on_edit)}
+                {field_row(f, &props.doc, props.on_edit, on_error)}
             }
         }
     }
@@ -123,12 +129,17 @@ fn current<'a>(doc: &'a Value, path: &str) -> Option<&'a Value> {
     doc.pointer(path)
 }
 
-fn field_row(f: Field, doc: &Value, on_edit: Callback<(String, Value)>) -> Element {
+fn field_row(
+    f: Field,
+    doc: &Value,
+    on_edit: Callback<(String, Value)>,
+    on_error: Callback<EditorError>,
+) -> Element {
     let val = current(doc, &f.path).cloned().unwrap_or(Value::Null);
     let control = match &f.kind {
         FieldKind::Text => text_widget(&f.path, &val, on_edit),
         FieldKind::Number { min, max, step } => {
-            number_widget(&f.path, &val, *min, *max, *step, on_edit)
+            number_widget(&f.path, &val, *min, *max, *step, on_edit, on_error)
         }
         FieldKind::Slider { min, max, step } => {
             slider_widget(&f.path, &val, *min, *max, *step, on_edit)
@@ -137,7 +148,9 @@ fn field_row(f: Field, doc: &Value, on_edit: Callback<(String, Value)>) -> Eleme
         FieldKind::Select(opts) => select_widget(&f.path, &val, opts, on_edit),
         FieldKind::Radio(opts) => radio_widget(&f.path, &val, opts, on_edit),
         FieldKind::Toggle => toggle_widget(&f.path, &val, on_edit),
-        FieldKind::Vector { labels, step } => vector_widget(&f.path, &val, labels, *step, on_edit),
+        FieldKind::Vector { labels, step } => {
+            vector_widget(&f.path, &val, labels, *step, on_edit, on_error)
+        }
         FieldKind::Color => color_widget(&f.path, &val, on_edit),
     };
     // A field with a default gets a right-click "Reset to default", routed to
@@ -202,6 +215,55 @@ fn text_widget(path: &str, val: &Value, on_edit: Callback<(String, Value)>) -> E
     }
 }
 
+/// The one text-number control, shared by the scalar field and each vector
+/// component. A component rather than a function because a field that can
+/// refuse input needs somewhere to remember that it did: on a bad expression
+/// it flags itself (`im-invalid`, the message in `title`) and hands the error
+/// up; the next successful commit — typed or scrubbed — clears the flag.
+#[component]
+fn NumberInput(
+    value: f64,
+    step_s: String,
+    #[props(default)] min_attr: String,
+    #[props(default)] max_attr: String,
+    on_commit: Callback<f64>,
+    on_error: Callback<EditorError>,
+) -> Element {
+    let mut error = use_signal(|| None::<String>);
+    rsx! {
+        input {
+            class: if error().is_some() { "im-input im-number im-scrub im-invalid" } else { "im-input im-number im-scrub" },
+            // Text, not number: a number input does not merely reject "3*2",
+            // it strips the operator and commits 32. The evaluation happens
+            // here, on commit, and the document receives a number.
+            r#type: "text",
+            inputmode: "decimal",
+            value: "{value}",
+            // The message rides the tooltip, so hovering the red field says
+            // why it is red.
+            title: error().unwrap_or_default(),
+            min: if min_attr.is_empty() { None } else { Some(min_attr.clone()) },
+            max: if max_attr.is_empty() { None } else { Some(max_attr.clone()) },
+            step: "{step_s}",
+            // Read by scrub.js — drag horizontally to change the value.
+            "data-im-scrub": "1",
+            "data-scrub-step": "{step_s}",
+            "data-scrub-min": "{min_attr}",
+            "data-scrub-max": "{max_attr}",
+            onchange: move |e| match eval_expr(&e.value()) {
+                Ok(n) => {
+                    error.set(None);
+                    on_commit.call(n);
+                }
+                Err(err) => {
+                    error.set(Some(err.to_string()));
+                    on_error.call(err);
+                }
+            },
+        }
+    }
+}
+
 fn number_widget(
     path: &str,
     val: &Value,
@@ -209,42 +271,31 @@ fn number_widget(
     max: Option<f64>,
     step: Option<f64>,
     on_edit: Callback<(String, Value)>,
+    on_error: Callback<EditorError>,
 ) -> Element {
     let path = path.to_string();
     let cur = as_f64(val);
-    let min_s = min.map(|m| m.to_string());
-    let max_s = max.map(|m| m.to_string());
     let step_s = step.map(|s| s.to_string()).unwrap_or_else(|| "1".into());
     let min_attr = min.map(|m| m.to_string()).unwrap_or_default();
     let max_attr = max.map(|m| m.to_string()).unwrap_or_default();
+    let on_commit = Callback::new(move |n: f64| {
+        // Keep integers integer in the document, so a limit reads `100`, not
+        // `100.0`, and round-trips to the host cleanly.
+        let v = if n.fract() == 0.0 {
+            json!(n as i64)
+        } else {
+            json!(n)
+        };
+        on_edit.call((path.clone(), v));
+    });
     rsx! {
-        input {
-            class: "im-input im-number im-scrub",
-            // Text, not number: a number input rejects "3*2" before the shim
-            // can evaluate it. The shim resolves the expression on commit and
-            // the parse below still guards what reaches the document.
-            r#type: "text",
-            inputmode: "decimal",
-            value: "{cur}",
-            min: min_s,
-            max: max_s,
-            step: "{step_s}",
-            // Read by scrub.js — drag horizontally to change the value.
-            "data-im-scrub": "1",
-            "data-scrub-step": "{step_s}",
-            "data-scrub-min": "{min_attr}",
-            "data-scrub-max": "{max_attr}",
-            onchange: move |e| {
-                // The field may hold an expression (`3*2`); evaluating it here
-                // means the shim never has to, and the document still receives
-                // a number.
-                if let Some(n) = eval_number(&e.value()) {
-                    // Keep integers integer in the document, so a limit reads
-                    // `100`, not `100.0`, and round-trips to the host cleanly.
-                    let v = if n.fract() == 0.0 { json!(n as i64) } else { json!(n) };
-                    on_edit.call((path.clone(), v));
-                }
-            },
+        NumberInput {
+            value: cur,
+            step_s,
+            min_attr,
+            max_attr,
+            on_commit,
+            on_error,
         }
     }
 }
@@ -374,13 +425,29 @@ fn vector_widget(
     labels: &[String],
     step: Option<f64>,
     on_edit: Callback<(String, Value)>,
+    on_error: Callback<EditorError>,
 ) -> Element {
     let arr = val.as_array().cloned().unwrap_or_default();
     let step_s = step.map(|s| s.to_string()).unwrap_or_else(|| "1".into());
+    let n = labels.len();
     rsx! {
         div { class: "im-vector",
             for (i, label) in labels.iter().cloned().enumerate() {
-                {vector_part(path, &arr, i, labels.len(), label, &step_s, on_edit)}
+                {
+                    // One component changes; the whole array is rewritten, so
+                    // the edit stays a single value at a single pointer.
+                    let p = path.to_string();
+                    let cur = arr.get(i).and_then(Value::as_f64).unwrap_or(0.0);
+                    let arr = arr.clone();
+                    let on_commit = Callback::new(move |x: f64| {
+                        let mut next: Vec<Value> = (0..n)
+                            .map(|k| arr.get(k).cloned().unwrap_or(json!(0)))
+                            .collect();
+                        next[i] = if x.fract() == 0.0 { json!(x as i64) } else { json!(x) };
+                        on_edit.call((p.clone(), json!(next)));
+                    });
+                    vector_part(i, label, cur, &step_s, on_commit, on_error)
+                }
             }
         }
     }
@@ -389,44 +456,22 @@ fn vector_widget(
 /// One component of a vector field. Its own function so the row does not nest
 /// another four levels deep inside the loop.
 fn vector_part(
-    path: &str,
-    arr: &[Value],
     i: usize,
-    n: usize,
     label: String,
+    cur: f64,
     step_s: &str,
-    on_edit: Callback<(String, Value)>,
+    on_commit: Callback<f64>,
+    on_error: Callback<EditorError>,
 ) -> Element {
-    let cur = arr.get(i).and_then(Value::as_f64).unwrap_or(0.0);
-    let p = path.to_string();
-    let arr = arr.to_vec();
     let step_s = step_s.to_string();
     rsx! {
         label { class: "im-vec-part", key: "{i}",
             span { class: "im-vec-label", "{label}" }
-            input {
-                class: "im-input im-number im-scrub",
-                // Text, not number, for the same reason the scalar field is:
-                // a number input does not merely reject "3*2", it strips the
-                // operator and commits 32. The shim resolves the expression
-                // on commit and the parse below guards what reaches the
-                // document.
-                r#type: "text",
-                inputmode: "decimal",
-                value: "{cur}",
-                step: "{step_s}",
-                "data-im-scrub": "1",
-                "data-scrub-step": "{step_s}",
-                // One component changes; the whole array is rewritten, so the
-                // edit stays a single value at a single pointer.
-                onchange: move |e| {
-                    if let Some(x) = eval_number(&e.value()) {
-                        let mut next: Vec<Value> =
-                            (0..n).map(|k| arr.get(k).cloned().unwrap_or(json!(0))).collect();
-                        next[i] = if x.fract() == 0.0 { json!(x as i64) } else { json!(x) };
-                        on_edit.call((p.clone(), json!(next)));
-                    }
-                },
+            NumberInput {
+                value: cur,
+                step_s,
+                on_commit,
+                on_error,
             }
         }
     }
@@ -485,30 +530,43 @@ pub fn eval_number(src: &str) -> Option<f64> {
     eval_expr(src).ok()
 }
 
-/// What went wrong, in words a person can act on: the message and the column
-/// it happened at. `eval_number` throws this away; a caller that wants to show
-/// the user why their expression was refused uses this instead.
+/// What went wrong, in words a person can act on. One error type for every
+/// editor surface: the expression parser fills `column`; a failed command or
+/// a bad chart spec leaves it `None`. The host shows the same value two ways,
+/// Blender-style — the field flags itself, and the status report echoes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EvalError {
+pub struct EditorError {
     pub message: String,
-    /// 1-based, so it lines up with a caret under the text as typed.
-    pub column: usize,
+    /// 1-based, so it lines up with a caret under the text as typed. `None`
+    /// when the error has no position (a command failure, a whole-document
+    /// rejection).
+    pub column: Option<usize>,
 }
 
-impl std::fmt::Display for EvalError {
+impl EditorError {
+    /// An error with no position — a command failure, a rejected document.
+    pub fn message(message: impl Into<String>) -> Self {
+        EditorError {
+            message: message.into(),
+            column: None,
+        }
+    }
+}
+
+impl std::fmt::Display for EditorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
     }
 }
 
 /// Evaluate, or say why not.
-pub fn eval_expr(src: &str) -> Result<f64, EvalError> {
+pub fn eval_expr(src: &str) -> Result<f64, EditorError> {
     use chumsky::Parser;
     let text = src.trim().to_ascii_lowercase();
     if text.is_empty() {
-        return Err(EvalError {
+        return Err(EditorError {
             message: "nothing to evaluate".into(),
-            column: 1,
+            column: Some(1),
         });
     }
     let parsed = expression().parse(&text);
@@ -518,22 +576,22 @@ pub fn eval_expr(src: &str) -> Result<f64, EvalError> {
         return if v.is_finite() {
             Ok(v)
         } else {
-            Err(EvalError {
+            Err(EditorError {
                 message: "not a finite number".into(),
-                column: 1,
+                column: Some(1),
             })
         };
     }
     // `Rich` borrows the input, so each error is rendered to an owned string
     // here rather than handed up the stack.
     Err(parsed.into_errors().into_iter().next().map_or_else(
-        || EvalError {
+        || EditorError {
             message: "not an expression".into(),
-            column: 1,
+            column: Some(1),
         },
-        |e| EvalError {
+        |e| EditorError {
             message: e.to_string(),
-            column: e.span().start + 1,
+            column: Some(e.span().start + 1),
         },
     ))
 }
@@ -659,14 +717,18 @@ mod tests {
         // assertions are on the useful parts rather than the exact phrasing.
         let e = eval_expr("3*").expect_err("trailing operator");
         assert!(e.message.contains("a number"), "{}", e.message);
-        assert_eq!(e.column, 3, "points at the operator with nothing after it");
+        assert_eq!(
+            e.column,
+            Some(3),
+            "points at the operator with nothing after it"
+        );
 
         let e = eval_expr("2+3)").expect_err("unbalanced");
-        assert_eq!(e.column, 4);
+        assert_eq!(e.column, Some(4));
         assert!(e.message.contains(')'), "{}", e.message);
 
         let e = eval_expr("drop table").expect_err("not arithmetic");
-        assert_eq!(e.column, 1);
+        assert_eq!(e.column, Some(1));
 
         assert_eq!(eval_expr("  ").unwrap_err().message, "nothing to evaluate");
         assert_eq!(eval_expr("1/0").unwrap_err().message, "not a finite number");

@@ -51,7 +51,10 @@ pub use splash::{Splash, SplashProps, SplashRecent, Template};
 pub use statusbar::{StatusBar, StatusBarProps};
 pub use theme::{Theme, theme_css, themes};
 pub use ui::{Areas, AreasProps, EditorKind, WorkspaceTabs, WorkspaceTabsProps};
-pub use widget::{Field, FieldKind, PropertyEditor, PropertyEditorProps, apply_edit};
+pub use widget::{
+    EditorError, Field, FieldKind, PropertyEditor, PropertyEditorProps, apply_edit, eval_expr,
+    eval_number,
+};
 pub use workspace::{Workspace, Workspaces};
 
 /// The library's chrome styles. The host concatenates this with its own CSS —
