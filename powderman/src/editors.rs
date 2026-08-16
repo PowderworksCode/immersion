@@ -209,6 +209,7 @@ pub(crate) fn ed_info(s: &State) -> Element {
                     class: if e.ok { "log-row" } else { "log-row failed" },
                     key: "{i}-{e.at}",
                     span { class: "when", "{hhmmss(e.at)}" }
+                    span { class: "src {e.source}", "{e.source}" }
                     span { class: "k", "{e.name}" }
                     span { class: "note", "{short(&e.params.to_string(), 80)}" }
                 }

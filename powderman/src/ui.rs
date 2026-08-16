@@ -11,6 +11,7 @@
 //! would return instead of re-executing.
 
 use dioxus::prelude::*;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -64,6 +65,11 @@ pub struct LogEntry {
     pub params: serde_json::Value,
     pub at: i64,
     pub ok: bool,
+    /// Who ran it — "ui" for a click or a chord, "agent" for the MCP server.
+    /// The bus is deliberately one path, so the log is the only place the two
+    /// are distinguishable, and it is worth being able to tell.
+    #[serde(default)]
+    pub source: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
