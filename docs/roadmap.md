@@ -175,18 +175,26 @@ for its CodePane — precedent if we ever choose wrapping deliberately).
    falls out of the same code.
 2. **Editor targets** — the locator chip and picker, once the tree exists to
    pick from.
-3. **Code viewer** — read-only, `syntect` highlighting server-side, line
-   numbers, goto-line via the palette. Document: `{path, language, text}`.
-4. **Diff viewer** — the diff is computed in Rust (`similar`) and is server
-   truth; the *rendering* is [diff2html](https://github.com/rtfpessoa/diff2html),
-   vendored (76 KB min / 20 KB gzip + 20 KB CSS, MIT). It takes exactly what
-   `similar` emits — unified diff text — and draws GitHub-quality line-by-line
-   or side-by-side HTML with intra-line highlights. This is a deliberate,
-   sized exception to "own the drawing": diff *presentation* is a commodity
-   with one dominant idiom, and 20 KB of vendored renderer beats reinventing
-   line-matching. The shim receives the diff in one message and renders
-   locally — the budget rule holds.
-5. **Chart editor** — Vega-Lite, the real one. The criterion is not elegance
+3. **Code viewer and diff viewer** — one vendored renderer for both:
+   [`@pierre/diffs`](https://diffs.com) (Apache-2.0, from the Pierre
+   Computer Company), a diff *and file* rendering library built on Shiki.
+   The core is vanilla JS — React exists only as an optional wrapper we do
+   not import. It renders single files (`File`) and patches
+   (`parsePatchFiles` → `FileDiff`) in split or stacked layout with
+   intra-line highlights, an annotation framework, and merge-conflict UI.
+   The division of labor keeps the thesis intact: file text and diffs
+   (computed in Rust, `similar`) are server truth, sent in one message; the
+   library owns the drawing. Measured from a real bun build: ~440 KB min /
+   **127 KB gzip** entry with the JS regex engine (no WASM), plus tiny
+   per-language grammar chunks loaded on demand from our own binary; the
+   full vendored asset dir is 12 MB on disk / 1.9 MB gzip if kept whole,
+   prunable by aliasing `shiki` to a core build with only our grammars.
+   Two futures it buys: its annotation hooks are the natural seat for
+   review-comment UI if the PR viewer returns, and it ships an *edit mode*
+   — so when the read-only phase ends, the wrap-vs-own decision has a
+   concrete, already-vendored candidate. (`syntect` remains the fallback if
+   we ever want highlighting with zero client JS.)
+4. **Chart editor** — Vega-Lite, the real one. The criterion is not elegance
    but *training-data mass*: [Vega-Lite](https://vega.github.io/vega-lite/)
    is the grammar LLMs demonstrably know — it is what
    [VegaChat](https://arxiv.org/abs/2601.15385) generates, what
@@ -209,9 +217,9 @@ for its CodePane — precedent if we ever choose wrapping deliberately).
    - Powderman's machine charts become the first consumer: charts-as-specs
      replace charts-as-code, and the demo gets visibly better.
 
-Vendoring note: both exceptions ride the existing pattern — assets served by
-the daemon (`include_bytes!`), pinned versions committed with checksums, no
-CDN at runtime.
+Vendoring note: both exceptions — `@pierre/diffs` and the Vega stack — ride
+the existing pattern: assets served by the daemon (`include_bytes!`), pinned
+versions committed with checksums, no CDN at runtime.
 
 ## What we are not doing (this phase)
 
@@ -246,8 +254,8 @@ Each step is a PR-sized unit; each leaves main coherent.
    and **file browser** (lazy fs feed) as its first two instances.
 4. **Editor targets** — locator chip in the header menu, picker over the
    tree, `set_target` on the bus.
-5. **Code viewer** (`syntect`), then the **diff viewer** (`similar` +
-   vendored diff2html).
+5. **Code viewer**, then the **diff viewer** — both drawn by vendored
+   `@pierre/diffs`; diffs computed in Rust (`similar`).
 6. **Chart editor** — Vega-Lite specs as documents, vendored Vega stack,
    schema validation through `EditorError`; powderman's machine charts
    migrate onto it.
