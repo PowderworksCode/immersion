@@ -468,186 +468,123 @@ fn color_widget(path: &str, val: &Value, on_edit: Callback<(String, Value)>) -> 
 
 /// Apply an edit to a document by JSON pointer, growing missing objects along
 /// the way. Hosts use this so a widget edit lands where the pointer says, even
-/// for a nested path the document did not have yet.
-/// Evaluate what someone typed into a number field: a plain number, or a small
+/// for a nested path the document did not have yet./// Evaluate what someone typed into a number field: a plain number, or a small
 /// arithmetic expression — `3*2`, `1920/2`, `pi*100`. Blender allows this and
 /// it is genuinely useful, but it belongs here rather than in the shim: it runs
 /// once, on commit, on a message the server already receives. Only frame-path
 /// work — a drag preview, filtering as you type — has to live in the browser.
 ///
-/// A shunting-yard pass over four operators, parentheses and three constants.
-/// Deliberately not a general evaluator: unparseable input returns None and the
-/// field keeps whatever it had.
+/// The grammar is declared below rather than hand-parsed, so precedence and
+/// unary signs are the parser generator's problem and a change is an edit to
+/// the grammar rather than to a shunting-yard loop.
+///
+/// Deliberately not a general evaluator: four operators, parentheses and three
+/// constants. There are no variables and no function calls, so there is
+/// nothing here for a hostile string to reach.
 pub fn eval_number(src: &str) -> Option<f64> {
-    let s = src.trim().to_ascii_lowercase();
-    if s.is_empty() {
-        return None;
-    }
-    if let Ok(n) = s.parse::<f64>() {
-        return Some(n);
-    }
-    let tokens = tokenize(&s)?;
-    let rpn = to_rpn(tokens)?;
-    eval_rpn(&rpn).filter(|v| v.is_finite())
+    eval_expr(src).ok()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Tok {
-    Num(f64),
-    Op(char),
-    Open,
-    Close,
+/// What went wrong, in words a person can act on: the message and the column
+/// it happened at. `eval_number` throws this away; a caller that wants to show
+/// the user why their expression was refused uses this instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvalError {
+    pub message: String,
+    /// 1-based, so it lines up with a caret under the text as typed.
+    pub column: usize,
 }
 
-fn tokenize(s: &str) -> Option<Vec<Tok>> {
-    let mut out = Vec::new();
-    let b: Vec<char> = s.chars().collect();
-    let mut i = 0;
-    // Set when a minus was a sign rather than an operator; consumed by the
-    // next operand.
-    let mut neg = false;
-    while i < b.len() {
-        let c = b[i];
-        match c {
-            ' ' | '\t' => i += 1,
-            '0'..='9' | '.' => {
-                let start = i;
-                while i < b.len() && (b[i].is_ascii_digit() || b[i] == '.') {
-                    i += 1;
-                }
-                // An `e` that follows digits and precedes digits is an
-                // exponent, not Euler's number: `2*1e3` is 2000, while the
-                // `e` in `2*e` is still the constant. Without this the whole
-                // expression is rejected, which the shim this replaces did
-                // not do.
-                if i < b.len() && b[i] == 'e' {
-                    let mut j = i + 1;
-                    if j < b.len() && (b[j] == '+' || b[j] == '-') {
-                        j += 1;
-                    }
-                    if j < b.len() && b[j].is_ascii_digit() {
-                        while j < b.len() && b[j].is_ascii_digit() {
-                            j += 1;
-                        }
-                        i = j;
-                    }
-                }
-                let v: f64 = b[start..i].iter().collect::<String>().parse().ok()?;
-                out.push(Tok::Num(if neg { -v } else { v }));
-                neg = false;
-            }
-            '+' | '-' | '*' | '/' => {
-                // A leading or post-operator minus is a sign, not a
-                // subtraction. Inserting a zero would be wrong after a
-                // higher-precedence operator — `10*-2` would parse as
-                // `(10*0)-2` — so the sign is carried to the next operand
-                // instead, and a parenthesised group is negated by `-1 *`,
-                // which binds as tightly as the group does.
-                let unary = matches!(out.last(), None | Some(Tok::Op(_)) | Some(Tok::Open));
-                if c == '-' && unary {
-                    neg = true;
-                } else if c == '+' && unary {
-                    // A leading plus is just noise.
-                } else {
-                    out.push(Tok::Op(c));
-                }
-                i += 1;
-            }
-            '(' => {
-                if neg {
-                    out.push(Tok::Num(-1.0));
-                    out.push(Tok::Op('*'));
-                    neg = false;
-                }
-                out.push(Tok::Open);
-                i += 1;
-            }
-            ')' => {
-                out.push(Tok::Close);
-                i += 1;
-            }
-            'a'..='z' => {
-                let start = i;
-                while i < b.len() && b[i].is_ascii_alphabetic() {
-                    i += 1;
-                }
-                let word: String = b[start..i].iter().collect();
-                let v = match word.as_str() {
-                    "pi" => std::f64::consts::PI,
-                    "tau" => std::f64::consts::TAU,
-                    "e" => std::f64::consts::E,
-                    _ => return None,
-                };
-                out.push(Tok::Num(if neg { -v } else { v }));
-                neg = false;
-            }
-            _ => return None,
-        }
-    }
-    (!out.is_empty()).then_some(out)
-}
-
-fn prec(op: char) -> u8 {
-    match op {
-        '*' | '/' => 2,
-        _ => 1,
+impl std::fmt::Display for EvalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
     }
 }
 
-fn to_rpn(tokens: Vec<Tok>) -> Option<Vec<Tok>> {
-    let mut out = Vec::new();
-    let mut ops: Vec<Tok> = Vec::new();
-    for t in tokens {
-        match t {
-            Tok::Num(_) => out.push(t),
-            Tok::Op(o) => {
-                while let Some(Tok::Op(top)) = ops.last().copied() {
-                    if prec(top) >= prec(o) {
-                        out.push(ops.pop()?);
-                    } else {
-                        break;
-                    }
-                }
-                ops.push(Tok::Op(o));
-            }
-            Tok::Open => ops.push(t),
-            Tok::Close => loop {
-                match ops.pop()? {
-                    Tok::Open => break,
-                    other => out.push(other),
-                }
-            },
-        }
+/// Evaluate, or say why not.
+pub fn eval_expr(src: &str) -> Result<f64, EvalError> {
+    use chumsky::Parser;
+    let text = src.trim().to_ascii_lowercase();
+    if text.is_empty() {
+        return Err(EvalError {
+            message: "nothing to evaluate".into(),
+            column: 1,
+        });
     }
-    while let Some(op) = ops.pop() {
-        if op == Tok::Open {
-            return None; // unbalanced
-        }
-        out.push(op);
+    let parsed = expression().parse(&text);
+    if let Some(v) = parsed.output().copied() {
+        // Infinity and NaN are not field values: `1/0` leaves the field alone
+        // rather than storing something the document cannot round-trip.
+        return if v.is_finite() {
+            Ok(v)
+        } else {
+            Err(EvalError {
+                message: "not a finite number".into(),
+                column: 1,
+            })
+        };
     }
-    Some(out)
+    // `Rich` borrows the input, so each error is rendered to an owned string
+    // here rather than handed up the stack.
+    Err(parsed.into_errors().into_iter().next().map_or_else(
+        || EvalError {
+            message: "not an expression".into(),
+            column: 1,
+        },
+        |e| EvalError {
+            message: e.to_string(),
+            column: e.span().start + 1,
+        },
+    ))
 }
 
-fn eval_rpn(rpn: &[Tok]) -> Option<f64> {
-    let mut st: Vec<f64> = Vec::new();
-    for t in rpn {
-        match t {
-            Tok::Num(n) => st.push(*n),
-            Tok::Op(o) => {
-                let b = st.pop()?;
-                let a = st.pop()?;
-                st.push(match o {
-                    '+' => a + b,
-                    '-' => a - b,
-                    '*' => a * b,
-                    '/' => a / b,
-                    _ => return None,
-                });
-            }
-            _ => return None,
-        }
-    }
-    (st.len() == 1).then(|| st[0])
+/// The grammar: numbers with optional exponents, three constants, unary signs,
+/// the four operators with the usual precedence, and parentheses. `labelled`
+/// is what makes a failure readable — without it the expectation set is the
+/// raw character classes the parser tried.
+fn expression<'a>()
+-> impl chumsky::Parser<'a, &'a str, f64, chumsky::extra::Err<chumsky::error::Rich<'a, char>>> {
+    use chumsky::prelude::*;
+
+    recursive(|expr| {
+        let digits = text::digits(10).at_least(1);
+        let number = digits
+            .then(just('.').then(text::digits(10)).or_not())
+            // The `e` of `1e3` belongs to the literal; the `e` of `2*e` is
+            // Euler's number. Only an `e` between digits is an exponent.
+            .then(just('e').then(one_of("+-").or_not()).then(digits).or_not())
+            .to_slice()
+            .from_str::<f64>()
+            .unwrapped();
+
+        let konst = choice((
+            just("pi").to(std::f64::consts::PI),
+            just("tau").to(std::f64::consts::TAU),
+            just("e").to(std::f64::consts::E),
+        ));
+
+        let atom = choice((number, konst, expr.delimited_by(just('('), just(')'))))
+            .labelled("a number")
+            .padded();
+
+        // A leading `-` is a sign, not a subtraction, and it may repeat:
+        // `2--3` is 5.
+        let signed = one_of("+-")
+            .padded()
+            .repeated()
+            .foldr(atom, |sign, v| if sign == '-' { -v } else { v });
+
+        let product = signed.clone().foldl(
+            one_of("*/").padded().then(signed).repeated(),
+            |l, (op, r)| if op == '*' { l * r } else { l / r },
+        );
+
+        product.clone().foldl(
+            one_of("+-").padded().then(product).repeated(),
+            |l, (op, r)| if op == '+' { l + r } else { l - r },
+        )
+    })
+    .padded()
 }
 
 pub fn apply_edit(doc: &mut Value, pointer: &str, value: Value) {
@@ -713,6 +650,26 @@ mod tests {
         for bad in ["abc", "", "   ", "3*", "(2+3", "2+3)", "1 2", "drop table"] {
             assert_eq!(eval_number(bad), None, "{bad:?} should not evaluate");
         }
+    }
+
+    #[test]
+    fn a_refused_expression_can_say_why() {
+        // eval_number throws the reason away; a caller that wants to show the
+        // user something has one. These are the parser's own words, so the
+        // assertions are on the useful parts rather than the exact phrasing.
+        let e = eval_expr("3*").expect_err("trailing operator");
+        assert!(e.message.contains("a number"), "{}", e.message);
+        assert_eq!(e.column, 3, "points at the operator with nothing after it");
+
+        let e = eval_expr("2+3)").expect_err("unbalanced");
+        assert_eq!(e.column, 4);
+        assert!(e.message.contains(')'), "{}", e.message);
+
+        let e = eval_expr("drop table").expect_err("not arithmetic");
+        assert_eq!(e.column, 1);
+
+        assert_eq!(eval_expr("  ").unwrap_err().message, "nothing to evaluate");
+        assert_eq!(eval_expr("1/0").unwrap_err().message, "not a finite number");
     }
 
     #[test]
