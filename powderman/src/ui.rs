@@ -538,10 +538,23 @@ pub fn App() -> Element {
         });
     });
 
+    // The second error surface: a field flags itself locally, and the same
+    // message lands here, Blender's Info-line echo.
+    let on_editor_error = use_callback(move |e: immersion::EditorError| {
+        do_report.call(format!("\u{26a0} {e}"));
+    });
+
     let cmd = use_callback(move |(name, params): (String, serde_json::Value)| {
         let label = report_label(&name, &params);
-        ws.set(crate::daemon::dispatch(&name, params));
-        do_report.call(label);
+        // The checked path: a command that fails must say so, not report the
+        // success label over a workbench that did not change.
+        match crate::daemon::dispatch_checked(&name, params) {
+            Ok(w) => {
+                ws.set(w);
+                do_report.call(label);
+            }
+            Err(e) => do_report.call(format!("\u{26a0} {label}: {e}")),
+        }
     });
 
     let on_setting = use_callback(move |(pointer, value): (String, serde_json::Value)| {
@@ -782,7 +795,9 @@ pub fn App() -> Element {
                     Some(id) => crate::editors::ed_run_detail(&s, &id),
                     None => crate::editors::ed_run_picker(&s, area, open_run),
                 },
-                "settings" => crate::editors::ed_settings(settings_doc.clone(), on_setting),
+                "settings" => {
+                    crate::editors::ed_settings(settings_doc.clone(), on_setting, on_editor_error)
+                }
                 other => rsx! { div { class: "empty", "unknown editor {other}" } },
             }
         },
@@ -867,6 +882,7 @@ pub fn App() -> Element {
                     name: adjust_name(),
                     doc: adjust_doc(),
                     on_edit: adj_edit,
+                    on_error: on_editor_error,
                     on_cancel: adj_cancel,
                     on_apply: adj_apply,
                 }
@@ -928,6 +944,7 @@ fn AdjustPanel(
     name: String,
     doc: serde_json::Value,
     on_edit: Callback<(String, serde_json::Value)>,
+    on_error: Callback<immersion::EditorError>,
     on_cancel: Callback<()>,
     on_apply: Callback<()>,
 ) -> Element {
@@ -936,7 +953,7 @@ fn AdjustPanel(
         div { class: "adjust-backdrop", onclick: move |_| on_cancel.call(()),
             div { class: "adjust-panel", onclick: move |e| e.stop_propagation(),
                 div { class: "adjust-title", "Adjust: {name}" }
-                PropertyEditor { doc, fields, on_edit }
+                PropertyEditor { doc, fields, on_edit, on_error }
                 div { class: "adjust-actions",
                     button { class: "adjust-cancel", onclick: move |_| on_cancel.call(()), "Cancel" }
                     button { class: "adjust-apply", onclick: move |_| on_apply.call(()), "Apply" }

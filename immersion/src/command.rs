@@ -126,18 +126,34 @@ fn dir_field(p: &Value, key: &str) -> Result<Dir> {
 
 // --- the built-ins ---------------------------------------------------------
 
+/// A mutation that found nothing to mutate is an error, not a shrug: "split
+/// area 9999" answering Ok while the tree is unchanged is how a UI reports a
+/// success banner over a no-op. Every builtin routes its bool/Option result
+/// through here.
+fn took(applied: bool, what: &str) -> Result<()> {
+    if applied {
+        Ok(())
+    } else {
+        Err(anyhow!("{what}: no such area"))
+    }
+}
+
 const BUILTINS: &[Command] = &[
     Command {
         name: "split",
         description: "Split an area in two",
         navigational: false,
         run: |ws, p| {
-            ws.current_layout_mut().split(
-                u64_field(p, "id")?,
-                dir_field(p, "dir")?,
-                f32_field(p, "frac").unwrap_or(0.5),
-            );
-            Ok(())
+            let id = u64_field(p, "id")?;
+            let applied = ws
+                .current_layout_mut()
+                .split(
+                    id,
+                    dir_field(p, "dir")?,
+                    f32_field(p, "frac").unwrap_or(0.5),
+                )
+                .is_some();
+            took(applied, &format!("split {id}"))
         },
     },
     Command {
@@ -145,8 +161,9 @@ const BUILTINS: &[Command] = &[
         description: "Close an area; its sibling takes the space",
         navigational: false,
         run: |ws, p| {
-            ws.current_layout_mut().join(u64_field(p, "id")?);
-            Ok(())
+            let id = u64_field(p, "id")?;
+            let applied = ws.current_layout_mut().join(id);
+            took(applied, &format!("join {id}"))
         },
     },
     Command {
@@ -154,9 +171,9 @@ const BUILTINS: &[Command] = &[
         description: "Merge one area into a sibling",
         navigational: false,
         run: |ws, p| {
-            ws.current_layout_mut()
-                .join_into(u64_field(p, "survivor")?, u64_field(p, "victim")?);
-            Ok(())
+            let (a, b) = (u64_field(p, "survivor")?, u64_field(p, "victim")?);
+            let applied = ws.current_layout_mut().join_into(a, b);
+            took(applied, &format!("join {b} into {a}"))
         },
     },
     Command {
@@ -164,12 +181,13 @@ const BUILTINS: &[Command] = &[
         description: "Move a seam between two areas",
         navigational: false,
         run: |ws, p| {
-            ws.current_layout_mut().set_seam(
-                u64_field(p, "id")?,
+            let id = u64_field(p, "id")?;
+            let applied = ws.current_layout_mut().set_seam(
+                id,
                 u64_field(p, "index").unwrap_or(0) as usize,
                 f32_field(p, "ratio")?,
             );
-            Ok(())
+            took(applied, &format!("ratio {id}"))
         },
     },
     Command {
@@ -177,12 +195,13 @@ const BUILTINS: &[Command] = &[
         description: "Resize an area's toolbar or sidebar",
         navigational: true,
         run: |ws, p| {
-            ws.current_layout_mut().set_region_width(
-                u64_field(p, "id")?,
+            let id = u64_field(p, "id")?;
+            let applied = ws.current_layout_mut().set_region_width(
+                id,
                 region_field(p, "region")?,
                 u64_field(p, "w")? as u16,
             );
-            Ok(())
+            took(applied, &format!("set_region_width {id}"))
         },
     },
     Command {
@@ -191,9 +210,11 @@ const BUILTINS: &[Command] = &[
         // A view toggle, persisted with the layout but not something you undo.
         navigational: true,
         run: |ws, p| {
-            ws.current_layout_mut()
-                .toggle_region(u64_field(p, "id")?, region_field(p, "region")?);
-            Ok(())
+            let id = u64_field(p, "id")?;
+            let applied = ws
+                .current_layout_mut()
+                .toggle_region(id, region_field(p, "region")?);
+            took(applied, &format!("toggle_region {id}"))
         },
     },
     Command {
@@ -207,14 +228,15 @@ const BUILTINS: &[Command] = &[
                 Some(Area::Leaf { editor, arg, .. }) => Some((editor.clone(), arg.clone())),
                 _ => None,
             };
-            if let (Some((editor, arg)), Some(new)) = (src, l.split(id, Dir::Row, 0.5)) {
-                match arg {
-                    Some(a) => {
-                        l.set_editor_arg(new, &editor, &a);
-                    }
-                    None => {
-                        l.set_editor(new, &editor);
-                    }
+            let (Some((editor, arg)), Some(new)) = (src, l.split(id, Dir::Row, 0.5)) else {
+                return took(false, &format!("duplicate_area {id}"));
+            };
+            match arg {
+                Some(a) => {
+                    l.set_editor_arg(new, &editor, &a);
+                }
+                None => {
+                    l.set_editor(new, &editor);
                 }
             }
             Ok(())
@@ -225,9 +247,9 @@ const BUILTINS: &[Command] = &[
         description: "Swap what two areas show",
         navigational: false,
         run: |ws, p| {
-            ws.current_layout_mut()
-                .swap_editors(u64_field(p, "a")?, u64_field(p, "b")?);
-            Ok(())
+            let (a, b) = (u64_field(p, "a")?, u64_field(p, "b")?);
+            let applied = ws.current_layout_mut().swap_editors(a, b);
+            took(applied, &format!("swap {a} {b}"))
         },
     },
     Command {
@@ -235,9 +257,11 @@ const BUILTINS: &[Command] = &[
         description: "Change what an area shows",
         navigational: false,
         run: |ws, p| {
-            ws.current_layout_mut()
-                .set_editor(u64_field(p, "id")?, str_field(p, "editor")?);
-            Ok(())
+            let id = u64_field(p, "id")?;
+            let applied = ws
+                .current_layout_mut()
+                .set_editor(id, str_field(p, "editor")?);
+            took(applied, &format!("set_editor {id}"))
         },
     },
     Command {
@@ -245,12 +269,13 @@ const BUILTINS: &[Command] = &[
         description: "Point an area at a specific thing (editor + argument)",
         navigational: false,
         run: |ws, p| {
-            ws.current_layout_mut().set_editor_arg(
-                u64_field(p, "id")?,
+            let id = u64_field(p, "id")?;
+            let applied = ws.current_layout_mut().set_editor_arg(
+                id,
                 str_field(p, "editor")?,
                 str_field(p, "arg")?,
             );
-            Ok(())
+            took(applied, &format!("open_editor {id}"))
         },
     },
     Command {
@@ -325,6 +350,36 @@ mod tests {
 
     fn ws() -> Workspaces {
         Workspaces::new("main", Layout::single("machine"))
+    }
+
+    #[test]
+    fn a_mutation_that_finds_nothing_is_an_error() {
+        // "split area 9999" answering Ok over an unchanged tree is how a UI
+        // shows a success banner over a no-op. Every targeted builtin must
+        // refuse a missing id.
+        let cmds = Commands::builtin();
+        for (name, params) in [
+            ("split", json!({ "id": 9999, "dir": "row" })),
+            ("join", json!({ "id": 9999 })),
+            ("join_into", json!({ "survivor": 9999, "victim": 9998 })),
+            ("ratio", json!({ "id": 9999, "ratio": 0.5 })),
+            (
+                "set_region_width",
+                json!({ "id": 9999, "region": "toolbar", "w": 200 }),
+            ),
+            ("toggle_region", json!({ "id": 9999, "region": "toolbar" })),
+            ("duplicate_area", json!({ "id": 9999 })),
+            ("swap", json!({ "a": 9999, "b": 9998 })),
+            ("set_editor", json!({ "id": 9999, "editor": "runs" })),
+            (
+                "open_editor",
+                json!({ "id": 9999, "editor": "run", "arg": "x" }),
+            ),
+        ] {
+            let mut w = ws();
+            let err = cmds.run(&mut w, name, &params);
+            assert!(err.is_err(), "{name} on a missing area should be an error");
+        }
     }
 
     #[test]

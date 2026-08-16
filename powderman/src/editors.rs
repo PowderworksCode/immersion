@@ -394,6 +394,7 @@ pub(crate) fn ed_run_picker(
 pub(crate) fn ed_settings(
     doc: serde_json::Value,
     on_setting: Callback<(String, serde_json::Value)>,
+    on_error: Callback<immersion::EditorError>,
 ) -> Element {
     rsx! {
         div { class: "settings",
@@ -401,6 +402,7 @@ pub(crate) fn ed_settings(
                 doc,
                 fields: settings_fields(),
                 on_edit: on_setting,
+                on_error,
             }
         }
     }
