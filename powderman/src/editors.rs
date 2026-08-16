@@ -6,7 +6,7 @@
 //! body; none of them own state.
 
 use dioxus::prelude::*;
-use immersion::{AreaId, FilterBox, PropertyEditor, pretty_chord};
+use immersion::{AreaId, FilterBox, PropertyEditor, TreeView, pretty_chord};
 
 use crate::ui::{
     RunView, State, StepView, WorkflowView, chart, effective_keymap, gib, hhmmss, settings_fields,
@@ -405,5 +405,131 @@ pub(crate) fn ed_settings(
                 on_error,
             }
         }
+    }
+}
+
+/// The data editor — Blender's Outliner in Data API mode, for our world. The
+/// workbench's documents mounted under one root, every row addressable,
+/// right-click ▸ Copy data path. What `set_setting` edits and what the MCP
+/// tools read stops being invisible: this is the address space, on screen.
+pub(crate) fn ed_data(s: &State) -> Element {
+    let state_doc = serde_json::to_value(s).unwrap_or_default();
+    let children_of = Callback::new(move |pointer: String| data_children(&state_doc, &pointer));
+    rsx! {
+        div { class: "data-editor im-filter-scope",
+            div { class: "keymap-head", FilterBox { placeholder: "filter fields\u{2026}" } }
+            TreeView { children_of }
+        }
+    }
+}
+
+/// Children under the mounted root. `""` lists the mounts; below, the pointer
+/// starts with the mount's name and the rest addresses within that document.
+fn data_children(state_doc: &serde_json::Value, pointer: &str) -> Vec<immersion::TreeRow> {
+    if pointer.is_empty() {
+        let mount = |name: &str, preview: &str| immersion::TreeRow {
+            pointer: format!("/{name}"),
+            label: format!("/{name}"),
+            preview: preview.to_string(),
+            has_children: true,
+        };
+        return vec![
+            mount("layout", "the workspace tree"),
+            mount("settings", "the settings document"),
+            mount("keymap", "chord overrides"),
+            mount("favorites", "the Q menu"),
+            mount("state", "host snapshot (read-only)"),
+        ];
+    }
+    let (mount, inner) = match pointer[1..].find('/') {
+        Some(i) => (&pointer[..i + 1], &pointer[i + 1..]),
+        None => (pointer, ""),
+    };
+    let doc = match mount {
+        "/layout" => serde_json::to_value(crate::daemon::workspaces()).unwrap_or_default(),
+        "/settings" => crate::daemon::settings(),
+        "/keymap" => crate::daemon::settings()["keymap"].clone(),
+        "/favorites" => crate::daemon::settings()["favorites"].clone(),
+        "/state" => state_doc.clone(),
+        _ => return Vec::new(),
+    };
+    let mut rows = immersion::value_children(&doc, inner);
+    for r in &mut rows {
+        r.pointer = format!("{mount}{}", r.pointer);
+    }
+    rows
+}
+
+/// The file browser: the tree view over a directory. Lazily loaded — a
+/// directory reads only when its branch opens — and rooted at the daemon's
+/// working directory, which is where the things a run touches live.
+pub(crate) fn ed_files() -> Element {
+    let children_of = Callback::new(move |pointer: String| file_children(&pointer));
+    rsx! {
+        div { class: "files-editor im-filter-scope",
+            div { class: "keymap-head", FilterBox { placeholder: "filter files\u{2026}" } }
+            TreeView { children_of }
+        }
+    }
+}
+
+/// One directory level. The pointer is a path relative to the root; minted by
+/// us, but a stray ".." would walk out of the tree, so it is refused rather
+/// than resolved. Directories first, dotfiles last within each group, and a
+/// level caps at 500 entries — a node_modules should not freeze the page.
+fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
+    const CAP: usize = 500;
+    if pointer.split('/').any(|seg| seg == "..") {
+        return Vec::new();
+    }
+    let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+    let dir = root.join(pointer.trim_start_matches('/'));
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut rows: Vec<(bool, bool, String, u64)> = entries
+        .filter_map(|e| {
+            let e = e.ok()?;
+            let name = e.file_name().to_string_lossy().into_owned();
+            // Symlinks are leaves: following one could leave the root, and a
+            // link's target is better opened where it really lives.
+            let meta = e.path().symlink_metadata().ok()?;
+            let is_dir = meta.is_dir();
+            Some((is_dir, name.starts_with('.'), name, meta.len()))
+        })
+        .collect();
+    rows.sort_by(|a, b| (!a.0, a.1, &a.2).cmp(&(!b.0, b.1, &b.2)));
+    let extra = rows.len().saturating_sub(CAP);
+    let mut out: Vec<immersion::TreeRow> = rows
+        .into_iter()
+        .take(CAP)
+        .map(|(is_dir, _, name, len)| immersion::TreeRow {
+            pointer: format!("{pointer}/{name}"),
+            label: if is_dir { format!("{name}/") } else { name },
+            preview: if is_dir {
+                String::new()
+            } else {
+                human_size(len)
+            },
+            has_children: is_dir,
+        })
+        .collect();
+    if extra > 0 {
+        out.push(immersion::TreeRow {
+            pointer: format!("{pointer}/\u{2026}"),
+            label: format!("\u{2026} {extra} more"),
+            preview: String::new(),
+            has_children: false,
+        });
+    }
+    out
+}
+
+fn human_size(len: u64) -> String {
+    match len {
+        0..=1023 => format!("{len} B"),
+        1024..=1048575 => format!("{:.1} K", len as f64 / 1024.0),
+        1048576..=1073741823 => format!("{:.1} M", len as f64 / 1048576.0),
+        _ => format!("{:.1} G", len as f64 / 1073741824.0),
     }
 }

@@ -375,6 +375,23 @@
 }
 .im-hint-label { color: var(--im-text-muted); }
 .im-status-right { flex: none; color: var(--im-text-muted); }
+/* The tree view: flat rows, indent by depth, dimmed previews. */
+.im-tree { overflow: auto; height: 100%; font-size: .78rem; }
+.im-tree-row {
+  display: flex; align-items: baseline; gap: .35rem;
+  padding: .12rem .5rem .12rem 6px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.im-tree-row:hover { background: var(--im-header); }
+.im-tree-row.is-sel { background: var(--im-accent); color: #fff; }
+.im-tree-row.is-sel .im-tree-preview { color: #fff; opacity: .75; }
+.im-tree-caret { width: .8em; flex: none; color: var(--im-text-muted); }
+.im-tree-label { flex: none; }
+.im-tree-preview {
+  color: var(--im-text-muted); overflow: hidden; text-overflow: ellipsis;
+  font-family: var(--im-mono); font-size: .72rem;
+}
+
 .im-input.im-invalid {
   border-color: var(--im-invalid);
   color: var(--im-invalid);
