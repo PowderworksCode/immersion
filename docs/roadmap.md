@@ -52,12 +52,19 @@ plan of record whose sharpest lesson was: *"one authoritative mutation path"
 was a convention, not an invariant, and every phase built on it inherited the
 difference.* We are repeating that mistake in miniature:
 
-1. **Not everything is on the bus.** Layout and editor commands route through
-   `Commands::run`, but about ten host actions — undo, redo, repeat, maximize,
-   fullscreen, set_setting, favorite_add, the pie and palette openers — are a
-   bare `match` in `powderman/src/ui.rs:536`. A human can undo; an agent
-   cannot. Nothing enforces parity, so it drifts exactly where it is
-   inconvenient to maintain.
+1. **Not everything is on the bus — and nothing proves what is.** Layout and
+   editor commands route through `Commands::run`, but the host actions ride a
+   bare `match` in `powderman/src/ui.rs`. The original draft claimed "an
+   agent cannot undo" — wrong on inspection (MCP had undo/redo tools); the
+   real gaps were subtler and worse for being invisible: agents could *read*
+   settings but not write them, could not curate favourites, the side-path
+   mutations (undo, redo, settings writes, layout imports) never reached the
+   Info log so attribution had holes, and no test held the surfaces together.
+   Addressed by the parity PR: host mutations are attributed in the same log,
+   settings/favourites have MCP tools, and an equivalence test asserts every
+   action any UI surface emits — binding, palette row, menu item, pie slice —
+   resolves to a bus command, a declared host action, or declared client-view
+   state.
 2. **Errors go nowhere.** `eval_expr` returns `{message, column}` and nothing
    displays it; a bad expression silently leaves the field unchanged. Command
    failures likewise: `Commands::run` returns `Result`, and most callers drop

@@ -110,6 +110,26 @@ pub struct RenameArgs {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SetSettingArgs {
+    /// JSON pointer into the settings document (e.g. `/theme`, `/ui_scale`,
+    /// `/keymap/undo`). `get_state` shows the whole document.
+    pub pointer: String,
+    /// The value to write at that pointer.
+    pub value: serde_json::Value,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct FavoriteAddArgs {
+    /// The label shown in the Quick Favourites menu.
+    pub label: String,
+    /// The command the favourite runs when picked.
+    pub action: String,
+    /// Parameters for that command, if any.
+    #[serde(default)]
+    pub params: serde_json::Value,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct RunArgs {
     /// The run id, as listed by `get_state`.
     pub id: String,
@@ -251,17 +271,49 @@ impl Workbench {
         run("workspace.close", json!({ "index": a.index }))
     }
 
+    #[tool(
+        description = "Write one value into the settings document by JSON pointer — theme, ui_scale, keymap overrides, favourites. The same operation the Settings editor performs."
+    )]
+    async fn set_setting(
+        &self,
+        Parameters(a): Parameters<SetSettingArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string(&crate::daemon::set_setting("agent", &a.pointer, a.value))
+                .unwrap_or_default(),
+        )]))
+    }
+
+    #[tool(
+        description = "Add an entry to the Quick Favourites menu (the Q menu). Deduped by label; the list is capped at 12."
+    )]
+    async fn favorite_add(
+        &self,
+        Parameters(a): Parameters<FavoriteAddArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let entry = serde_json::json!({ "label": a.label, "action": a.action, "params": a.params });
+        let (_, added) = crate::daemon::favorite_add("agent", entry);
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            if added {
+                "added"
+            } else {
+                "already present (deduped by label)"
+            }
+            .to_string(),
+        )]))
+    }
+
     #[tool(description = "Revert the last layout change")]
     async fn undo(&self) -> Result<CallToolResult, McpError> {
         Ok(CallToolResult::success(vec![ContentBlock::text(
-            serde_json::to_string(&crate::daemon::undo()).unwrap_or_default(),
+            serde_json::to_string(&crate::daemon::undo("agent")).unwrap_or_default(),
         )]))
     }
 
     #[tool(description = "Reapply an undone change")]
     async fn redo(&self) -> Result<CallToolResult, McpError> {
         Ok(CallToolResult::success(vec![ContentBlock::text(
-            serde_json::to_string(&crate::daemon::redo()).unwrap_or_default(),
+            serde_json::to_string(&crate::daemon::redo("agent")).unwrap_or_default(),
         )]))
     }
 
