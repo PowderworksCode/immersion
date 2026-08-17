@@ -870,8 +870,20 @@ async fn vendor_route(Path((bundle, file)): Path<(String, String)>) -> impl Into
     (StatusCode::OK, [("content-type", mime)], bytes)
 }
 
+/// The class the disconnect script puts on `<body>`, and the one the page's
+/// own stylesheet reads to dim the workbench and flip the connection chip in
+/// the topbar. A string in this file and a rule in ui.css with nothing
+/// between them, so it is named once and checked by a test.
+pub(crate) const STALE_CLASS: &str = "im-stale";
+
 async fn index() -> impl IntoResponse {
-    Html(format!(
+    Html(index_html())
+}
+
+/// The shell the liveview glue mounts into. Its own function so the pieces
+/// that have to agree with the stylesheet can be checked without a server.
+pub(crate) fn index_html() -> String {
+    format!(
         r#"<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>powderman</title>{vendor}
@@ -886,7 +898,7 @@ async fn index() -> impl IntoResponse {
     background: #b9821f; color: #1a1a1d;
   }}
   #im-offline.on {{ display: flex; }}
-  body.im-stale #main {{ opacity: .45; filter: saturate(.4); pointer-events: none; }}
+  body.{stale} #main {{ opacity: .45; filter: saturate(.4); pointer-events: none; }}
 </style></head><body>
 <div id="im-offline"><span id="im-offline-text">Disconnected — reconnecting…</span></div>
 <div id="main"></div>
@@ -922,7 +934,7 @@ async fn index() -> impl IntoResponse {
     offline = true;
     text.textContent = msg;
     banner.classList.add("on");
-    document.body.classList.add("im-stale");
+    document.body.classList.add("{stale}");
   }};
 
   // The early wrapper calls this when the socket goes. Reconnecting is not
@@ -952,9 +964,10 @@ async fn index() -> impl IntoResponse {
   }}, 4000);
 </script>
 </body></html>"#,
+        stale = STALE_CLASS,
         vendor = immersion::vendor_script_tag(),
         glue = dioxus_liveview::interpreter_glue("/ws")
-    ))
+    )
 }
 
 /// Start a run from outside the UI: curl, a GitHub webhook later, or a

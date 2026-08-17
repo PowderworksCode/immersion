@@ -125,7 +125,7 @@ pub(crate) fn tile(k: &str, v: String, of: Option<String>) -> Element {
 
 use crate::menus::{
     edit_menu, favorites_menu_json, file_menu, help_menu, pie_menu_json, repeat_history_menu,
-    undo_history_menu, view_menu, window_menu,
+    theme_menu, undo_history_menu, view_menu, window_menu,
 };
 use immersion::{
     AreaId, Areas, Chrome, ContextMenu, Field, FieldKind, Keymap, KeymapHelp, Layout, LayoutFile,
@@ -787,32 +787,72 @@ pub fn App() -> Element {
                     button { class: "im-menubtn", "data-im-menu-click": "{window_menu(ws.read().active, mac())}", "Window" }
                     button { class: "im-menubtn", "data-im-menu-click": "{help_menu(mac())}", "Help" }
                 }
-                // The palette answered only to F3, which is a palette
-                // newcomers never find. Both references put a search in the
-                // topbar; this is that, opening the thing that already exists.
-                button {
-                    class: "im-menubtn topbar-search",
-                    title: "search commands",
-                    "data-tip": "Commands",
-                    "data-tip-key": "{pretty_chord(\"F3\", mac())}",
-                    onclick: move |_| palette_open.set(true),
-                    dangerous_inner_html: "{immersion::icon(\"search\")}",
-                }
-                WorkspaceTabs {
-                    names: ws.read().tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
-                    active: ws.read().active,
-                    on_command: cmd,
-                    on_add: ws_add,
-                }
-                LayoutFile {
-                    layout_json: serde_json::to_string(&ws.read().clone()).unwrap_or_default(),
-                    on_import: move |json: String| {
-                        ws.set(crate::daemon::set_workspaces_from_json("ui", &json));
-                    },
-                }
-                span { class: "sub",
-                    {s.herdr.clone().unwrap_or_else(|| "herdr unreachable".into())}
-                    " · {s.runs.len()} runs"
+                // Everything that is not a menu sits to the right, the way
+                // the old Immersion had it: the workspaces you switch between,
+                // the search, the theme, and what this page is connected to.
+                // The gap in the middle is the point — a menu bar and a set of
+                // controls read as two things when they are not crowded
+                // together.
+                span { class: "topbar-right",
+                    WorkspaceTabs {
+                        names: ws.read().tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
+                        active: ws.read().active,
+                        on_command: cmd,
+                        on_add: ws_add,
+                    }
+                    // The palette answered only to F3, which is a palette
+                    // newcomers never find. Both references put a search in
+                    // the topbar; this is that, opening what already exists.
+                    button {
+                        class: "im-menubtn topbar-search",
+                        title: "search commands",
+                        "data-tip": "Commands",
+                        "data-tip-key": "{pretty_chord(\"F3\", mac())}",
+                        onclick: move |_| palette_open.set(true),
+                        dangerous_inner_html: "{immersion::icon(\"search\")}",
+                    }
+                    span { class: "topbar-sep" }
+                    button {
+                        class: "im-menubtn topbar-theme",
+                        title: "theme",
+                        "data-im-menu-click": "{theme_menu(&settings())}",
+                        span {
+                            class: "topbar-theme-icon",
+                            dangerous_inner_html: "{immersion::icon(\"palette\")}",
+                        }
+                        span { class: "topbar-theme-name",
+                            {settings()["theme"].as_str().unwrap_or("Blender Dark").to_string()}
+                        }
+                    }
+                    span { class: "topbar-sep" }
+                    // Where the old Immersion showed its room. A liveview page
+                    // whose socket has died looks exactly like a working one,
+                    // so this says which it is. It needs no signal of its own:
+                    // the disconnect script already marks the body, and the
+                    // two labels are swapped by CSS — which matters, because
+                    // by the time it is wrong there is no server left to
+                    // re-render it.
+                    span { class: "conn", title: "{crate::daemon::public_url()}",
+                        span { class: "conn-dot" }
+                        span { class: "conn-on", "Connected" }
+                        span { class: "conn-off", "Disconnected" }
+                        button {
+                            class: "im-copy",
+                            title: "copy this server's MCP address",
+                            "data-im-copy": "{crate::daemon::public_url()}/mcp",
+                            dangerous_inner_html: "{immersion::icon(\"copy\")}",
+                        }
+                    }
+                    // Save and Load live in the File menu now. The component
+                    // stays for its machinery — the import channel, and the
+                    // element the current layout rides on for the menu path.
+                    LayoutFile {
+                        buttons: false,
+                        layout_json: serde_json::to_string(&ws.read().clone()).unwrap_or_default(),
+                        on_import: move |json: String| {
+                            ws.set(crate::daemon::set_workspaces_from_json("ui", &json));
+                        },
+                    }
                 }
             }
             Platform { on_platform: move |m: bool| mac.set(m) }

@@ -43,12 +43,43 @@ body {
 /* The workbench frame: a slim topbar, and the area deck filling the rest. */
 .app { display: flex; flex-direction: column; height: 100vh; }
 .topbar {
-  display: flex; align-items: baseline; gap: .75rem; flex: none;
-  padding: .35rem .8rem; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: .5rem; flex: none;
+  padding: .3rem .8rem; border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
-.brand { font-size: .9rem; font-weight: 650; letter-spacing: -.01em; }
-.sub { color: var(--ink-3); font-size: .78rem; }
+.brand { font-size: .9rem; font-weight: 650; letter-spacing: -.01em; flex: none; }
+/* The right cluster: workspaces, search, theme, connection. `margin-left:auto`
+   is the whole layout — the menus keep the left edge and everything else is
+   pushed away from them, which is the space the old Immersion had here. */
+.topbar-right {
+  margin-left: auto; display: flex; align-items: center; gap: .4rem;
+  min-width: 0;
+}
+/* Many workspaces scroll rather than shoving the theme and the connection off
+   the end of the bar. */
+.topbar-right .im-tabs { overflow-x: auto; scrollbar-width: none; min-width: 0; }
+.topbar-right .im-tabs::-webkit-scrollbar { display: none; }
+.topbar-sep { flex: none; width: 1px; height: 1.1rem; background: var(--line); }
+.topbar-theme { display: inline-flex; align-items: center; gap: .3rem; flex: none; }
+.topbar-theme-icon { display: inline-flex; }
+.topbar-theme-name { font-size: .74rem; }
+/* What this page is connected to. The dot and the label are driven by
+   body.im-stale, which the disconnect script already sets — no second signal,
+   and no re-render needed at the moment the server is the thing that went. */
+.conn {
+  display: inline-flex; align-items: center; gap: .35rem; flex: none;
+  font-size: .74rem; color: var(--ink-2);
+  padding: .05rem .2rem .05rem .4rem;
+  border: 1px solid var(--grid); border-radius: 3px;
+}
+.conn-dot {
+  flex: none; width: .45rem; height: .45rem; border-radius: 50%;
+  background: var(--good);
+}
+.conn-off { display: none; }
+body.im-stale .conn-dot { background: var(--warning); }
+body.im-stale .conn-on { display: none; }
+body.im-stale .conn-off { display: inline; }
 .deck { flex: 1; min-height: 0; position: relative; display: flex; }
 .deck > * { flex: 1; min-width: 0; min-height: 0; }
 

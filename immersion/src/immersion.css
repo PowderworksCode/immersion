@@ -571,6 +571,7 @@
 
 /* Layout export/import buttons in the chrome. */
 .im-layoutfile { display: inline-flex; gap: .15rem; }
+.im-layoutfile-headless { display: none; }
 .im-file-btn {
   border: 0; background: transparent; cursor: pointer; border-radius: 3px;
   color: var(--im-text-muted); font-size: .74rem; padding: .1rem .4rem; line-height: 1.4;
