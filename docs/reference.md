@@ -382,6 +382,12 @@ workspace.cycle
 
 What an area can show. The hints are what each answers to, and they are what the status bar shows while it has focus.
 
+### `Welcome`
+
+`welcome`
+
+- **Click** — Become that editor
+
 ### `Machine`
 
 `machine`

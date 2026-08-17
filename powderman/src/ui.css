@@ -292,6 +292,44 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .area-tool svg { width: 1rem; height: 1rem; }
 /* Between the editor's own tools and the area operations, so the strip reads
    as "what this editor does" over "what any area does". */
+/* The welcome editor: the one page that answers "what am I looking at". The
+   only place in the workbench with a display-sized wordmark, deliberately —
+   it is a landing page, and everything else is a tool. */
+.welcome { max-width: 46rem; padding: 1rem .4rem 3rem; }
+.welcome-eyebrow {
+  font-size: .66rem; text-transform: uppercase; letter-spacing: .12em;
+  font-weight: 600; color: var(--im-accent);
+}
+.welcome-brand {
+  font-size: 2.6rem; font-weight: 680; letter-spacing: -.03em;
+  margin: .2rem 0 .5rem; line-height: 1.05; color: var(--ink);
+}
+.welcome-lede { color: var(--ink-2); font-size: .92rem; max-width: 38rem; margin: 0 0 1.6rem; }
+.welcome-h {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .09em;
+  font-weight: 600; color: var(--ink-3); margin: 1.4rem 0 .4rem;
+}
+.welcome-note { color: var(--ink-3); font-size: .78rem; }
+.welcome-grid {
+  display: grid; gap: .4rem; margin-top: .6rem;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+}
+.welcome-jump {
+  display: flex; align-items: center; gap: .45rem;
+  padding: .4rem .55rem; font: inherit; font-size: .8rem;
+  border: 1px solid var(--line); border-radius: 3px;
+  background: var(--surface); color: var(--ink); cursor: pointer;
+  text-align: left;
+}
+.welcome-jump:hover { border-color: var(--im-accent); color: var(--im-accent); }
+.welcome-jump-icon { display: inline-flex; flex: none; color: var(--ink-3); }
+.welcome-jump:hover .welcome-jump-icon { color: var(--im-accent); }
+.welcome-cols {
+  display: grid; gap: 1.5rem; margin-top: 1.2rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+.welcome-key { display: flex; align-items: baseline; gap: .4rem; padding: .12rem 0; }
+
 /* The Help editor: the generated reference, drawn. */
 .help { font-size: .8rem; }
 .help-about { color: var(--ink-3); font-size: .76rem; margin-bottom: .5rem; }

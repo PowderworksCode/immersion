@@ -1190,7 +1190,7 @@ mod layout_tests {
             ws.active, 0,
             "you land on the first tab, not the last added"
         );
-        assert_eq!(ws.tabs[0].name, "Overview");
+        assert_eq!(ws.tabs[0].name, "Start");
     }
 
     /// The sidebar region existed from the start and nothing shipped with it
