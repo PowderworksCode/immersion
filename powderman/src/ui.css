@@ -298,11 +298,11 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
   padding: .25rem .5rem; border-bottom: 1px solid var(--im-border);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none;
 }
-.code-lines { flex: 1; overflow: auto; font-family: var(--im-mono); font-size: .74rem; }
-.code-line { display: flex; align-items: baseline; white-space: pre; }
-.code-line:hover { background: var(--im-header); }
-.code-n {
-  flex: none; width: 3.5em; text-align: right; padding-right: .7rem;
-  color: var(--im-text-muted); user-select: none;
+/* The payload the renderer reads: present in the DOM, never shown. */
+.code-src-payload { display: none; }
+.code-host { flex: 1; overflow: auto; font-size: .74rem; }
+/* If the renderer fails, its text is still worth reading. */
+.im-code-fallback {
+  margin: 0; padding: .4rem .6rem; white-space: pre;
+  font-family: var(--im-mono); font-size: .74rem; color: var(--im-text);
 }
-.code-src { flex: 1; }

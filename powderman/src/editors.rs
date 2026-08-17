@@ -490,7 +490,7 @@ pub(crate) fn target_children(
     match editor {
         // Both browse the filesystem; the code viewer's target is a file
         // rather than a directory, but the walk to reach one is the same.
-        "files" | "code" => file_children(pointer),
+        "files" | "code" | "diff" => file_children(pointer),
         // A run's target is its id, not its address in the snapshot, so the
         // rows are runs and the value each carries is the id itself.
         "run" => run_targets(state),
@@ -502,7 +502,7 @@ pub(crate) fn target_children(
 /// area 3" rather than a generic word for every editor.
 pub(crate) fn target_noun(editor: &str) -> &'static str {
     match editor {
-        "files" | "code" => "File",
+        "files" | "code" | "diff" => "File",
         "run" => "Run",
         _ => "Target",
     }
@@ -629,6 +629,14 @@ pub(crate) fn human_size(len: u64) -> String {
     }
 }
 
+/// Both file-reading test modules set POWDERMAN_FILES_ROOT, and cargo runs
+/// tests in one process on many threads — so without this they race and one
+/// looks for its fixtures under the other's root. The lock is the smallest
+/// honest fix; the alternative is threading a root parameter through code
+/// whose production callers all want the environment.
+#[cfg(test)]
+static FILES_ROOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod file_browser {
     /// Containment is the property that matters: whatever pointer arrives,
@@ -637,6 +645,9 @@ mod file_browser {
     /// after joining.
     #[test]
     fn a_pointer_cannot_climb_out_of_the_root() {
+        let _guard = super::FILES_ROOT_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = std::env::temp_dir().join("im-files-root-test");
         let inner = tmp.join("inside");
         std::fs::create_dir_all(&inner).expect("mkdir");
@@ -730,11 +741,11 @@ mod target_sources {
 
 /// The code viewer: one file, highlighted, read-only.
 ///
-/// Highlighting happens here rather than in the browser. A viewer has no
-/// frame-path work — no typing, no selection to track, scrolling is the
-/// browser's — so there is nothing the client needs to own, and the server
-/// already has the file. That keeps the page's javascript budget for the
-/// things that genuinely need it.
+/// The server reads the file and hands over its text; the vendored renderer
+/// draws it. The two never contend for the same DOM: the framework owns the
+/// payload element and the (empty) host element, and the renderer owns only
+/// what it appends inside the host, keyed by a stamp so a redraw happens
+/// exactly when the source changes.
 pub(crate) fn ed_code(target: Option<String>) -> Element {
     let Some(path) = target.filter(|t| !t.is_empty()) else {
         return rsx! {
@@ -742,14 +753,110 @@ pub(crate) fn ed_code(target: Option<String>) -> Element {
         };
     };
     match read_source(&path) {
-        Ok(src) => rsx! {
-            div { class: "code-view",
-                div { class: "code-path", "{path}" }
-                {highlight(&path, &src)}
+        Ok(src) => {
+            let stamp = stamp_of(&path, &src);
+            rsx! {
+                div { class: "code-view",
+                    div { class: "code-path", "{path}" }
+                    // The payload. Hidden, and never touched by the renderer.
+                    pre { class: "code-src-payload", "data-im-code-src": "{stamp}", "{src}" }
+                    div {
+                        class: "code-host",
+                        "data-im-code": "{stamp}",
+                        "data-im-code-path": "{path}",
+                        "data-im-code-kind": "file",
+                    }
+                }
             }
-        },
+        }
         Err(e) => rsx! { div { class: "empty", "{e}" } },
     }
+}
+
+/// The diff viewer: what changed, drawn by the same renderer as the code
+/// viewer so a file and a change to it look like the same thing.
+///
+/// The diff itself is computed here — `similar`, in Rust — and crosses as a
+/// unified patch, the format the renderer parses. That keeps the division
+/// honest: the server knows what changed, the browser draws it.
+pub(crate) fn ed_diff(target: Option<String>, split: bool) -> Element {
+    let Some(path) = target.filter(|t| !t.is_empty()) else {
+        return rsx! {
+            div { class: "empty", "Pick a file to diff \u{2014} the target chip in the header." }
+        };
+    };
+    match git_diff(&path) {
+        Ok(None) => {
+            rsx! { div { class: "empty", "{path} matches HEAD \u{2014} nothing to show." } }
+        }
+        Ok(Some(patch)) => {
+            let stamp = stamp_of(&path, &patch);
+            rsx! {
+                div { class: "code-view",
+                    div { class: "code-path", "{path} \u{2014} working tree vs HEAD" }
+                    pre { class: "code-src-payload", "data-im-code-src": "{stamp}", "{patch}" }
+                    div {
+                        class: "code-host",
+                        "data-im-code": "{stamp}",
+                        "data-im-code-path": "{path}",
+                        "data-im-code-kind": "diff",
+                        "data-im-code-layout": if split { "split" } else { "unified" },
+                    }
+                }
+            }
+        }
+        Err(e) => rsx! { div { class: "empty", "{e}" } },
+    }
+}
+
+/// A unified patch of one file against HEAD, or None when it matches. Reads
+/// the committed blob with `git show` rather than reimplementing object
+/// lookup; a path outside a repository is an error the viewer reports.
+fn git_diff(rel: &str) -> Result<Option<String>, String> {
+    let working = read_source(rel)?;
+    let root = files_root();
+    let inside = rel.trim_start_matches('/');
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .arg("show")
+        .arg(format!("HEAD:{inside}"))
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    // A file git does not know is new work, which diffs against nothing.
+    let head = if out.status.success() {
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    } else {
+        String::new()
+    };
+    if head == working {
+        return Ok(None);
+    }
+    let patch = similar::TextDiff::from_lines(&head, &working)
+        .unified_diff()
+        .context_radius(3)
+        .header(&format!("a/{inside}"), &format!("b/{inside}"))
+        .to_string();
+    // The renderer wants the git file header, which unified_diff omits.
+    Ok(Some(format!(
+        "diff --git a/{inside} b/{inside}\n--- a/{inside}\n+++ b/{inside}\n{}",
+        patch
+            .split_once("+++ ")
+            .and_then(|(_, rest)| rest.split_once('\n'))
+            .map(|(_, body)| body.to_string())
+            .unwrap_or(patch)
+    )))
+}
+
+/// What identifies a rendering: the path and the content. The renderer skips
+/// a host whose stamp it has already drawn, so a poll that changes nothing
+/// costs nothing, and an edit to the file redraws once.
+fn stamp_of(path: &str, src: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut h);
+    src.hash(&mut h);
+    format!("{:x}", h.finish())
 }
 
 /// Read a file for display, with the limits a viewer needs: inside the root,
@@ -786,81 +893,15 @@ fn read_source(rel: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| format!("{rel} is not valid UTF-8"))
 }
 
-/// Syntax-highlight into rows, one per line, with line numbers. The theme is
-/// syntect's own; matching it to the workbench palette is a later pass — the
-/// question this answers first is whether reading code here works at all.
-fn highlight(path: &str, src: &str) -> Element {
-    use syntect::easy::HighlightLines;
-    use syntect::highlighting::ThemeSet;
-    use syntect::parsing::SyntaxSet;
-    use syntect::util::LinesWithEndings;
-
-    // Loading these is the expensive part of syntect, so they are built once
-    // and shared rather than per render.
-    static ASSETS: std::sync::OnceLock<(SyntaxSet, ThemeSet)> = std::sync::OnceLock::new();
-    let (syntaxes, themes) = ASSETS.get_or_init(|| {
-        (
-            SyntaxSet::load_defaults_newlines(),
-            ThemeSet::load_defaults(),
-        )
-    });
-
-    let ext = std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
-    let syntax = syntaxes
-        .find_syntax_by_extension(ext)
-        .unwrap_or_else(|| syntaxes.find_syntax_plain_text());
-    let theme = &themes.themes["base16-eighties.dark"];
-    let mut h = HighlightLines::new(syntax, theme);
-
-    let rows: Vec<(usize, Vec<(String, String)>)> = LinesWithEndings::from(src)
-        .enumerate()
-        .map(|(i, line)| {
-            let spans = h
-                .highlight_line(line, syntaxes)
-                .map(|parts| {
-                    parts
-                        .into_iter()
-                        .map(|(style, text)| {
-                            let c = style.foreground;
-                            (
-                                format!("color:#{:02x}{:02x}{:02x}", c.r, c.g, c.b),
-                                text.trim_end_matches('\n').to_string(),
-                            )
-                        })
-                        .collect()
-                })
-                // A line syntect cannot parse still has to appear; losing it
-                // would silently renumber everything below.
-                .unwrap_or_else(|_| vec![(String::new(), line.trim_end().to_string())]);
-            (i + 1, spans)
-        })
-        .collect();
-
-    rsx! {
-        div { class: "code-lines",
-            for (n, spans) in rows {
-                div { class: "code-line", key: "{n}",
-                    span { class: "code-n", "{n}" }
-                    span { class: "code-src",
-                        for (i, (style, text)) in spans.into_iter().enumerate() {
-                            span { key: "{i}", style: "{style}", "{text}" }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod code_viewer {
     /// The viewer reads files, so its limits are its security surface: inside
     /// the root, not a directory, not binary, not enormous.
     #[test]
     fn it_declines_what_it_should_not_show() {
+        let _guard = super::FILES_ROOT_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = std::env::temp_dir().join("im-code-view-test");
         std::fs::create_dir_all(tmp.join("dir")).expect("mkdir");
         std::fs::write(tmp.join("ok.rs"), b"fn main() {}\n").expect("write");
@@ -886,16 +927,43 @@ mod code_viewer {
     }
 
     #[test]
-    fn every_line_survives_highlighting() {
-        // Line numbers are only trustworthy if no line is dropped, including
-        // blank ones and a file with no trailing newline.
-        let src = "fn a() {}\n\nlet x = 1;\nno_newline";
-        let el = super::highlight("x.rs", src);
-        assert!(el.is_ok(), "highlighting produced an element");
-        assert_eq!(
-            syntect::util::LinesWithEndings::from(src).count(),
-            4,
-            "the fixture is four lines"
+    fn the_stamp_tracks_path_and_content() {
+        // The renderer redraws when the stamp changes and skips when it does
+        // not, so the stamp has to move for both a new file and an edit.
+        let a = super::stamp_of("/a.rs", "fn a() {}");
+        assert_eq!(a, super::stamp_of("/a.rs", "fn a() {}"), "stable");
+        assert_ne!(a, super::stamp_of("/b.rs", "fn a() {}"), "path matters");
+        assert_ne!(a, super::stamp_of("/a.rs", "fn b() {}"), "content matters");
+    }
+}
+
+#[cfg(test)]
+mod diff_viewer {
+    /// The renderer parses a git-style unified patch, so what we emit has to
+    /// carry the headers it looks for — a bare `similar` unified_diff does
+    /// not, and the panel comes up empty when it is missing.
+    #[test]
+    fn the_patch_carries_the_headers_the_renderer_parses() {
+        let head = "one\ntwo\nthree\n";
+        let work = "one\ntwo point five\nthree\n";
+        let patch = similar::TextDiff::from_lines(head, work)
+            .unified_diff()
+            .context_radius(3)
+            .header("a/x.rs", "b/x.rs")
+            .to_string();
+        let full = format!(
+            "diff --git a/x.rs b/x.rs\n--- a/x.rs\n+++ b/x.rs\n{}",
+            patch
+                .split_once("+++ ")
+                .and_then(|(_, r)| r.split_once('\n'))
+                .map(|(_, body)| body.to_string())
+                .unwrap_or(patch)
         );
+        assert!(full.starts_with("diff --git a/x.rs b/x.rs\n"));
+        assert!(full.contains("@@"), "a hunk header: {full}");
+        assert!(full.contains("-two\n"), "the removed line: {full}");
+        assert!(full.contains("+two point five\n"), "the added line: {full}");
+        assert_eq!(full.matches("--- ").count(), 1, "headers are not doubled");
+        assert_eq!(full.matches("+++ ").count(), 1, "headers are not doubled");
     }
 }

@@ -1,0 +1,7 @@
+# Read by ripgrep-family tools, including straitjacket. Not a .gitignore —
+# these paths ARE committed; they are simply not ours to lint.
+#
+# The vendored renderer (@pierre/diffs, Apache-2.0) is minified third-party
+# output. Linting it reports 800+ findings about code nobody here wrote and
+# nobody here can fix, which is noise that hides the real ones.
+immersion/vendor/

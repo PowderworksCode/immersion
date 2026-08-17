@@ -30,6 +30,7 @@ mod statusbar;
 mod theme;
 mod tree;
 mod ui;
+mod vendor;
 mod widget;
 mod workspace;
 
@@ -53,6 +54,7 @@ pub use statusbar::{StatusBar, StatusBarProps};
 pub use theme::{Theme, theme_css, themes};
 pub use tree::{TreeRow, TreeView, TreeViewProps, value_children};
 pub use ui::{Areas, AreasProps, EditorKind, WorkspaceTabs, WorkspaceTabsProps};
+pub use vendor::{MOUNT as VENDOR_MOUNT, asset as vendor_asset, script_tag as vendor_script_tag};
 pub use widget::{
     EditorError, Field, FieldKind, PropertyEditor, PropertyEditorProps, apply_edit, eval_expr,
     eval_number,
