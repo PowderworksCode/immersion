@@ -494,3 +494,16 @@ mod empty_charts {
         assert!(nothing_to_draw(&out));
     }
 }
+
+/// This editor's entry in the registry: what it is called, how it is drawn in
+/// a header, whether it takes a target, and what the status bar says while it
+/// has focus. Declared beside the editor so adding one is one file.
+pub(crate) fn kind() -> immersion::EditorKind {
+    immersion::EditorKind {
+        id: "chart",
+        label: "Chart",
+        icon: "chart-line",
+        hints: &[("Chip", "Pick chart"), ("N", "Edit spec")],
+        targets: true,
+    }
+}

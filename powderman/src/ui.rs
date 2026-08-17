@@ -125,9 +125,9 @@ pub(crate) fn tile(k: &str, v: String, of: Option<String>) -> Element {
 }
 
 use immersion::{
-    AreaId, Areas, Chrome, ContextMenu, Dir, EditorKind, Field, FieldKind, Keymap, KeymapHelp,
-    Layout, LayoutFile, MenuItem, Palette, PaletteItem, Panel, Platform, Splash, SplashRecent,
-    StatusBar, Template, WorkspaceTabs, default_keymap, menu_json, pretty_chord,
+    AreaId, Areas, Chrome, ContextMenu, Dir, Field, FieldKind, Keymap, KeymapHelp, Layout,
+    LayoutFile, MenuItem, Palette, PaletteItem, Panel, Platform, Splash, SplashRecent, StatusBar,
+    Template, WorkspaceTabs, default_keymap, menu_json, pretty_chord,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -349,95 +349,6 @@ fn palette_items(ws: &immersion::Workspaces) -> Vec<PaletteItem> {
         );
     }
     items
-}
-
-pub(crate) fn kinds() -> Vec<EditorKind> {
-    vec![
-        EditorKind {
-            id: "machine",
-            icon: "server-2",
-            label: "Machine",
-            targets: false,
-        },
-        EditorKind {
-            id: "fleet",
-            icon: "binary-tree",
-            label: "Fleet",
-            targets: false,
-        },
-        EditorKind {
-            id: "runs",
-            icon: "list-details",
-            label: "Runs",
-            targets: false,
-        },
-        EditorKind {
-            id: "actions",
-            icon: "player-play",
-            label: "Actions",
-            targets: false,
-        },
-        EditorKind {
-            id: "timers",
-            icon: "clock",
-            label: "Timers",
-            targets: false,
-        },
-        EditorKind {
-            id: "run",
-            icon: "file-text",
-            label: "Run detail",
-            targets: true,
-        },
-        EditorKind {
-            id: "settings",
-            icon: "settings",
-            label: "Settings",
-            targets: false,
-        },
-        EditorKind {
-            id: "info",
-            icon: "info-circle",
-            label: "Info log",
-            targets: false,
-        },
-        EditorKind {
-            id: "keymap",
-            icon: "keyboard",
-            label: "Keymap",
-            targets: false,
-        },
-        EditorKind {
-            id: "data",
-            icon: "binary-tree",
-            label: "Data",
-            targets: true,
-        },
-        EditorKind {
-            id: "files",
-            icon: "folder",
-            label: "Files",
-            targets: true,
-        },
-        EditorKind {
-            id: "code",
-            icon: "code",
-            label: "Code",
-            targets: true,
-        },
-        EditorKind {
-            id: "diff",
-            icon: "file-diff",
-            label: "Diff",
-            targets: true,
-        },
-        EditorKind {
-            id: "chart",
-            icon: "chart-line",
-            label: "Chart",
-            targets: true,
-        },
-    ]
 }
 
 #[component]
@@ -786,39 +697,20 @@ pub fn App() -> Element {
     let render_state = state;
     let render = use_callback(
         move |(area, editor, arg): (AreaId, String, Option<String>)| {
-            let s = render_state.read().clone();
-            let settings_doc = settings.read().clone();
-            match editor.as_str() {
-                "machine" => crate::editors::ed_machine(&s, &settings_doc),
-                "fleet" => crate::editors::ed_fleet(&s),
-                "runs" => crate::editors::ed_runs(&s, area, open_run),
-                "actions" => crate::editors::ed_actions(&s),
-                "timers" => crate::editors::ed_timers(&s),
-                "info" => crate::editors::ed_info(&s),
-                "keymap" => crate::editors::ed_keymap(
-                    settings_doc.clone(),
-                    mac(),
-                    capturing(),
-                    cap_start,
-                    cap_reset,
-                ),
-                "run" => match arg {
-                    Some(id) => crate::editors::ed_run_detail(&s, &id),
-                    None => crate::editors::ed_run_picker(&s, area, open_run),
-                },
-                "settings" => {
-                    crate::editors::ed_settings(settings_doc.clone(), on_setting, on_editor_error)
-                }
-                "data" => crate::editors::ed_data(&s, arg.clone()),
-                "files" => crate::editors::ed_files(arg.clone()),
-                "code" => crate::editors::ed_code(arg.clone()),
-                "chart" => crate::charts::ed_chart(&s, &settings_doc, arg.clone()),
-                "diff" => crate::editors::ed_diff(
-                    arg.clone(),
-                    settings_doc["diff_split"].as_bool().unwrap_or(false),
-                ),
-                other => rsx! { div { class: "empty", "unknown editor {other}" } },
-            }
+            crate::editors::render(crate::editors::Draw {
+                area,
+                editor,
+                arg,
+                state: render_state.read().clone(),
+                settings: settings.read().clone(),
+                mac: mac(),
+                capturing: capturing(),
+                open_run,
+                cap_start,
+                cap_reset,
+                on_setting,
+                on_error: on_editor_error,
+            })
         },
     );
 
@@ -977,7 +869,7 @@ pub fn App() -> Element {
             div { class: "deck",
                 Areas {
                     layout: ws.read().current().layout.clone(),
-                    kinds: kinds(),
+                    kinds: crate::editors::kinds(),
                     render,
                     render_toolbar: Some(render_toolbar),
                     render_sidebar: Some(render_sidebar),
@@ -1300,7 +1192,7 @@ mod parity_tests {
         for a in menu_actions(&favorites_menu_json(&settings)) {
             actions.push(("favorites".into(), a));
         }
-        let kinds = kinds();
+        let kinds = crate::editors::kinds();
         for a in menu_actions(&immersion::editor_menu_json(1, &kinds, "runs")) {
             actions.push(("editor menu".into(), a));
         }

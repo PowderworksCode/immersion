@@ -101,6 +101,10 @@ pub struct EditorKind {
     /// The icon name from the library's sprite (`crate::icon`). Empty for an
     /// editor that has none; the header then shows its label alone.
     pub icon: &'static str,
+    /// What this editor answers to, as `(what, does)` pairs shown in the
+    /// status bar when it has focus. Not all of it is chords — the useful
+    /// entries are often the click or the drag, which no keymap lists.
+    pub hints: &'static [(&'static str, &'static str)],
     /// Whether this editor looks *at* something — a subtree, a file, a run.
     /// Blender's header carries a data-block selector only for editors that
     /// have one; ours shows the target chip on the same rule, so an editor

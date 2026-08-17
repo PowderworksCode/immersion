@@ -38,21 +38,11 @@ pub(crate) fn status_hints(mac: bool, editor: Option<&str>) -> Vec<(String, Stri
     hints
 }
 
-/// What each editor answers to, in its own words.
+/// What each editor answers to. The registry carries it now — see
+/// `editors::kinds` — so this is a lookup rather than a second list that
+/// could disagree with the first.
 fn editor_hints(editor: &str) -> Vec<(&'static str, &'static str)> {
-    match editor {
-        "runs" => vec![("Click", "Open run"), ("Type", "Filter")],
-        "run" => vec![("Chip", "Pick run")],
-        "data" => vec![("Click", "Expand"), ("Right-click", "Copy data path")],
-        "files" => vec![("Click", "Expand"), ("Chip", "Root here")],
-        "code" | "diff" => vec![("Chip", "Pick file")],
-        "chart" => vec![("Chip", "Pick chart"), ("N", "Edit spec")],
-        "settings" => vec![("Drag", "Scrub number"), ("Type", "3*2 works")],
-        "keymap" => vec![("Set", "Rebind"), ("Type", "Filter")],
-        "actions" => vec![("Click", "Trigger")],
-        "info" => vec![("Type", "Filter")],
-        _ => Vec::new(),
-    }
+    crate::editors::hints_for(editor).to_vec()
 }
 
 #[cfg(test)]
@@ -73,22 +63,6 @@ mod hint_tests {
         // An editor with nothing of its own still gets the globals rather
         // than an empty bar.
         assert_eq!(status_hints(false, Some("nope")), global);
-    }
-
-    #[test]
-    fn every_registered_editor_is_accounted_for() {
-        // A new editor with no hints is a status bar that says nothing about
-        // it. Not every editor needs one, but the omission should be a
-        // decision — this lists the ones that have deliberately none.
-        const NO_HINTS: &[&str] = &["machine", "fleet", "timers"];
-        for k in crate::ui::kinds() {
-            let has = !editor_hints(k.id).is_empty();
-            assert!(
-                has || NO_HINTS.contains(&k.id),
-                "{} has no status hints; add some or list it in NO_HINTS",
-                k.id
-            );
-        }
     }
 }
 
