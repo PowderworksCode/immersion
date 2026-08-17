@@ -54,7 +54,7 @@ pub use panel::{Panel, PanelProps};
 pub use splash::{Splash, SplashProps, SplashRecent, Template};
 pub use statusbar::{StatusBar, StatusBarProps};
 pub use theme::{Theme, theme_css, themes};
-pub use tree::{TreeRow, TreeView, TreeViewProps, value_children};
+pub use tree::{TreeRow, TreeView, TreeViewProps, value_children, value_icon};
 pub use ui::{Areas, AreasProps, EditorKind, WorkspaceTabs, WorkspaceTabsProps};
 pub use vendor::{MOUNT as VENDOR_MOUNT, asset as vendor_asset, script_tag as vendor_script_tag};
 pub use widget::{

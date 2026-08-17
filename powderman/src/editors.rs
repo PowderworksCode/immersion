@@ -440,6 +440,7 @@ pub(crate) fn data_children(
             label: format!("/{name}"),
             preview: preview.to_string(),
             has_children: true,
+            icon: "braces".to_string(),
         };
         return vec![
             mount("layout", "the workspace tree"),
@@ -493,6 +494,7 @@ pub(crate) fn target_children(
         "chart" => chart_names(&state_doc_settings())
             .into_iter()
             .map(|name| immersion::TreeRow {
+                icon: "chart-line".to_string(),
                 preview: String::new(),
                 pointer: format!("/charts/{name}"),
                 label: name,
@@ -528,6 +530,7 @@ fn state_doc_settings() -> serde_json::Value {
 /// same question a person would ask the terminal.
 fn changed_files() -> Vec<immersion::TreeRow> {
     let row = |path: String, state: &str| immersion::TreeRow {
+        icon: "file-diff".to_string(),
         label: path.rsplit('/').next().unwrap_or(&path).to_string(),
         preview: format!("{state}  {path}"),
         pointer: path,
@@ -574,6 +577,7 @@ fn run_targets(s: &State) -> Vec<immersion::TreeRow> {
     runs.sort_by_key(|r| std::cmp::Reverse(r.updated_at));
     runs.iter()
         .map(|r| immersion::TreeRow {
+            icon: "file-text".to_string(),
             pointer: r.id.clone(),
             label: format!("{} {}", r.status, r.workflow),
             preview: r
@@ -658,6 +662,7 @@ pub(crate) fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
         .into_iter()
         .take(CAP)
         .map(|(is_dir, _, name, len)| immersion::TreeRow {
+            icon: if is_dir { "folder" } else { "file" }.to_string(),
             pointer: format!("{pointer}/{name}"),
             label: if is_dir { format!("{name}/") } else { name },
             preview: if is_dir {
@@ -674,6 +679,7 @@ pub(crate) fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
             label: format!("\u{2026} {extra} more"),
             preview: String::new(),
             has_children: false,
+            icon: String::new(),
         });
     }
     out

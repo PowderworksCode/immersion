@@ -728,6 +728,7 @@ fn fabricated_rows(pointer: &str) -> Vec<immersion::TreeRow> {
             }
             let is_dir = path.ends_with('/');
             Some(immersion::TreeRow {
+                icon: if is_dir { "folder" } else { "file" }.to_string(),
                 pointer: format!("{prefix}{name}"),
                 label: if is_dir {
                     format!("{name}/")
