@@ -137,15 +137,54 @@ pub(crate) fn settings_defaults() -> serde_json::Value {
         "charts": {
             "cpu": {
                 "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
-                "description": "Box CPU over the chart window",
-                "data": { "name": "cpu" },
-                "mark": { "type": "line", "interpolate": "monotone" },
+                "description": "Box CPU, with the run windows shaded behind it",
+                // Layered, because the shading is the point: a CPU line alone
+                // says the box was busy, which htop already tells you; the
+                // bands say which run was alive at the time.
+                "layer": [
+                    {
+                        "data": { "name": "annotations" },
+                        "mark": { "type": "rect", "opacity": 0.18 },
+                        "encoding": {
+                            "x": { "field": "from", "type": "temporal", "title": null },
+                            "x2": { "field": "to" },
+                            "color": {
+                                "field": "status",
+                                "type": "nominal",
+                                "legend": { "title": "runs" }
+                            },
+                            "tooltip": [
+                                { "field": "workflow", "type": "nominal" },
+                                { "field": "status", "type": "nominal" }
+                            ]
+                        }
+                    },
+                    {
+                        "data": { "name": "cpu" },
+                        "mark": { "type": "line", "interpolate": "monotone" },
+                        "encoding": {
+                            "x": { "field": "at", "type": "temporal", "title": null },
+                            "y": {
+                                "field": "value",
+                                "type": "quantitative",
+                                "title": "cpu %",
+                                "scale": { "domain": [0, 100] }
+                            }
+                        }
+                    }
+                ]
+            },
+            "memory": {
+                "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+                "description": "Box memory as a percentage of total",
+                "data": { "name": "memory" },
+                "mark": { "type": "area", "opacity": 0.35, "line": true },
                 "encoding": {
                     "x": { "field": "at", "type": "temporal", "title": null },
                     "y": {
                         "field": "value",
                         "type": "quantitative",
-                        "title": "cpu %",
+                        "title": "memory %",
                         "scale": { "domain": [0, 100] }
                     }
                 }

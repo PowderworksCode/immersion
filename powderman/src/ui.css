@@ -307,8 +307,15 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
   font-family: var(--im-mono); font-size: .74rem; color: var(--im-text);
 }
 
-/* Charts fill their area; the renderer sizes to the container. */
-.chart-host { flex: 1; overflow: auto; padding: .4rem; }
+/* Charts fill their area; the renderer sizes to the container, so a host
+   with no height of its own draws a chart with no height either. In a chart
+   editor the area supplies it; inside a .plot the box is ours to set. */
+.chart-host { flex: 1; overflow: hidden; padding: .4rem; min-height: 0; }
+.plot .chart-host { height: 190px; flex: none; }
+.chart-error-inline {
+  padding: .4rem .6rem; font-family: var(--im-mono); font-size: .72rem;
+  color: var(--im-invalid, #cc4b4b);
+}
 .chart-host .im-chart-drawn { width: 100%; height: 100%; }
 .im-chart-error {
   padding: .6rem; font-family: var(--im-mono); font-size: .74rem;
