@@ -164,12 +164,7 @@ pub fn Splash(props: SplashProps) -> Element {
                 if !props.foot.is_empty() {
                     div { class: "im-splash-foot-cols",
                         for section in props.foot.iter().cloned() {
-                            div { class: "im-splash-foot-col", key: "{section.title}",
-                                div { class: "im-splash-h", "{section.title}" }
-                                for (i, row) in section.rows.iter().cloned().enumerate() {
-                                    {foot_row(i, row)}
-                                }
-                            }
+                            {foot_col(section)}
                         }
                     }
                 }
@@ -206,6 +201,20 @@ fn template_row(
             div { class: "im-splash-itembody",
                 div { class: "im-splash-name", "{t.name}" }
                 div { class: "im-splash-hint", "{t.hint}" }
+            }
+        }
+    }
+}
+
+/// One footer column: a heading over its rows. Its own function because the
+/// rows-inside-a-column-inside-the-footer nest is three levels the splash's
+/// view does not need to carry.
+fn foot_col(section: SplashSection) -> Element {
+    rsx! {
+        div { class: "im-splash-foot-col", key: "{section.title}",
+            div { class: "im-splash-h", "{section.title}" }
+            for (i, row) in section.rows.into_iter().enumerate() {
+                {foot_row(i, row)}
             }
         }
     }
