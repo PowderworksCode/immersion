@@ -333,3 +333,19 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .chart-host svg .mark-line path { stroke: var(--im-accent); }
 .chart-host svg .mark-rect path, .chart-host svg .mark-arc path { fill: var(--im-accent); }
 .chart-host svg .mark-symbol path { fill: var(--im-accent); }
+
+/* Preferences: sections down the left, fields on the right. */
+.prefs-panel { width: 44rem; max-width: 94vw; }
+.prefs-body { display: flex; gap: .8rem; min-height: 22rem; }
+.prefs-sections {
+  flex: none; width: 9rem; display: flex; flex-direction: column; gap: .15rem;
+  border-right: 1px solid var(--line); padding-right: .6rem;
+}
+.prefs-section {
+  text-align: left; font: inherit; font-size: .78rem; cursor: pointer;
+  background: none; border: 1px solid transparent; border-radius: 3px;
+  color: var(--ink-2); padding: .25rem .45rem;
+}
+.prefs-section:hover { background: var(--surface-2, var(--surface)); }
+.prefs-section.active { background: var(--im-accent); color: #fff; }
+.prefs-fields { flex: 1; overflow: auto; }

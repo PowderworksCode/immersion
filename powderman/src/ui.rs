@@ -253,6 +253,7 @@ pub(crate) enum ClientAction {
     Maximize,
     Fullscreen,
     Palette,
+    Preferences,
     Cheatsheet,
     AdjustLast,
     Pie,
@@ -265,6 +266,7 @@ impl ClientAction {
         ClientAction::Maximize,
         ClientAction::Fullscreen,
         ClientAction::Palette,
+        ClientAction::Preferences,
         ClientAction::Cheatsheet,
         ClientAction::AdjustLast,
         ClientAction::Pie,
@@ -277,6 +279,7 @@ impl ClientAction {
             ClientAction::Maximize => "maximize",
             ClientAction::Fullscreen => "fullscreen",
             ClientAction::Palette => "palette",
+            ClientAction::Preferences => "preferences",
             ClientAction::Cheatsheet => "cheatsheet",
             ClientAction::AdjustLast => "adjust_last",
             ClientAction::Pie => "pie",
@@ -346,88 +349,6 @@ fn palette_items(ws: &immersion::Workspaces) -> Vec<PaletteItem> {
         );
     }
     items
-}
-
-/// The Settings editor's schema: which widget edits which pointer in the
-/// settings document. This is the whole binding — a Field per knob, the doc is
-/// serde, edits are (pointer, value).
-pub(crate) fn settings_fields() -> Vec<Field> {
-    vec![
-        Field::new("/accent", "Accent color", FieldKind::Color)
-            .with_hint("the widget-blue used across the workbench")
-            .with_default(serde_json::json!("#5680c2")),
-        Field::new(
-            "/poll_ms",
-            "Refresh interval",
-            FieldKind::Slider {
-                min: 250.0,
-                max: 5000.0,
-                step: 250.0,
-            },
-        )
-        .with_hint("how often the page repolls, in ms")
-        .with_default(serde_json::json!(1000)),
-        Field::new("/splash_on_start", "Splash on startup", FieldKind::Bool)
-            .with_default(serde_json::json!(true)),
-        Field::new("/tooltips_on", "Tooltips", FieldKind::Toggle)
-            .with_hint("hover help on the workbench controls")
-            .with_default(serde_json::json!(true)),
-        Field::new(
-            "/sweep_limit",
-            "Default sweep limit",
-            FieldKind::Number {
-                min: Some(1.0),
-                max: Some(1000.0),
-                step: Some(50.0),
-            },
-        )
-        .with_hint("packages per ecosystem the daily sweep fetches")
-        .with_default(serde_json::json!(100)),
-        Field::new(
-            "/theme",
-            "Theme",
-            FieldKind::Select(
-                immersion::themes()
-                    .iter()
-                    .map(|t| (t.name.to_string(), t.name.to_string()))
-                    .collect(),
-            ),
-        )
-        .with_hint("the workbench palette; accent stays your own"),
-        Field::new(
-            "/chart_window",
-            "Chart window",
-            FieldKind::Vector {
-                labels: vec!["H".into(), "N".into(), "S".into()],
-                step: Some(1.0),
-            },
-        )
-        .with_hint("hours shown, samples, smoothing")
-        .with_default(serde_json::json!([1, 60, 3])),
-        Field::new("/diff_split", "Split diffs", FieldKind::Toggle)
-            .with_hint("show diffs side by side rather than stacked")
-            .with_default(serde_json::json!(false)),
-        Field::new(
-            "/ui_scale",
-            "Resolution scale",
-            FieldKind::Slider {
-                min: 0.8,
-                max: 1.6,
-                step: 0.05,
-            },
-        )
-        .with_hint("size of the whole interface")
-        .with_default(serde_json::json!(1.0)),
-        Field::new(
-            "/density",
-            "Density",
-            FieldKind::Radio(vec![
-                ("cozy".into(), "Cozy".into()),
-                ("compact".into(), "Compact".into()),
-            ]),
-        )
-        .with_default(serde_json::json!("cozy")),
-    ]
 }
 
 fn kinds() -> Vec<EditorKind> {
@@ -613,6 +534,7 @@ pub fn App() -> Element {
     // The command palette is per-client view state, like maximize — one client
     // searching commands does not open the palette in another.
     let mut palette_open = use_signal(|| false);
+    let mut prefs_open = use_signal(|| false);
     // Which area is being retargeted, if any. Per-client like the palette: two
     // people picking targets should not fight over one modal.
     let mut picking_for = use_signal(|| None::<AreaId>);
@@ -691,6 +613,7 @@ pub fn App() -> Element {
                 maximized.set(if cur.is_some() { None } else { first });
             }
             Route::ClientView(ClientAction::Palette) => palette_open.set(true),
+            Route::ClientView(ClientAction::Preferences) => prefs_open.set(true),
             Route::Bus => cmd.call((action, params)),
         }
     });
@@ -972,6 +895,14 @@ pub fn App() -> Element {
                     on_close: move |()| help_open.set(false),
                 }
             }
+            if prefs_open() {
+                crate::panels::PreferencesPanel {
+                    doc: settings(),
+                    on_edit: on_setting,
+                    on_error: on_editor_error,
+                    on_close: move |()| prefs_open.set(false),
+                }
+            }
             if let Some(id) = picking_for() {
                 crate::panels::TargetPicker {
                     area: id,
@@ -1232,6 +1163,8 @@ fn edit_menu(mac: bool) -> String {
         MenuItem::new("Repeat last", "repeat_last", Value::Null)
             .with_chord(&pretty_chord("Shift+R", mac)),
         MenuItem::new("Adjust last operation", "adjust_last", Value::Null).with_chord("F9"),
+        MenuItem::sep(),
+        MenuItem::new("Preferences", "preferences", Value::Null),
     ])
 }
 

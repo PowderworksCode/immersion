@@ -9,8 +9,7 @@ use dioxus::prelude::*;
 use immersion::{AreaId, FilterBox, Panel, PropertyEditor, TreeView, pretty_chord};
 
 use crate::ui::{
-    RunView, State, StepView, WorkflowView, effective_keymap, gib, hhmmss, settings_fields, short,
-    tile,
+    RunView, State, StepView, WorkflowView, effective_keymap, gib, hhmmss, short, tile,
 };
 use crate::ui::{resume, run_with};
 
@@ -395,7 +394,7 @@ pub(crate) fn ed_settings(
         div { class: "settings",
             PropertyEditor {
                 doc,
-                fields: settings_fields(),
+                fields: crate::settings::settings_fields(),
                 on_edit: on_setting,
                 on_error,
             }

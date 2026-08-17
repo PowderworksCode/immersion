@@ -87,3 +87,52 @@ pub(crate) fn TargetPicker(
         }
     }
 }
+
+/// Preferences — Blender's Edit ▸ Preferences, sections down the left and
+/// that section's fields on the right.
+///
+/// The Settings editor still exists and shows the same fields as one list:
+/// an area you can split beside your work, versus a window you open, decide,
+/// and close. Blender has both for the same reason.
+#[component]
+pub(crate) fn PreferencesPanel(
+    doc: serde_json::Value,
+    on_edit: Callback<(String, serde_json::Value)>,
+    on_error: Callback<immersion::EditorError>,
+    on_close: Callback<()>,
+) -> Element {
+    let sections = crate::settings::preference_sections();
+    let mut current = use_signal(|| 0usize);
+    let fields = sections
+        .get(current())
+        .map(|(_, f)| f.clone())
+        .unwrap_or_default();
+    rsx! {
+        div { class: "adjust-backdrop", onclick: move |_| on_close.call(()),
+            div { class: "adjust-panel prefs-panel", onclick: move |e| e.stop_propagation(),
+                div { class: "adjust-title", "Preferences" }
+                div { class: "prefs-body",
+                    div { class: "prefs-sections",
+                        for (i, (name, _)) in sections.iter().enumerate() {
+                            button {
+                                class: if i == current() { "prefs-section active" } else { "prefs-section" },
+                                key: "{name}",
+                                onclick: move |_| current.set(i),
+                                "{name}"
+                            }
+                        }
+                    }
+                    div { class: "prefs-fields",
+                        PropertyEditor { doc, fields, on_edit, on_error }
+                    }
+                }
+                div { class: "adjust-actions",
+                    // No Apply: a preference takes effect when it changes, the
+                    // way it does in the Settings editor. Close is a door, not
+                    // a commit.
+                    button { class: "adjust-apply", onclick: move |_| on_close.call(()), "Close" }
+                }
+            }
+        }
+    }
+}
