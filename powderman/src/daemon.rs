@@ -115,8 +115,11 @@ pub fn workspaces() -> immersion::Workspaces {
 /// The workbench settings document — a small JSON value the widget-based
 /// Settings editor edits by pointer. Defaults fill any key the stored doc is
 /// missing, so adding a setting never needs a migration.
-pub fn settings() -> serde_json::Value {
-    let defaults = serde_json::json!({
+/// The settings document as a fresh instance sees it. Its own function so
+/// tests can reason about the seeded documents — the charts especially —
+/// without standing up a daemon.
+pub(crate) fn settings_defaults() -> serde_json::Value {
+    serde_json::json!({
         "accent": "#5680c2",
         "splash_on_start": true,
         "poll_ms": 1000,
@@ -127,6 +130,38 @@ pub fn settings() -> serde_json::Value {
         "ui_scale": 1.0,
         // A vector setting: the chart window as [hours, samples, smoothing].
         "chart_window": [1, 60, 3],
+        // Charts are documents, not code: each is a Vega-Lite spec the chart
+        // editor renders and anyone — a person by pointer, an agent by
+        // set_setting — can edit. `data.name` names a feed the host resolves;
+        // inline `data.values` works too.
+        "charts": {
+            "cpu": {
+                "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+                "description": "Box CPU over the chart window",
+                "data": { "name": "cpu" },
+                "mark": { "type": "line", "interpolate": "monotone" },
+                "encoding": {
+                    "x": { "field": "at", "type": "temporal", "title": null },
+                    "y": {
+                        "field": "value",
+                        "type": "quantitative",
+                        "title": "cpu %",
+                        "scale": { "domain": [0, 100] }
+                    }
+                }
+            },
+            "runs by workflow": {
+                "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+                "description": "Recent runs, counted by workflow and status",
+                "data": { "name": "runs" },
+                "mark": "bar",
+                "encoding": {
+                    "y": { "field": "workflow", "type": "nominal", "title": null },
+                    "x": { "aggregate": "count", "title": "runs" },
+                    "color": { "field": "status", "type": "nominal" }
+                }
+            }
+        },
         // Quick Favourites (Q). Seeded with a few useful ones; right-clicking
         // any menu row adds to this list.
         "favorites": [
@@ -134,7 +169,11 @@ pub fn settings() -> serde_json::Value {
             {"label": "Maximize area", "action": "maximize", "params": null},
             {"label": "Adjust last operation", "action": "adjust_last", "params": null}
         ]
-    });
+    })
+}
+
+pub fn settings() -> serde_json::Value {
+    let defaults = settings_defaults();
     let s = shared();
     let stored: serde_json::Value = {
         let conn = s.db.lock().expect("db");
@@ -701,8 +740,8 @@ async fn boot_route() -> impl IntoResponse {
 /// Serve one file of the vendored renderer. Immutable: every chunk's name
 /// carries its content hash, so a year is a safe cache and a redeploy that
 /// changes a chunk changes its name.
-async fn vendor_route(Path(file): Path<String>) -> impl IntoResponse {
-    let Some(bytes) = immersion::vendor_asset(&file) else {
+async fn vendor_route(Path((bundle, file)): Path<(String, String)>) -> impl IntoResponse {
+    let Some(bytes) = immersion::vendor_asset(&bundle, &file) else {
         return (
             StatusCode::NOT_FOUND,
             [("content-type", "text/plain")],
@@ -881,7 +920,7 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
         .route("/trigger/{name}", post(trigger_route))
         .route("/resume/{id}", post(resume_route))
         .route("/boot", get(boot_route))
-        .route("/vendor/diffs/{file}", get(vendor_route))
+        .route("/vendor/{bundle}/{file}", get(vendor_route))
         .route("/health", get(health_route))
         .nest_service("/mcp", crate::mcp::service())
         .route(

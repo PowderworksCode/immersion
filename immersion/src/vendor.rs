@@ -15,28 +15,42 @@
 
 use include_dir::{Dir, include_dir};
 
-/// Where the bundle expects to be served from. Its chunks import each other by
-/// relative path, so the directory has to stay a directory.
-pub const MOUNT: &str = "/vendor/diffs";
+/// Where the bundles are served from. Their chunks import each other by
+/// relative path, so each stays a directory of its own.
+pub const MOUNT: &str = "/vendor";
 
+/// The renderers, by bundle name. Two, for now: `diffs` draws code and
+/// changes, `vega` draws charts. Both are entered through `entry.js`.
 static DIFFS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/vendor/diffs");
+static VEGA: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/vendor/vega");
 
-/// One vendored file, by name (`entry.js`, `rust-a1b2c3.js`). `None` for
-/// anything not in the bundle — a path from a request must never reach the
+/// The bundles a page loads, in order.
+pub const BUNDLES: &[&str] = &["diffs", "vega"];
+
+/// One vendored file, by bundle and name (`diffs`, `rust-a1b2c3.js`). `None`
+/// for anything not in a bundle — a path from a request must never reach the
 /// filesystem.
-pub fn asset(name: &str) -> Option<&'static [u8]> {
-    // No traversal: the bundle is flat, so a name with a separator in it is
+pub fn asset(bundle: &str, name: &str) -> Option<&'static [u8]> {
+    // No traversal: each bundle is flat, so a name with a separator in it is
     // not one of ours whatever it resolves to.
     if name.contains('/') || name.contains("..") {
         return None;
     }
-    DIFFS.get_file(name).map(|f| f.contents())
+    let dir = match bundle {
+        "diffs" => &DIFFS,
+        "vega" => &VEGA,
+        _ => return None,
+    };
+    dir.get_file(name).map(|f| f.contents())
 }
 
-/// The `<script>` the page needs. A module, deferred by nature, so it does not
-/// block the first paint.
+/// The `<script>` tags the page needs. Modules, deferred by nature, so they
+/// do not block the first paint.
 pub fn script_tag() -> String {
-    format!(r#"<script type="module" src="{MOUNT}/entry.js"></script>"#)
+    BUNDLES
+        .iter()
+        .map(|b| format!(r#"<script type="module" src="{MOUNT}/{b}/entry.js"></script>"#))
+        .collect()
 }
 
 #[cfg(test)]
@@ -44,13 +58,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_bundle_is_embedded_and_reachable() {
-        let entry = asset("entry.js").expect("the entry is vendored");
-        assert!(
-            entry.len() > 10_000,
-            "entry looks truncated: {}",
-            entry.len()
-        );
+    fn every_bundle_is_embedded_and_reachable() {
+        for b in BUNDLES {
+            let entry = asset(b, "entry.js")
+                .unwrap_or_else(|| panic!("{b} is not vendored; run its build script"));
+            assert!(
+                entry.len() > 10_000,
+                "{b} entry is truncated: {}",
+                entry.len()
+            );
+            // Every bundle needs a script tag, or it is dead weight in the
+            // binary that nothing ever loads.
+            assert!(script_tag().contains(&format!("/vendor/{b}/entry.js")));
+        }
         assert!(
             DIFFS.files().count() > 20,
             "grammar chunks are missing; run scripts/build-diffs.ts"
@@ -58,10 +78,13 @@ mod tests {
     }
 
     #[test]
-    fn a_request_cannot_leave_the_bundle() {
+    fn a_request_cannot_leave_a_bundle() {
         for bad in ["../Cargo.toml", "a/b.js", "../../etc/passwd", "..%2fx"] {
-            assert!(asset(bad).is_none(), "{bad} resolved");
+            assert!(asset("diffs", bad).is_none(), "{bad} resolved");
         }
-        assert!(asset("nope.js").is_none());
+        assert!(asset("diffs", "nope.js").is_none());
+        // And a bundle nobody vendored is not a directory to go looking in.
+        assert!(asset("../vega", "entry.js").is_none());
+        assert!(asset("nope", "entry.js").is_none());
     }
 }

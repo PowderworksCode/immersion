@@ -495,6 +495,16 @@ pub(crate) fn target_children(
         // it offers — the same rule as the run editor, which lists runs
         // rather than making you find one in the snapshot.
         "diff" => changed_files(),
+        // A chart editor takes a chart, so it lists the ones that exist.
+        "chart" => chart_names(&state_doc_settings())
+            .into_iter()
+            .map(|name| immersion::TreeRow {
+                preview: String::new(),
+                pointer: format!("/charts/{name}"),
+                label: name,
+                has_children: false,
+            })
+            .collect(),
         // A run's target is its id, not its address in the snapshot, so the
         // rows are runs and the value each carries is the id itself.
         "run" => run_targets(state),
@@ -508,9 +518,15 @@ pub(crate) fn target_noun(editor: &str) -> &'static str {
     match editor {
         "files" | "code" => "File",
         "diff" => "Changed file",
+        "chart" => "Chart",
         "run" => "Run",
         _ => "Target",
     }
+}
+
+/// The settings document, for the places that need it outside a render.
+fn state_doc_settings() -> serde_json::Value {
+    crate::daemon::settings()
 }
 
 /// The files that differ from HEAD, as pickable rows. On a demo these are
@@ -1059,5 +1075,236 @@ mod diff_viewer {
         assert!(full.contains("+two point five\n"), "the added line: {full}");
         assert_eq!(full.matches("--- ").count(), 1, "headers are not doubled");
         assert_eq!(full.matches("+++ ").count(), 1, "headers are not doubled");
+    }
+}
+
+/// The chart editor: a Vega-Lite spec, drawn.
+///
+/// The spec is a document — it lives in settings under `/charts/<name>`, so
+/// the data editor browses it, a widget could edit it by pointer, and an
+/// agent writes one with `set_setting` and no new tool. What arrives here is
+/// the spec plus whatever data its feed names; the vendored renderer draws.
+pub(crate) fn ed_chart(s: &State, doc: &serde_json::Value, target: Option<String>) -> Element {
+    let names = chart_names(doc);
+    let Some(name) = target.filter(|t| !t.is_empty()) else {
+        return rsx! {
+            div { class: "empty",
+                if names.is_empty() {
+                    "No charts yet \u{2014} add one under /charts in the settings document."
+                } else {
+                    "Pick a chart \u{2014} the target chip in the header."
+                }
+            }
+        };
+    };
+    let key = name.trim_start_matches("/charts/");
+    let Some(spec) = doc.pointer(&format!("/charts/{}", escape_pointer(key))) else {
+        return rsx! { div { class: "empty", "no chart called {key}" } };
+    };
+    match resolve_spec(s, doc, spec) {
+        Err(e) => rsx! { div { class: "empty", "{e}" } },
+        Ok(resolved) => {
+            let json = serde_json::to_string(&resolved).unwrap_or_default();
+            let stamp = stamp_of(key, &json);
+            rsx! {
+                div { class: "code-view",
+                    div { class: "code-path", "{key}" }
+                    pre { class: "code-src-payload", "data-im-chart-src": "{stamp}", "{json}" }
+                    div { class: "chart-host", "data-im-chart": "{stamp}" }
+                }
+            }
+        }
+    }
+}
+
+/// The chart names, for the picker and the empty state.
+pub(crate) fn chart_names(doc: &serde_json::Value) -> Vec<String> {
+    doc["charts"]
+        .as_object()
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Replace a named feed with the host's own data, and refuse a spec that is
+/// not one. Validation is deliberately structural rather than a full schema
+/// check: the renderer reports its own errors precisely, and the value of
+/// checking here is catching the two mistakes that would otherwise render a
+/// blank panel — a spec that is not an object, and a feed nobody serves.
+fn resolve_spec(
+    s: &State,
+    doc: &serde_json::Value,
+    spec: &serde_json::Value,
+) -> Result<serde_json::Value, immersion::EditorError> {
+    let Some(obj) = spec.as_object() else {
+        return Err(immersion::EditorError::message(
+            "a chart is a Vega-Lite spec: a JSON object",
+        ));
+    };
+    let mut out = obj.clone();
+    // The workbench is dark and Vega's defaults are not, so a spec arrives
+    // with the chrome turned off: no white plate, no view border. The rest of
+    // the theming is CSS against the rendered SVG, where the palette tokens
+    // already live — a colour written here would be a second palette.
+    out.entry("background")
+        .or_insert(serde_json::Value::String("transparent".into()));
+    // Fill the area. Both halves are needed: "container" asks the renderer to
+    // measure its parent, and the fitting autosize is what makes it re-measure
+    // rather than draw at the default 200x200 and clip.
+    out.entry("width")
+        .or_insert(serde_json::Value::String("container".into()));
+    out.entry("height")
+        .or_insert(serde_json::Value::String("container".into()));
+    out.entry("autosize")
+        .or_insert(serde_json::json!({ "type": "fit", "contains": "padding" }));
+    if let Some(cfg) = out.get_mut("config").and_then(|c| c.as_object_mut()) {
+        cfg.entry("view")
+            .or_insert(serde_json::json!({ "stroke": null }));
+    } else {
+        out.insert(
+            "config".into(),
+            serde_json::json!({ "view": { "stroke": null } }),
+        );
+    }
+    if let Some(feed) = spec.pointer("/data/name").and_then(|n| n.as_str()) {
+        let values = feed_values(s, doc, feed).ok_or_else(|| {
+            immersion::EditorError::message(format!(
+                "no feed called {feed:?} \u{2014} this host serves {}",
+                FEEDS.join(", ")
+            ))
+        })?;
+        out.insert(
+            "data".into(),
+            serde_json::json!({ "values": values, "name": feed }),
+        );
+    }
+    Ok(serde_json::Value::Object(out))
+}
+
+/// The feeds a spec may name. Small and explicit: a chart that asks for
+/// something else gets told what is on offer rather than an empty panel.
+const FEEDS: &[&str] = &["cpu", "memory", "runs", "fleet"];
+
+fn feed_values(s: &State, doc: &serde_json::Value, feed: &str) -> Option<Vec<serde_json::Value>> {
+    let series = |points: &[(i64, f64)]| {
+        points
+            .iter()
+            .map(|(at, value)| serde_json::json!({ "at": at, "value": value }))
+            .collect::<Vec<_>>()
+    };
+    Some(match feed {
+        "cpu" => series(&s.cpu),
+        "memory" => {
+            // As a percentage of the box, which is what a reader of a memory
+            // chart actually wants to know.
+            let total = s.machine.get("box.mem_total").copied().unwrap_or(1.0);
+            s.mem
+                .iter()
+                .map(|(at, used)| {
+                    serde_json::json!({ "at": at, "value": used / total.max(1.0) * 100.0 })
+                })
+                .collect()
+        }
+        "runs" => s
+            .runs
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "workflow": r.workflow,
+                    "status": r.status,
+                    "at": r.updated_at,
+                })
+            })
+            .collect(),
+        "fleet" => s
+            .fleet
+            .iter()
+            .map(|a| {
+                serde_json::json!({
+                    "name": a.name,
+                    "status": a.status,
+                    "rss": a.procs.iter().map(|p| p.rss).sum::<f64>(),
+                })
+            })
+            .collect(),
+        // A chart may also name a document the host keeps: anything under
+        // /charts is a spec, and a sibling array under /feeds is data.
+        _ => doc.pointer(&format!("/feeds/{feed}"))?.as_array()?.clone(),
+    })
+}
+
+/// JSON-pointer escaping for a chart name, which is a user-chosen key and may
+/// contain a slash.
+fn escape_pointer(key: &str) -> String {
+    key.replace('~', "~0").replace('/', "~1")
+}
+
+#[cfg(test)]
+mod chart_editor {
+    use super::*;
+
+    fn state() -> State {
+        State {
+            cpu: vec![(1, 12.0), (2, 40.0)],
+            mem: vec![(1, 2.0), (2, 4.0)],
+            machine: [("box.mem_total".to_string(), 8.0)].into_iter().collect(),
+            runs: vec![crate::ui::RunView {
+                id: "a".into(),
+                workflow: "sweep".into(),
+                status: "done".into(),
+                note: None,
+                error: None,
+                updated_at: 9,
+                steps: vec![],
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_named_feed_becomes_the_spec_s_data() {
+        // The point of the design: the spec says which data it wants, the
+        // host supplies it, and what reaches the renderer is one document.
+        let doc = crate::daemon::settings_defaults();
+        let spec = doc.pointer("/charts/cpu").expect("the seeded cpu chart");
+        let out = resolve_spec(&state(), &doc, spec).expect("resolves");
+        let values = out["data"]["values"].as_array().expect("values inlined");
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[1]["value"], 40.0);
+        assert!(out["data"].get("name").is_some(), "the feed is still named");
+        assert_eq!(out["mark"]["type"], "line", "the rest of the spec survives");
+    }
+
+    #[test]
+    fn memory_is_served_as_a_percentage() {
+        let doc = crate::daemon::settings_defaults();
+        let spec = serde_json::json!({ "data": { "name": "memory" }, "mark": "line" });
+        let out = resolve_spec(&state(), &doc, &spec).expect("resolves");
+        // 4 of 8 bytes is 50%, which is what a memory chart should plot.
+        assert_eq!(out["data"]["values"][1]["value"], 50.0);
+    }
+
+    #[test]
+    fn a_spec_that_cannot_be_drawn_says_why() {
+        let doc = crate::daemon::settings_defaults();
+        let not_object = serde_json::json!([1, 2, 3]);
+        let e = resolve_spec(&state(), &doc, &not_object).expect_err("refused");
+        assert!(e.message.contains("JSON object"), "{}", e.message);
+
+        let bad_feed = serde_json::json!({ "data": { "name": "nope" }, "mark": "line" });
+        let e = resolve_spec(&state(), &doc, &bad_feed).expect_err("refused");
+        assert!(e.message.contains("nope"), "{}", e.message);
+        assert!(
+            e.message.contains("cpu"),
+            "and lists what is served: {}",
+            e.message
+        );
+    }
+
+    #[test]
+    fn the_picker_offers_the_charts_that_exist() {
+        let doc = crate::daemon::settings_defaults();
+        let names = chart_names(&doc);
+        assert!(names.contains(&"cpu".to_string()), "{names:?}");
+        assert_eq!(target_noun("chart"), "Chart");
     }
 }

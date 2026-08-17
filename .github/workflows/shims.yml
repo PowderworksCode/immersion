@@ -41,11 +41,11 @@ jobs:
       # Rebuilding here proves the committed bundle matches its source: a
       # dependency bump that nobody rebuilt would otherwise ship the old
       # renderer forever.
-      - name: Vendored renderer is up to date
+      - name: Vendored renderers are up to date
         run: |
-          bun run scripts/build-diffs.ts
+          bun run build:vendor
           git diff --exit-code -- immersion/vendor \
-            || { echo "::error::vendored renderer is stale — run 'bun run build:diffs' and commit"; exit 1; }
+            || { echo "::error::a vendored renderer is stale — run 'bun run build:vendor' and commit"; exit 1; }
 
       - name: Generated shims are up to date
         run: |
