@@ -471,10 +471,12 @@ mod topbar_tests {
             html.contains(&format!("classList.add(\"{class}\")")),
             "the disconnect script no longer sets {class}"
         );
+        // Matched with the brace: without it `.conn-on` also matches a rule
+        // renamed to `.conn-onn`, which is exactly the drift being guarded.
         for rule in [
-            format!("body.{class} .conn-on"),
-            format!("body.{class} .conn-off"),
-            format!("body.{class} .conn-dot"),
+            format!("body.{class} .conn-on {{"),
+            format!("body.{class} .conn-off {{"),
+            format!("body.{class} .conn-dot {{"),
         ] {
             assert!(
                 crate::ui::CSS.contains(&rule),
