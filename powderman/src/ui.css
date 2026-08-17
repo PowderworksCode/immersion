@@ -292,6 +292,26 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .area-tool svg { width: 1rem; height: 1rem; }
 /* Between the editor's own tools and the area operations, so the strip reads
    as "what this editor does" over "what any area does". */
+/* The Help editor: the generated reference, drawn. */
+.help { font-size: .8rem; }
+.help-about { color: var(--ink-3); font-size: .76rem; margin-bottom: .5rem; }
+.help-entry { padding: .3rem 0; border-top: 1px solid var(--line); }
+.help-entry:first-of-type { border-top: 0; }
+.help-name { display: flex; align-items: center; gap: .4rem; }
+.help-name code { font-family: var(--mono); font-size: .78rem; color: var(--ink); }
+.help-detail { color: var(--ink-2); font-size: .78rem; margin: .1rem 0 .15rem; }
+.help-param {
+  display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap;
+  font-size: .74rem; color: var(--ink-3); padding-left: .9rem;
+}
+.help-param-name { font-family: var(--mono); color: var(--ink-2); }
+.help-param-kind { font-family: var(--mono); color: var(--im-accent); }
+.help-param-req {
+  font-size: .62rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--warning);
+}
+.help-param-about { min-width: 0; }
+
 /* Editor controls in the area header. Sized to the header, not to the body:
    they sit beside the editor name and must not make the strip taller. */
 .hdr-choice {
