@@ -10,6 +10,7 @@ mod mcp;
 mod metrics;
 mod panels;
 mod settings;
+mod status;
 mod treebank;
 mod ui;
 mod workflows;
