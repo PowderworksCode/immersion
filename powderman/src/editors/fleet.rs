@@ -75,3 +75,9 @@ pub(crate) fn sidebar(d: &Draw) -> Element {
         }
     }
 }
+
+/// The bottom line: how many, and how many of them are working.
+pub(crate) fn footer(d: &Draw) -> String {
+    let busy = d.state.fleet.iter().filter(|a| a.status == "busy").count();
+    format!("{} agents · {busy} busy", d.state.fleet.len())
+}

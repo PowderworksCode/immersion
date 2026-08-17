@@ -495,6 +495,22 @@ mod empty_charts {
     }
 }
 
+/// The bottom line: which chart, and how many points are in the window it is
+/// drawing. A chart that looks empty and a chart with nothing to draw look
+/// the same until something says which it is.
+pub(crate) fn footer(d: &crate::editors::Draw) -> String {
+    let Some(name) = d
+        .arg
+        .as_deref()
+        .map(|t| t.trim_start_matches("/charts/"))
+        .filter(|n| !n.is_empty())
+    else {
+        return String::new();
+    };
+    let points = d.state.cpu.len().max(d.state.mem.len());
+    format!("{name} · {points} points")
+}
+
 /// This editor's entry in the registry: what it is called, how it is drawn in
 /// a header, whether it takes a target, and what the status bar says while it
 /// has focus. Declared beside the editor so adding one is one file.

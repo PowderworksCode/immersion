@@ -116,6 +116,18 @@
   overflow: auto;
   padding: .6rem .75rem;
 }
+/* The footer: one line along an area's bottom edge saying what it is
+   showing. Right-aligned and recessive — it is a read-out, not a control. */
+.im-area-foot {
+  flex: none; display: flex; justify-content: flex-end; align-items: center;
+  height: 1.3rem; padding: 0 .5rem;
+  background: var(--im-header);
+  border-top: 1px solid var(--im-seam);
+  font-size: .7rem; color: var(--im-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: none;
+}
+
 /* Regions — Blender's toolbar (T, narrow left) and sidebar (N, wider right). */
 .im-toolbar {
   flex: none; width: 2.6rem; overflow-y: auto; overflow-x: hidden;

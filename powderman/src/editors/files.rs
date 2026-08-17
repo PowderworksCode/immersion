@@ -181,6 +181,17 @@ pub(crate) fn sidebar(d: &Draw) -> Element {
     }
 }
 
+/// The bottom line: how much is in the folder being browsed.
+pub(crate) fn footer(d: &Draw) -> String {
+    let rows = file_children(&d.arg.clone().unwrap_or_default());
+    let folders = rows.iter().filter(|r| r.has_children).count();
+    format!(
+        "{} entries · {folders} folders · {} files",
+        rows.len(),
+        rows.len() - folders
+    )
+}
+
 #[cfg(test)]
 mod file_browser {
     /// Containment is the property that matters: whatever pointer arrives,

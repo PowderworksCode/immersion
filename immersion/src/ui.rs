@@ -129,6 +129,13 @@ pub struct AreasProps {
     /// properties region — from `(area id, editor)`.
     #[props(default)]
     pub render_sidebar: Option<Callback<(AreaId, String), Element>>,
+    /// Optional: one line along the bottom edge of a leaf, from
+    /// `(area id, editor)` — what this area is showing, stated. A text
+    /// editor's language and line count, a list's total. Deliberately a
+    /// `String` and not an `Element`: a footer is a line, and an empty one
+    /// draws no strip at all, so an editor with nothing to say costs nothing.
+    #[props(default)]
+    pub render_footer: Option<Callback<(AreaId, String), String>>,
     /// The single write path: `(command name, JSON params)`. The header
     /// buttons, the editor dropdown, and the gesture shim all emit through
     /// here, so there is exactly one way to mutate the layout — the property
@@ -308,6 +315,10 @@ fn render_leaf(
     } else {
         None
     };
+    let footer = props
+        .render_footer
+        .map(|cb| cb.call((id, editor_owned.clone())))
+        .filter(|line| !line.is_empty());
     // Copied out of props before the view: a Callback is Copy, the props
     // reference is not, and the handler outlives this function.
     let on_focus = props.on_focus;
@@ -373,6 +384,9 @@ fn render_leaf(
                         {sb}
                     }
                 }
+            }
+            if let Some(line) = footer {
+                div { class: "im-area-foot", "{line}" }
             }
             if !regions.header_hidden && regions.header_bottom {
                 {leaf_header(LeafHeader {
