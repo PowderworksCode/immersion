@@ -678,6 +678,13 @@ const DIFFS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Which fabricated files are presented as changed. The diff editor's picker
+/// lists these, so finding something to look at does not mean guessing which
+/// two of fourteen files have a patch.
+pub fn changed_files() -> Vec<&'static str> {
+    DIFFS.iter().map(|(p, _)| *p).collect()
+}
+
 /// The fabricated contents of one file, for the code viewer.
 pub fn file_source(path: &str) -> Option<&'static str> {
     FILES

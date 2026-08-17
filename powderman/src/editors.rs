@@ -490,7 +490,11 @@ pub(crate) fn target_children(
     match editor {
         // Both browse the filesystem; the code viewer's target is a file
         // rather than a directory, but the walk to reach one is the same.
-        "files" | "code" | "diff" => file_children(pointer),
+        "files" | "code" => file_children(pointer),
+        // A diff editor can only show a file that changed, so those are what
+        // it offers — the same rule as the run editor, which lists runs
+        // rather than making you find one in the snapshot.
+        "diff" => changed_files(),
         // A run's target is its id, not its address in the snapshot, so the
         // rows are runs and the value each carries is the id itself.
         "run" => run_targets(state),
@@ -502,10 +506,55 @@ pub(crate) fn target_children(
 /// area 3" rather than a generic word for every editor.
 pub(crate) fn target_noun(editor: &str) -> &'static str {
     match editor {
-        "files" | "code" | "diff" => "File",
+        "files" | "code" => "File",
+        "diff" => "Changed file",
         "run" => "Run",
         _ => "Target",
     }
+}
+
+/// The files that differ from HEAD, as pickable rows. On a demo these are
+/// the fabricated ones; on a real instance `git status` answers, which is the
+/// same question a person would ask the terminal.
+fn changed_files() -> Vec<immersion::TreeRow> {
+    let row = |path: String, state: &str| immersion::TreeRow {
+        label: path.rsplit('/').next().unwrap_or(&path).to_string(),
+        preview: format!("{state}  {path}"),
+        pointer: path,
+        has_children: false,
+    };
+    if crate::demo::enabled() {
+        return crate::demo::changed_files()
+            .into_iter()
+            .map(|p| row(p.to_string(), "modified"))
+            .collect();
+    }
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(files_root())
+        .arg("status")
+        .arg("--porcelain")
+        .output();
+    let Ok(out) = out else { return Vec::new() };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| {
+            // "XY path", where X is the index state and Y the worktree's.
+            // A rename reads "R  old -> new"; the new name is the one to show.
+            let (flags, path) = line.split_at(line.len().min(3));
+            let path = path.rsplit(" -> ").next()?.trim();
+            if path.is_empty() {
+                return None;
+            }
+            let state = match flags.trim() {
+                "??" => "new",
+                "D" | " D" => "deleted",
+                "A" | "A " => "added",
+                _ => "modified",
+            };
+            Some(row(format!("/{path}"), state))
+        })
+        .collect()
 }
 
 /// The runs, as pickable rows: newest first, labelled the way the runs list
@@ -629,13 +678,14 @@ pub(crate) fn human_size(len: u64) -> String {
     }
 }
 
-/// Both file-reading test modules set POWDERMAN_FILES_ROOT, and cargo runs
-/// tests in one process on many threads — so without this they race and one
-/// looks for its fixtures under the other's root. The lock is the smallest
-/// honest fix; the alternative is threading a root parameter through code
-/// whose production callers all want the environment.
+/// Tests that set POWDERMAN_FILES_ROOT or POWDERMAN_DEMO take this first.
+/// Cargo runs tests in one process on many threads, so without it one test
+/// reads another's environment — a file test looking under the wrong root, or
+/// a demo flag left on for something that expected it off. The lock is the
+/// smallest honest fix; the alternative is threading configuration through
+/// code whose production callers all want the environment.
 #[cfg(test)]
-static FILES_ROOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 mod file_browser {
@@ -645,9 +695,7 @@ mod file_browser {
     /// after joining.
     #[test]
     fn a_pointer_cannot_climb_out_of_the_root() {
-        let _guard = super::FILES_ROOT_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = super::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = std::env::temp_dir().join("im-files-root-test");
         let inner = tmp.join("inside");
         std::fs::create_dir_all(&inner).expect("mkdir");
@@ -725,6 +773,34 @@ mod target_sources {
         );
     }
 
+    /// The complaint this fixes: the diff picker offered every file in the
+    /// tree, so finding one with a patch meant guessing. It offers the
+    /// changed ones now, and each row says which file it is.
+    #[test]
+    fn the_diff_picker_offers_only_changed_files() {
+        let _guard = super::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // The demo path, since it is the one a visitor meets first.
+        unsafe { std::env::set_var("POWDERMAN_DEMO", "1") };
+        let s = state_with_runs();
+        let doc = serde_json::to_value(&s).unwrap();
+        let rows = target_children("diff", &doc, &s, "");
+        assert!(!rows.is_empty(), "the demo presents some files as changed");
+        assert!(rows.len() < 14, "and not the whole tree: {}", rows.len());
+        for r in &rows {
+            assert!(!r.has_children, "a changed file is a leaf");
+            assert!(
+                crate::demo::file_diff(&r.pointer)
+                    .expect("listed files exist")
+                    .is_some(),
+                "{} is offered but has no patch",
+                r.pointer
+            );
+            assert!(r.preview.contains('/'), "the row shows its path: {r:?}");
+        }
+        assert_eq!(target_noun("diff"), "Changed file");
+        unsafe { std::env::remove_var("POWDERMAN_DEMO") };
+    }
+
     #[test]
     fn other_editors_keep_their_own_feeds() {
         let s = state_with_runs();
@@ -782,7 +858,13 @@ pub(crate) fn ed_code(target: Option<String>) -> Element {
 pub(crate) fn ed_diff(target: Option<String>, split: bool) -> Element {
     let Some(path) = target.filter(|t| !t.is_empty()) else {
         return rsx! {
-            div { class: "empty", "Pick a file to diff \u{2014} the target chip in the header." }
+            div { class: "empty",
+                if changed_files().is_empty() {
+                    "Nothing has changed \u{2014} the working tree matches HEAD."
+                } else {
+                    "Pick a changed file \u{2014} the target chip in the header."
+                }
+            }
         };
     };
     match git_diff(&path) {
@@ -913,9 +995,7 @@ mod code_viewer {
     /// the root, not a directory, not binary, not enormous.
     #[test]
     fn it_declines_what_it_should_not_show() {
-        let _guard = super::FILES_ROOT_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = super::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = std::env::temp_dir().join("im-code-view-test");
         std::fs::create_dir_all(tmp.join("dir")).expect("mkdir");
         std::fs::write(tmp.join("ok.rs"), b"fn main() {}\n").expect("write");
