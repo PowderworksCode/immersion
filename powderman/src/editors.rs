@@ -9,8 +9,8 @@ use dioxus::prelude::*;
 use immersion::{AreaId, FilterBox, Panel, PropertyEditor, TreeView, pretty_chord};
 
 use crate::ui::{
-    RunView, State, StepView, WorkflowView, chart, effective_keymap, gib, hhmmss, settings_fields,
-    short, tile,
+    RunView, State, StepView, WorkflowView, effective_keymap, gib, hhmmss, settings_fields, short,
+    tile,
 };
 use crate::ui::{resume, run_with};
 
@@ -131,7 +131,7 @@ fn form_input(e: &dioxus::prelude::Event<dioxus::events::FormData>) -> String {
     }
 }
 
-pub(crate) fn ed_machine(s: &State) -> Element {
+pub(crate) fn ed_machine(s: &State, doc: &serde_json::Value) -> Element {
     rsx! {
         div { class: "tiles",
             {tile("cpu", format!("{:.0}%", s.machine.get("box.cpu_pct").copied().unwrap_or(0.0)), None)}
@@ -143,27 +143,22 @@ pub(crate) fn ed_machine(s: &State) -> Element {
             {tile("agents", format!("{}", s.fleet.len()), None)}
         }
 
+        // The plots are documents now: /charts/cpu and /charts/memory. Editing
+        // either in the chart editor changes what this editor draws, which is
+        // the point of charts being specs rather than a drawing routine.
         div { class: "plot",
             div { class: "cap",
                 b { "cpu" }
-                span { "last hour · now " b { "{s.machine.get(\"box.cpu_pct\").copied().unwrap_or(0.0):.0}%" } }
+                span { "now " b { "{s.machine.get(\"box.cpu_pct\").copied().unwrap_or(0.0):.0}%" } }
             }
-            {chart(&s.cpu, &s.annotations, s.window, 100.0, |v| format!("{v:.0}%"))}
+            {chart_element(s, doc, "cpu")}
         }
         div { class: "plot",
             div { class: "cap",
                 b { "memory" }
-                span { "last hour · now " b { "{gib(s.machine.get(\"box.mem_used\").copied().unwrap_or(0.0))}" } }
+                span { "now " b { "{gib(s.machine.get(\"box.mem_used\").copied().unwrap_or(0.0))}" } }
             }
-            {chart(&s.mem, &s.annotations, s.window,
-                   s.machine.get("box.mem_total").copied().unwrap_or(1.0), gib)}
-        }
-        div { class: "annkey",
-            span { "runs shaded:" }
-            span { i { class: "done" } "done" }
-            span { i { class: "running" } "running" }
-            span { i { class: "suspended" } "suspended" }
-            span { i { class: "failed" } "failed" }
+            {chart_element(s, doc, "memory")}
         }
     }
 }
@@ -1101,17 +1096,32 @@ pub(crate) fn ed_chart(s: &State, doc: &serde_json::Value, target: Option<String
     let Some(spec) = doc.pointer(&format!("/charts/{}", escape_pointer(key))) else {
         return rsx! { div { class: "empty", "no chart called {key}" } };
     };
+    let _ = spec;
+    rsx! {
+        div { class: "code-view",
+            div { class: "code-path", "{key}" }
+            {chart_element(s, doc, key)}
+        }
+    }
+}
+
+/// One named chart, resolved and handed to the renderer. Shared by the chart
+/// editor and any editor that wants a chart of its own — the machine editor
+/// draws its CPU and memory plots through here, so those two are documents
+/// anyone can edit rather than a drawing routine only a Rust change can
+/// alter.
+pub(crate) fn chart_element(s: &State, doc: &serde_json::Value, name: &str) -> Element {
+    let Some(spec) = doc.pointer(&format!("/charts/{}", escape_pointer(name))) else {
+        return rsx! { div { class: "empty", "no chart called {name}" } };
+    };
     match resolve_spec(s, doc, spec) {
-        Err(e) => rsx! { div { class: "empty", "{e}" } },
+        Err(e) => rsx! { div { class: "chart-error-inline", "{e}" } },
         Ok(resolved) => {
             let json = serde_json::to_string(&resolved).unwrap_or_default();
-            let stamp = stamp_of(key, &json);
+            let stamp = stamp_of(name, &json);
             rsx! {
-                div { class: "code-view",
-                    div { class: "code-path", "{key}" }
-                    pre { class: "code-src-payload", "data-im-chart-src": "{stamp}", "{json}" }
-                    div { class: "chart-host", "data-im-chart": "{stamp}" }
-                }
+                pre { class: "code-src-payload", "data-im-chart-src": "{stamp}", "{json}" }
+                div { class: "chart-host", "data-im-chart": "{stamp}" }
             }
         }
     }
@@ -1203,54 +1213,94 @@ fn resolve_spec(
     doc: &serde_json::Value,
     spec: &serde_json::Value,
 ) -> Result<serde_json::Value, immersion::EditorError> {
-    let Some(obj) = spec.as_object() else {
+    if !spec.is_object() {
         return Err(immersion::EditorError::message(
             "a chart is a Vega-Lite spec: a JSON object",
         ));
-    };
-    let mut out = obj.clone();
+    }
+    let mut out = spec.clone();
+    // Feeds are resolved wherever they appear, not just at the top: a layered
+    // or faceted spec carries a `data` per layer, and resolving only the
+    // outer one leaves the inner layers asking for a name the renderer has
+    // never heard of.
+    resolve_feeds(s, doc, &mut out)?;
+    let obj = out.as_object_mut().expect("checked above");
     // The workbench is dark and Vega's defaults are not, so a spec arrives
     // with the chrome turned off: no white plate, no view border. The rest of
     // the theming is CSS against the rendered SVG, where the palette tokens
     // already live — a colour written here would be a second palette.
-    out.entry("background")
+    obj.entry("background")
         .or_insert(serde_json::Value::String("transparent".into()));
     // Fill the area. Both halves are needed: "container" asks the renderer to
     // measure its parent, and the fitting autosize is what makes it re-measure
-    // rather than draw at the default 200x200 and clip.
-    out.entry("width")
+    // rather than draw at the default size and clip.
+    obj.entry("width")
         .or_insert(serde_json::Value::String("container".into()));
-    out.entry("height")
+    obj.entry("height")
         .or_insert(serde_json::Value::String("container".into()));
-    out.entry("autosize")
+    obj.entry("autosize")
         .or_insert(serde_json::json!({ "type": "fit", "contains": "padding" }));
-    if let Some(cfg) = out.get_mut("config").and_then(|c| c.as_object_mut()) {
+    if let Some(cfg) = obj.get_mut("config").and_then(|c| c.as_object_mut()) {
         cfg.entry("view")
             .or_insert(serde_json::json!({ "stroke": null }));
     } else {
-        out.insert(
+        obj.insert(
             "config".into(),
             serde_json::json!({ "view": { "stroke": null } }),
         );
     }
-    if let Some(feed) = spec.pointer("/data/name").and_then(|n| n.as_str()) {
-        let values = feed_values(s, doc, feed).ok_or_else(|| {
-            immersion::EditorError::message(format!(
-                "no feed called {feed:?} \u{2014} this host serves {}",
-                FEEDS.join(", ")
-            ))
-        })?;
-        out.insert(
-            "data".into(),
-            serde_json::json!({ "values": values, "name": feed }),
-        );
+    Ok(out)
+}
+
+/// Replace every `data: { name: … }` in a spec with the host's values for
+/// that feed. Walks objects and arrays, so layers, concatenations and facets
+/// are reached wherever Vega-Lite allows a data block.
+fn resolve_feeds(
+    s: &State,
+    doc: &serde_json::Value,
+    node: &mut serde_json::Value,
+) -> Result<(), immersion::EditorError> {
+    match node {
+        serde_json::Value::Object(map) => {
+            if let Some(feed) = map
+                .get("data")
+                .and_then(|d| d.get("name"))
+                .and_then(|n| n.as_str())
+                .map(str::to_string)
+            {
+                let values = feed_values(s, doc, &feed).ok_or_else(|| {
+                    immersion::EditorError::message(format!(
+                        "no feed called {feed:?} \u{2014} this host serves {}",
+                        FEEDS.join(", ")
+                    ))
+                })?;
+                map.insert(
+                    "data".into(),
+                    serde_json::json!({ "values": values, "name": feed }),
+                );
+            }
+            for (key, child) in map.iter_mut() {
+                // `data` is done; descending into it would rewrite the values
+                // just inserted, and nothing inside a data block is a spec.
+                if key != "data" {
+                    resolve_feeds(s, doc, child)?;
+                }
+            }
+            Ok(())
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                resolve_feeds(s, doc, item)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
     }
-    Ok(serde_json::Value::Object(out))
 }
 
 /// The feeds a spec may name. Small and explicit: a chart that asks for
 /// something else gets told what is on offer rather than an empty panel.
-const FEEDS: &[&str] = &["cpu", "memory", "runs", "fleet"];
+const FEEDS: &[&str] = &["cpu", "memory", "runs", "fleet", "annotations"];
 
 fn feed_values(s: &State, doc: &serde_json::Value, feed: &str) -> Option<Vec<serde_json::Value>> {
     let series = |points: &[(i64, f64)]| {
@@ -1280,6 +1330,19 @@ fn feed_values(s: &State, doc: &serde_json::Value, feed: &str) -> Option<Vec<ser
                     "workflow": r.workflow,
                     "status": r.status,
                     "at": r.updated_at,
+                })
+            })
+            .collect(),
+        // The run windows, for charts that shade them behind a series.
+        "annotations" => s
+            .annotations
+            .iter()
+            .map(|a| {
+                serde_json::json!({
+                    "from": a.from,
+                    "to": a.to,
+                    "status": a.status,
+                    "workflow": a.workflow,
                 })
             })
             .collect(),
@@ -1333,13 +1396,35 @@ mod chart_editor {
         // The point of the design: the spec says which data it wants, the
         // host supplies it, and what reaches the renderer is one document.
         let doc = crate::daemon::settings_defaults();
-        let spec = doc.pointer("/charts/cpu").expect("the seeded cpu chart");
+        let spec = doc
+            .pointer("/charts/memory")
+            .expect("the seeded memory chart");
         let out = resolve_spec(&state(), &doc, spec).expect("resolves");
         let values = out["data"]["values"].as_array().expect("values inlined");
         assert_eq!(values.len(), 2);
-        assert_eq!(values[1]["value"], 40.0);
         assert!(out["data"].get("name").is_some(), "the feed is still named");
-        assert_eq!(out["mark"]["type"], "line", "the rest of the spec survives");
+        assert_eq!(out["mark"]["type"], "area", "the rest of the spec survives");
+    }
+
+    /// A layered spec carries one feed per layer. Resolving only the outer
+    /// data block leaves the inner layers asking the renderer for a name it
+    /// has never heard of, which is a chart that silently draws nothing —
+    /// the shape the machine editor's cpu plot takes.
+    #[test]
+    fn every_layer_s_feed_is_resolved() {
+        let doc = crate::daemon::settings_defaults();
+        let spec = doc.pointer("/charts/cpu").expect("the seeded cpu chart");
+        let out = resolve_spec(&state(), &doc, spec).expect("resolves");
+        let layers = out["layer"].as_array().expect("layered");
+        assert_eq!(layers.len(), 2);
+        for layer in layers {
+            assert!(
+                layer["data"]["values"].is_array(),
+                "a layer kept an unresolved feed: {layer}"
+            );
+        }
+        // The annotation layer gets the run windows, the line layer the series.
+        assert_eq!(layers[1]["data"]["values"].as_array().unwrap().len(), 2);
     }
 
     #[test]

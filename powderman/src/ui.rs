@@ -112,82 +112,6 @@ pub(crate) fn gib(bytes: f64) -> String {
     format!("{:.1}G", bytes / 1_073_741_824.0)
 }
 
-/// A line chart with the run windows shaded behind it.
-///
-/// The shading is the point. A CPU line alone says the box was busy, which
-/// htop already tells you; the bands say *which run* was alive at the time.
-/// Each band carries an SVG <title>, so identity is never colour alone and the
-/// tooltip costs no round trip — a hover handler under liveview would be a
-/// websocket message per mouse move.
-pub(crate) fn chart(
-    points: &[(i64, f64)],
-    anns: &[Annotation],
-    window: (i64, i64),
-    max_hint: f64,
-    fmt: fn(f64) -> String,
-) -> Element {
-    let (t0, t1) = window;
-    let span = ((t1 - t0) as f64).max(1.0);
-    let max = points
-        .iter()
-        .map(|(_, v)| *v)
-        .fold(max_hint, f64::max)
-        .max(1.0);
-    let x = |t: i64| ((t - t0) as f64 / span * 100.0).clamp(0.0, 100.0);
-    let y = |v: f64| 30.0 - (v / max * 28.0).clamp(0.0, 28.0);
-
-    let line: String = points
-        .iter()
-        .map(|(t, v)| format!("{:.2},{:.2}", x(*t), y(*v)))
-        .collect::<Vec<_>>()
-        .join(" ");
-    // A 10% wash under the line, closed to the baseline.
-    let area = if points.len() > 1 {
-        format!(
-            "{:.2},30 {} {:.2},30",
-            x(points[0].0),
-            line,
-            x(points[points.len() - 1].0)
-        )
-    } else {
-        String::new()
-    };
-    let last = points.last().copied();
-
-    rsx! {
-        svg { class: "chart", view_box: "0 0 100 30", preserve_aspect_ratio: "none",
-            // Recessive hairline grid: quarters, solid, one step off surface.
-            for i in 1..4 {
-                line { key: "{i}", class: "grid",
-                    x1: "0", x2: "100",
-                    y1: "{30.0 - i as f64 * 7.5}", y2: "{30.0 - i as f64 * 7.5}" }
-            }
-            for a in anns.iter().filter(|a| a.to > t0) {
-                rect {
-                    key: "{a.id}",
-                    x: "{x(a.from)}", y: "0",
-                    width: "{(x(a.to) - x(a.from)).max(0.35)}", height: "30",
-                    class: "ann {a.status}",
-                    title { "{a.workflow} · {a.status} · {hhmmss(a.from)}–{hhmmss(a.to)}" }
-                }
-            }
-            if !area.is_empty() {
-                polygon { points: "{area}", class: "fill" }
-            }
-            polyline { points: "{line}", class: "line" }
-            // No end-dot: preserveAspectRatio="none" scales x and y by
-            // different factors, so a circle renders as an ellipse. The
-            // endpoint is labelled in the caption instead, which is where a
-            // single direct label belongs anyway.
-            if let Some((t, v)) = last {
-                line { class: "end", x1: "{x(t)}", x2: "{x(t)}",
-                    y1: "{y(v) - 1.6}", y2: "{y(v) + 1.6}",
-                    title { "{fmt(v)}" } }
-            }
-        }
-    }
-}
-
 /// A stat tile. The headline number, big, with its context small beneath —
 /// not a run of text in a row.
 pub(crate) fn tile(k: &str, v: String, of: Option<String>) -> Element {
@@ -925,7 +849,7 @@ pub fn App() -> Element {
             let s = render_state.read().clone();
             let settings_doc = settings.read().clone();
             match editor.as_str() {
-                "machine" => crate::editors::ed_machine(&s),
+                "machine" => crate::editors::ed_machine(&s, &settings_doc),
                 "fleet" => crate::editors::ed_fleet(&s),
                 "runs" => crate::editors::ed_runs(&s, area, open_run),
                 "actions" => crate::editors::ed_actions(&s),
