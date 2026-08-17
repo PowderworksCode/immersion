@@ -11,6 +11,7 @@ mod mcp;
 mod metrics;
 mod panels;
 mod settings;
+mod splash;
 mod status;
 mod treebank;
 mod ui;

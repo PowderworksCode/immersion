@@ -35,6 +35,21 @@
       if (label)
         label.textContent = input.value;
     }, true);
+    document.addEventListener("click", (e) => {
+      const target = e.target;
+      const btn = target?.closest?.("[data-im-copy]");
+      if (!btn)
+        return;
+      const text = btn.getAttribute("data-im-copy") ?? "";
+      if (!text)
+        return;
+      e.preventDefault();
+      e.stopPropagation();
+      navigator.clipboard?.writeText(text).then(() => {
+        btn.classList.add("is-copied");
+        setTimeout(() => btn.classList.remove("is-copied"), 1200);
+      }).catch(() => {});
+    }, true);
     const subseq = (q, text) => {
       if (!q)
         return true;

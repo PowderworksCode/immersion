@@ -125,92 +125,13 @@ pub(crate) fn tile(k: &str, v: String, of: Option<String>) -> Element {
 }
 
 use immersion::{
-    AreaId, Areas, Chrome, ContextMenu, Dir, Field, FieldKind, Keymap, KeymapHelp, Layout,
-    LayoutFile, MenuItem, Palette, PaletteItem, Panel, Platform, Region, Splash, SplashRecent,
-    StatusBar, Template, WorkspaceTabs, default_keymap, menu_json, pretty_chord,
+    AreaId, Areas, Chrome, ContextMenu, Field, FieldKind, Keymap, KeymapHelp, Layout, LayoutFile,
+    MenuItem, Palette, PaletteItem, Panel, Platform, Splash, StatusBar, WorkspaceTabs,
+    default_keymap, menu_json, pretty_chord,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
 /// stores, so renaming one is a migration, not a refactor.
-/// The preset layouts offered on the splash. Each is a small tree the "New
-/// workspace" column builds from.
-fn templates() -> Vec<Template> {
-    // Each arrangement opens the N panel on its lead area. The region has
-    // existed since the areas did, but nothing shipped with it on, so the
-    // sidebar was a feature you had to already know about to ever see —
-    // Blender opens the Properties editor on its default screen for the same
-    // reason. One area per workspace, not all of them: it is a panel beside
-    // the thing you are working on, not a second column everywhere.
-    let overview = {
-        let mut l = Layout::single("machine");
-        if let Some(b) = l.split(1, Dir::Col, 0.45) {
-            l.set_editor(b, "runs");
-            if let Some(r) = l.split(b, Dir::Row, 0.6) {
-                l.set_editor(r, "fleet");
-            }
-        }
-        l.toggle_region(1, Region::Sidebar);
-        l
-    };
-    let runs_focus = {
-        let mut l = Layout::single("runs");
-        if let Some(r) = l.split(1, Dir::Row, 0.5) {
-            l.set_editor(r, "run");
-        }
-        // The list is the thing you scan; the tally belongs beside it.
-        l.toggle_region(1, Region::Sidebar);
-        l
-    };
-    let monitoring = {
-        let mut l = Layout::single("machine");
-        if let Some(r) = l.split(1, Dir::Row, 0.62) {
-            l.set_editor(r, "fleet");
-        }
-        l.toggle_region(1, Region::Sidebar);
-        l
-    };
-    vec![
-        Template {
-            name: "Overview".into(),
-            hint: "machine, runs and fleet at a glance".into(),
-            layout: overview,
-        },
-        Template {
-            name: "Runs".into(),
-            hint: "the run list beside a detail pane".into(),
-            layout: runs_focus,
-        },
-        Template {
-            name: "Monitoring".into(),
-            hint: "machine graphs and the live fleet".into(),
-            layout: monitoring,
-        },
-        Template {
-            name: "Single".into(),
-            hint: "one area to split as you like".into(),
-            layout: {
-                let mut l = Layout::single("machine");
-                l.toggle_region(1, Region::Sidebar);
-                l
-            },
-        },
-    ]
-}
-
-/// Recent runs to jump back into — the "Recent files" column, run-shaped.
-fn recents(s: &State) -> Vec<SplashRecent> {
-    s.runs
-        .iter()
-        .take(8)
-        .map(|r| SplashRecent {
-            label: r.workflow.clone(),
-            sub: format!("{} · {}", short(&r.id, 8), hhmmss(r.updated_at)),
-            status: r.status.clone(),
-            key: r.id.clone(),
-        })
-        .collect()
-}
-
 /// The palette's entries: the actions searchable by F3. They are the same
 /// `(action, params)` pairs the keymap fires — host actions (undo/redo/
 /// maximize) and navigational bus commands — with a label to search by and the
@@ -617,7 +538,7 @@ pub fn App() -> Element {
     });
 
     let on_template = use_callback(move |i: usize| {
-        if let Some(t) = templates().into_iter().nth(i) {
+        if let Some(t) = crate::splash::templates().into_iter().nth(i) {
             cmd.call((
                 "workspace.add".to_string(),
                 serde_json::json!({ "name": t.name, "layout": t.layout }),
@@ -790,9 +711,12 @@ pub fn App() -> Element {
             if splash_open() {
                 Splash {
                     brand: "powderman",
-                    subtitle: "durable workflows · a herdr workbench",
-                    templates: templates(),
-                    recents: recents(&s),
+                    eyebrow: "durable workflows for a herd of agents",
+                    version: concat!("v", env!("CARGO_PKG_VERSION")),
+                    subtitle: "a herdr workbench — drive it by hand, or hand it to an agent",
+                    foot: crate::splash::splash_foot(mac()),
+                    templates: crate::splash::templates(),
+                    recents: crate::splash::recents(&s),
                     on_template,
                     on_recent,
                     on_dismiss,
@@ -942,9 +866,10 @@ pub fn App() -> Element {
                 hints: crate::status::status_hints(mac(), focused_editor.as_deref()),
                 message: report(),
                 right: format!(
-                    "{} · {} runs",
+                    "{} · {} runs · v{}",
                     s.herdr.clone().unwrap_or_else(|| "herdr unreachable".into()),
-                    s.runs.len()
+                    s.runs.len(),
+                    env!("CARGO_PKG_VERSION")
                 ),
                 badge: crate::demo::enabled().then(|| "demo".to_string()),
             }
@@ -1210,7 +1135,7 @@ mod layout_tests {
     /// thing a new arrangement forgets.
     #[test]
     fn every_shipped_arrangement_opens_its_sidebar() {
-        for t in templates() {
+        for t in crate::splash::templates() {
             assert!(
                 opens_a_sidebar(&t.layout),
                 "the {} template ships with no N panel open",

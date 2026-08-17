@@ -220,25 +220,41 @@
   outline: none;
 }
 .im-splash {
-  width: 40rem; max-width: 92vw;
+  width: 46rem; max-width: 92vw; max-height: 88vh; overflow-y: auto;
   background: var(--im-surface);
   border: 1px solid var(--im-border);
   border-radius: 4px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
   padding: 1.1rem 1.25rem 1rem;
 }
-.im-splash-head { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .9rem; }
-.im-splash-brand { font-size: 1.15rem; font-weight: 650; color: var(--im-text); }
-.im-splash-sub { font-size: .8rem; color: var(--im-text-muted); }
+.im-splash-head { margin-bottom: 1.1rem; }
+.im-splash-eyebrow {
+  font-size: .66rem; text-transform: uppercase; letter-spacing: .12em;
+  font-weight: 600; color: var(--im-accent); margin-bottom: .3rem;
+}
+.im-splash-brandline { display: flex; align-items: baseline; gap: .5rem; }
+.im-splash-brand {
+  font-size: 2rem; font-weight: 680; color: var(--im-text);
+  letter-spacing: -.02em; line-height: 1.1;
+}
+.im-splash-version { font-size: .74rem; color: var(--im-text-muted); }
+.im-splash-sub { font-size: .8rem; color: var(--im-text-muted); margin-top: .15rem; }
 .im-splash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
 .im-splash-h {
   font-size: .68rem; text-transform: uppercase; letter-spacing: .08em;
   color: var(--im-text-muted); font-weight: 600; margin-bottom: .35rem;
 }
 .im-splash-item {
+  display: flex; align-items: flex-start; gap: .55rem;
   padding: .4rem .5rem; border-radius: 3px; cursor: pointer;
   border: 1px solid transparent;
 }
+.im-splash-itembody { min-width: 0; }
+.im-splash-icon {
+  display: inline-flex; flex: none; color: var(--im-text-muted);
+  margin-top: .1rem; font-size: 1.05rem;
+}
+.im-splash-item:hover .im-splash-icon { color: var(--im-accent); }
 .im-splash-item:hover {
   background: var(--im-header);
   border-color: var(--im-border);
@@ -254,6 +270,45 @@
   display: flex; align-items: center; gap: .4rem; margin-top: 1rem;
   font-size: .76rem; color: var(--im-text-muted); cursor: pointer;
 }
+/* The footer: what the old Immersion put under the columns — where to read
+   more, the chords worth knowing, and the line that hands the page to an
+   agent. Three columns of the same shape. */
+.im-splash-foot-cols {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;
+  margin-top: 1.25rem; padding-top: 1rem;
+  border-top: 1px solid var(--im-border);
+}
+.im-splash-foot-col { min-width: 0; }
+.im-splash-link {
+  display: flex; align-items: center; gap: .35rem;
+  font-size: .76rem; color: var(--im-text); text-decoration: none;
+  padding: .12rem 0;
+}
+.im-splash-link:hover { color: var(--im-accent); text-decoration: underline; }
+.im-splash-linkicon { display: inline-flex; flex: none; color: var(--im-text-muted); }
+.im-splash-link:hover .im-splash-linkicon { color: var(--im-accent); }
+.im-splash-key { display: flex; align-items: baseline; gap: .4rem; padding: .12rem 0; }
+.im-splash-note { padding: .12rem 0; }
+.im-splash-copy {
+  display: flex; align-items: center; gap: .3rem; margin-top: .2rem;
+  background: var(--im-input-bg); border: 1px solid var(--im-border);
+  border-radius: 3px; padding: .2rem .25rem .2rem .4rem;
+}
+.im-splash-copy code {
+  flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap;
+  font-family: var(--im-mono); font-size: .68rem; color: var(--im-text);
+  scrollbar-width: none;
+}
+.im-splash-copy code::-webkit-scrollbar { display: none; }
+.im-copy {
+  flex: none; display: inline-flex; align-items: center;
+  border: 0; background: transparent; cursor: pointer; border-radius: 3px;
+  color: var(--im-text-muted); padding: .1rem .2rem;
+}
+.im-copy:hover { color: var(--im-text); background: var(--im-header); }
+/* The shim adds this for a moment after a successful write, so the click has
+   an answer without a round trip to say so. */
+.im-copy.is-copied { color: var(--im-accent); }
 
 /* Widget kit — Blender-style property controls. */
 .im-props { display: flex; flex-direction: column; gap: .35rem; }

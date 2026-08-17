@@ -51,7 +51,7 @@ pub use keymap::{
 pub use layoutfile::{LayoutFile, LayoutFileProps};
 pub use palette::{Palette, PaletteItem, PaletteProps};
 pub use panel::{Panel, PanelProps};
-pub use splash::{Splash, SplashProps, SplashRecent, Template};
+pub use splash::{Splash, SplashProps, SplashRecent, SplashRow, SplashSection, Template};
 pub use statusbar::{StatusBar, StatusBarProps};
 pub use theme::{Theme, theme_css, themes};
 pub use tree::{TreeRow, TreeView, TreeViewProps, value_children, value_icon};
