@@ -524,7 +524,7 @@
 }
 .im-panel-head:hover { background: var(--im-input-bg); }
 .im-panel-arrow { color: var(--im-text-muted); font-size: .7rem; width: .8rem; }
-.im-panel-title { font-weight: 500; }
+.im-panel-title { text-transform: uppercase; letter-spacing: .05em; font-size: .68rem; }
 .im-panel-body { padding: .3rem .55rem .55rem; }
 
 /* Menu-bar / header dropdown buttons, and the chord column in a menu row. */

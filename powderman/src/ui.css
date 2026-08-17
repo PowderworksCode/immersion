@@ -349,3 +349,7 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .prefs-section:hover { background: var(--surface-2, var(--surface)); }
 .prefs-section.active { background: var(--im-accent); color: #fff; }
 .prefs-fields { flex: 1; overflow: auto; }
+
+/* The search affordance sits with the menus, quieter than they are. */
+.topbar-search { display: inline-flex; align-items: center; color: var(--ink-3); }
+.topbar-search:hover { color: var(--ink-1); }
