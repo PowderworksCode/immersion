@@ -928,7 +928,34 @@ async fn resume_route(Path(id): Path<String>) -> impl IntoResponse {
     }
 }
 
+/// The port `serve` bound, for the places that need to name this instance
+/// back to a visitor. Zero until the server starts, which is only the case in
+/// tests and in code paths that never render a URL.
+static PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+
+/// Where this instance can be reached from outside — what an agent-handoff
+/// line has to say, and the one thing a server behind a proxy cannot work out
+/// from its own socket. `POWDERMAN_PUBLIC_URL` wins; on Fly the app name gives
+/// it (which covers both the demo and every PR preview, whose hostnames differ
+/// per branch); otherwise it is this machine on the port we bound.
+pub(crate) fn public_url() -> String {
+    if let Ok(url) = std::env::var("POWDERMAN_PUBLIC_URL") {
+        let url = url.trim().trim_end_matches('/');
+        if !url.is_empty() {
+            return url.to_string();
+        }
+    }
+    if let Ok(app) = std::env::var("FLY_APP_NAME")
+        && !app.trim().is_empty()
+    {
+        return format!("https://{}.fly.dev", app.trim());
+    }
+    let port = PORT.load(std::sync::atomic::Ordering::Relaxed);
+    format!("http://localhost:{}", if port == 0 { 8080 } else { port })
+}
+
 pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
+    PORT.store(port, std::sync::atomic::Ordering::Relaxed);
     crate::herdr::ensure_socket_env();
 
     let db: Db = Arc::new(Mutex::new(crate::db::open(db_path)?));

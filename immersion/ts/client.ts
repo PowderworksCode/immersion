@@ -44,6 +44,34 @@ if (once("__imClient")) {
     true,
   );
 
+  // --- copy buttons ---------------------------------------------------------
+  // A [data-im-copy] button writes its attribute to the clipboard. Purely
+  // local: the splash's agent-handoff line is a thing to copy, not a thing to
+  // tell the server about, and a round trip would only add latency to a
+  // gesture the browser can finish itself. The class it adds for a moment is
+  // the acknowledgement — otherwise a successful copy looks like nothing
+  // happened.
+  document.addEventListener(
+    "click",
+    (e) => {
+      const target = e.target as Element | null;
+      const btn = target?.closest?.<HTMLElement>("[data-im-copy]");
+      if (!btn) return;
+      const text = btn.getAttribute("data-im-copy") ?? "";
+      if (!text) return;
+      e.preventDefault();
+      e.stopPropagation();
+      navigator.clipboard
+        ?.writeText(text)
+        .then(() => {
+          btn.classList.add("is-copied");
+          setTimeout(() => btn.classList.remove("is-copied"), 1200);
+        })
+        .catch(() => {});
+    },
+    true,
+  );
+
   // --- list filter ----------------------------------------------------------
   // Type in an [data-im-filter] box to hide non-matching rows in its scope.
   // Subsequence matching, like the palette: "tbf" reaches "treebank_fix". Pure
