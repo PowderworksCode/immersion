@@ -6,7 +6,7 @@
 //! body; none of them own state.
 
 use dioxus::prelude::*;
-use immersion::{AreaId, FilterBox, PropertyEditor, TreeView, pretty_chord};
+use immersion::{AreaId, FilterBox, Panel, PropertyEditor, TreeView, pretty_chord};
 
 use crate::ui::{
     RunView, State, StepView, WorkflowView, chart, effective_keymap, gib, hhmmss, settings_fields,
@@ -1111,6 +1111,74 @@ pub(crate) fn ed_chart(s: &State, doc: &serde_json::Value, target: Option<String
                     div { class: "code-path", "{key}" }
                     pre { class: "code-src-payload", "data-im-chart-src": "{stamp}", "{json}" }
                     div { class: "chart-host", "data-im-chart": "{stamp}" }
+                }
+            }
+        }
+    }
+}
+
+/// The chart editor's sidebar: the spec itself, editable, plus a way to make
+/// a new one. This is where a person creates a chart — an agent already can,
+/// with `set_setting` and a pointer, and it would be a poor sort of parity if
+/// the person could not.
+pub(crate) fn chart_sidebar(
+    doc: &serde_json::Value,
+    target: Option<String>,
+    on_setting: Callback<(String, serde_json::Value)>,
+    on_error: Callback<immersion::EditorError>,
+) -> Element {
+    let name = target
+        .as_deref()
+        .map(|t| t.trim_start_matches("/charts/").to_string());
+    // A name nobody has used yet, so the button never overwrites a chart.
+    let taken = chart_names(doc);
+    let fresh = (1..)
+        .map(|n| {
+            if n == 1 {
+                "new chart".to_string()
+            } else {
+                format!("new chart {n}")
+            }
+        })
+        .find(|c| !taken.contains(c))
+        .unwrap_or_else(|| "new chart".to_string());
+    let template = serde_json::json!({
+        "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+        "data": { "name": "cpu" },
+        "mark": "line",
+        "encoding": {
+            "x": { "field": "at", "type": "temporal", "title": null },
+            "y": { "field": "value", "type": "quantitative" }
+        }
+    });
+    let fresh_pointer = format!("/charts/{}", escape_pointer(&fresh));
+    rsx! {
+        div { class: "area-props",
+            Panel { title: "Chart",
+                button {
+                    class: "im-btn chart-new",
+                    title: "add a chart to the settings document",
+                    onclick: move |_| on_setting.call((fresh_pointer.clone(), template.clone())),
+                    "+ New chart"
+                }
+                if let Some(name) = name {
+                    div { class: "area-props-row",
+                        span { class: "k", "Name" }
+                        span { "{name}" }
+                    }
+                    PropertyEditor {
+                        doc: doc.clone(),
+                        fields: vec![
+                            immersion::Field::new(
+                                &format!("/charts/{}", escape_pointer(&name)),
+                                "Spec",
+                                immersion::FieldKind::Json,
+                            )
+                            .with_hint("Vega-Lite; data.name picks a feed"),
+                        ],
+                        on_edit: on_setting,
+                        on_error,
+                    }
                 }
             }
         }

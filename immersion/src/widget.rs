@@ -54,6 +54,11 @@ pub enum FieldKind {
     },
     /// The native color picker; the value is a `#rrggbb` string.
     Color,
+    /// A whole JSON value, edited as text. For a document a form cannot
+    /// describe — a chart spec, a command's params — where the shape is the
+    /// user's to choose. Commits parsed JSON, and reports where the parse
+    /// failed rather than swallowing a typo.
+    Json,
 }
 
 /// One editable spot in the document.
@@ -152,6 +157,7 @@ fn field_row(
             vector_widget(&f.path, &val, labels, *step, on_edit, on_error)
         }
         FieldKind::Color => color_widget(&f.path, &val, on_edit),
+        FieldKind::Json => json_widget(&f.path, &val, on_edit, on_error),
     };
     // A field with a default gets a right-click "Reset to default", routed to
     // set_setting through the same context-menu shim the areas use. Nested
@@ -474,6 +480,53 @@ fn vector_part(
                 on_error,
             }
         }
+    }
+}
+
+/// A JSON document in a textarea. Pretty-printed on the way in so it is
+/// readable, parsed on the way out so the document never holds a string that
+/// only looks like a value. A parse failure flags the field and says where.
+#[component]
+fn JsonInput(text: String, on_commit: Callback<Value>, on_error: Callback<EditorError>) -> Element {
+    let mut error = use_signal(|| None::<String>);
+    rsx! {
+        textarea {
+            class: if error().is_some() { "im-input im-json im-invalid" } else { "im-input im-json" },
+            spellcheck: "false",
+            title: error().unwrap_or_default(),
+            // Commit on blur, not on keystroke: typing JSON passes through
+            // many invalid states on the way to a valid one, and flagging
+            // every one of them is noise rather than help.
+            onchange: move |e| match serde_json::from_str::<Value>(&e.value()) {
+                Ok(v) => {
+                    error.set(None);
+                    on_commit.call(v);
+                }
+                Err(err) => {
+                    let msg = err.to_string();
+                    error.set(Some(msg.clone()));
+                    on_error.call(EditorError {
+                        message: msg,
+                        column: Some(err.column().max(1)),
+                    });
+                }
+            },
+            "{text}"
+        }
+    }
+}
+
+fn json_widget(
+    path: &str,
+    val: &Value,
+    on_edit: Callback<(String, Value)>,
+    on_error: Callback<EditorError>,
+) -> Element {
+    let path = path.to_string();
+    let text = serde_json::to_string_pretty(val).unwrap_or_else(|_| "null".into());
+    let on_commit = Callback::new(move |v: Value| on_edit.call((path.clone(), v)));
+    rsx! {
+        JsonInput { text, on_commit, on_error }
     }
 }
 

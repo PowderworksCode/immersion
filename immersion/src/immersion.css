@@ -405,6 +405,12 @@
 .im-target-none { color: var(--im-text-muted); }
 .im-target:disabled { cursor: default; opacity: .6; }
 
+.im-json {
+  width: 100%; min-height: 14rem; resize: vertical;
+  font-family: var(--im-mono); font-size: .72rem; line-height: 1.45;
+  white-space: pre; overflow-wrap: normal; overflow-x: auto;
+}
+
 .im-input.im-invalid {
   border-color: var(--im-invalid);
   color: var(--im-invalid);
