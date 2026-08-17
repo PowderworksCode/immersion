@@ -168,6 +168,9 @@ fn resolve_spec(
     // outer one leaves the inner layers asking for a name the renderer has
     // never heard of.
     resolve_feeds(s, doc, &mut out)?;
+    // Same recursion, same reason: a layered spec carries an encoding per
+    // layer, so thinning only the outer one leaves the inner axes dense.
+    thin_time_axes(&mut out);
     let obj = out.as_object_mut().expect("checked above");
     // The workbench is dark and Vega's defaults are not, so a spec arrives
     // with the chrome turned off: no white plate, no view border. The rest of
@@ -254,6 +257,61 @@ fn resolve_feeds(
 /// Whether a resolved spec has any rows at all. A chart of an empty window
 /// says so, rather than drawing bare axes over nothing — which is what Vega
 /// does, loudly, if handed empty values.
+/// How many labels a time axis gets when its spec does not say.
+///
+/// Vega-Lite's default asks for one tick per ~40px, which on a full-width
+/// panel over an hour of minute samples is a label per minute — sixty of them,
+/// legible one at a time and unreadable together. `tickCount` is a hint, not a
+/// count: Vega still picks round times near it, so this asks for "a handful"
+/// rather than pinning the axis to exactly six.
+const TIME_TICKS: u64 = 6;
+
+/// Give every temporal axis that has not asked for a tick count a sparser one.
+///
+/// Only when the spec is silent. A chart is a document someone can edit, and a
+/// `tickCount` written by hand is an instruction — this fills a gap, it does
+/// not overrule. The same goes for the label format: a time axis that says how
+/// it wants its labels written keeps it.
+fn thin_time_axes(node: &mut serde_json::Value) {
+    match node {
+        serde_json::Value::Object(map) => {
+            if let Some(enc) = map.get_mut("encoding").and_then(|e| e.as_object_mut()) {
+                for channel in ["x", "y"] {
+                    let Some(def) = enc.get_mut(channel).and_then(|c| c.as_object_mut()) else {
+                        continue;
+                    };
+                    if def.get("type").and_then(|t| t.as_str()) != Some("temporal") {
+                        continue;
+                    }
+                    // A `title` sitting beside a new `axis` block is the
+                    // deprecated spelling of the same thing, so it moves in.
+                    let title = def.remove("title");
+                    let axis = def
+                        .entry("axis")
+                        .or_insert_with(|| serde_json::json!({}))
+                        .as_object_mut();
+                    let Some(axis) = axis else { continue };
+                    if let Some(title) = title {
+                        axis.entry("title").or_insert(title);
+                    }
+                    axis.entry("tickCount")
+                        .or_insert(serde_json::json!(TIME_TICKS));
+                    axis.entry("format").or_insert(serde_json::json!("%H:%M"));
+                }
+            }
+            for child in map.values_mut() {
+                thin_time_axes(child);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for child in items.iter_mut() {
+                thin_time_axes(child);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn nothing_to_draw(spec: &serde_json::Value) -> bool {
     match spec.get("layer").and_then(|l| l.as_array()) {
         // Every layer named a feed and every feed was empty.
@@ -348,6 +406,72 @@ fn escape_pointer(key: &str) -> String {
 
 #[cfg(test)]
 mod chart_editor {
+    /// The complaint: the cpu and memory plots printed a label a minute —
+    /// about sixty across a panel — which is the loudest thing on the
+    /// Overview and says nothing the first and last label do not.
+    #[test]
+    fn a_time_axis_without_a_tick_count_gets_a_sparse_one() {
+        let mut spec = serde_json::json!({
+            "data": { "name": "cpu" },
+            "mark": "line",
+            "encoding": {
+                "x": { "field": "at", "type": "temporal", "title": null },
+                "y": { "field": "value", "type": "quantitative" }
+            }
+        });
+        super::thin_time_axes(&mut spec);
+        assert_eq!(
+            spec["encoding"]["x"]["axis"]["tickCount"],
+            super::TIME_TICKS
+        );
+        assert_eq!(spec["encoding"]["x"]["axis"]["format"], "%H:%M");
+        // The title moves into the axis rather than sitting beside it, which
+        // is the deprecated spelling of the same thing.
+        assert!(spec["encoding"]["x"]["title"].is_null());
+        assert!(spec["encoding"]["x"]["axis"]["title"].is_null());
+        // A quantitative axis is left alone: its labels are values, not times,
+        // and thinning them loses the scale.
+        assert!(spec["encoding"]["y"]["axis"].is_null());
+    }
+
+    /// A chart is a document someone edits. A tick count written by hand is
+    /// an instruction, not a gap to fill.
+    #[test]
+    fn a_spec_that_asks_for_its_own_ticks_keeps_them() {
+        let mut spec = serde_json::json!({
+            "encoding": {
+                "x": {
+                    "field": "at",
+                    "type": "temporal",
+                    "axis": { "tickCount": 24, "format": "%d %b" }
+                }
+            }
+        });
+        super::thin_time_axes(&mut spec);
+        assert_eq!(spec["encoding"]["x"]["axis"]["tickCount"], 24);
+        assert_eq!(spec["encoding"]["x"]["axis"]["format"], "%d %b");
+    }
+
+    /// The bug class this shares with the feed resolution: a layered spec
+    /// carries an encoding per layer, and a pass that only reads the top of
+    /// the document changes nothing on the chart anyone is looking at.
+    #[test]
+    fn every_layer_is_reached_not_just_the_top() {
+        let mut spec = serde_json::json!({
+            "layer": [
+                { "encoding": { "x": { "field": "from", "type": "temporal" } } },
+                { "encoding": { "x": { "field": "at", "type": "temporal" } } }
+            ]
+        });
+        super::thin_time_axes(&mut spec);
+        for layer in spec["layer"].as_array().expect("layers") {
+            assert_eq!(
+                layer["encoding"]["x"]["axis"]["tickCount"],
+                super::TIME_TICKS
+            );
+        }
+    }
+
     use super::*;
 
     fn state() -> State {
