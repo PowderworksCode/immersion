@@ -670,6 +670,15 @@ pub fn App() -> Element {
     let render_footer = use_callback(move |(id, editor): (AreaId, String)| -> String {
         crate::editors::footer(&draw_for(id, editor))
     });
+    // Whatever this editor wants in its own header — the machine area's
+    // window, the browser's way back up. `None` leaves the header exactly as
+    // it was.
+    let render_header = use_callback(move |(id, editor): (AreaId, String)| -> Element {
+        match crate::editors::header(&draw_for(id, editor)) {
+            Some(items) => items,
+            None => rsx! {},
+        }
+    });
     let render_toolbar = use_callback(move |(id, editor): (AreaId, String)| -> Element {
         // The editor's own tools first, then the area operations. Splitting
         // and duplicating are worth having in every area; what is particular
@@ -954,6 +963,7 @@ pub fn App() -> Element {
                     layout: ws.read().current().layout.clone(),
                     kinds: crate::editors::kinds(),
                     render,
+                    render_header: Some(render_header),
                     render_toolbar: Some(render_toolbar),
                     render_sidebar: Some(render_sidebar),
                     render_footer: Some(render_footer),

@@ -662,9 +662,13 @@ pub fn snapshot() -> State {
         .collect();
     workflows.sort_by(|a, b| a.name.cmp(&b.name));
 
-    // An hour of history is what a "what happened at 07:00" question needs;
-    // longer windows belong to a range picker nobody has asked for yet.
-    let since = engine::now_ms() - 3_600_000;
+    // How far back the plots look. This was pinned to an hour while
+    // `chart_window` sat in the settings document being offered by the
+    // preferences window and read by nothing — a control that appeared to
+    // work. The machine header writes it now, and this is what makes that
+    // mean something.
+    let hours = crate::editors::machine::window_hours(&settings());
+    let since = engine::now_ms() - hours * 3_600_000;
     drop(conn);
 
     // Newest first, last 50 — the Info editor shows recent history.

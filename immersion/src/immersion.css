@@ -106,6 +106,7 @@ body {
   white-space: nowrap;
 }
 
+.im-header-items { display: inline-flex; align-items: center; gap: .2rem; }
 .im-tools { margin-left: auto; display: flex; gap: .1rem; opacity: .72; }
 .im-header:hover .im-tools { opacity: 1; }
 .im-btn {

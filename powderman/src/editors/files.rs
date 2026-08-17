@@ -210,6 +210,44 @@ pub(crate) fn toolbar(d: &Draw) -> Element {
     }
 }
 
+/// Up one level. The tree walks down by opening branches; nothing walked
+/// back up, so leaving a folder meant retargeting through the picker.
+pub(crate) fn header(d: &Draw) -> Element {
+    let here = d.arg.clone().unwrap_or_default();
+    let (area, cmd) = (d.area, d.cmd);
+    let parent = parent_of(&here);
+    let at_root = parent.is_none();
+    let target = parent.unwrap_or_default();
+    rsx! {
+        button {
+            class: "hdr-choice",
+            title: if at_root { "already at the root" } else { "up one level" },
+            disabled: at_root,
+            onclick: move |_| {
+                cmd.call((
+                    "set_target".to_string(),
+                    serde_json::json!({ "id": area, "target": target }),
+                ));
+            },
+            dangerous_inner_html: "{immersion::icon(\"arrow-up\")}",
+        }
+    }
+}
+
+/// The folder above this one, or `None` at the root. These paths are the
+/// browser's own pointers — always `/`-joined, never absolute — so this is
+/// text rather than `std::path`, which would resolve against the machine.
+pub(crate) fn parent_of(pointer: &str) -> Option<String> {
+    let trimmed = pointer.trim_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    match trimmed.rsplit_once('/') {
+        Some((up, _)) => Some(up.to_string()),
+        None => Some(String::new()),
+    }
+}
+
 #[cfg(test)]
 mod file_browser {
     /// Containment is the property that matters: whatever pointer arrives,
@@ -242,5 +280,34 @@ mod file_browser {
         }
         unsafe { std::env::remove_var("POWDERMAN_FILES_ROOT") };
         std::fs::remove_dir_all(&tmp).ok();
+    }
+}
+
+#[cfg(test)]
+mod parent_tests {
+    use super::parent_of;
+
+    /// The browser's pointers are its own — `/`-joined, relative to a root it
+    /// confines everything to. Resolving them with `std::path` would walk the
+    /// machine instead, which is the containment bug the browser was built to
+    /// avoid, so this is deliberately text.
+    #[test]
+    fn walking_up_stops_at_the_root() {
+        assert_eq!(
+            parent_of("src/editors/mod.rs").as_deref(),
+            Some("src/editors")
+        );
+        assert_eq!(parent_of("src/editors").as_deref(), Some("src"));
+        // One level down: the parent is the root, which is the empty pointer.
+        assert_eq!(parent_of("src").as_deref(), Some(""));
+        // And the root has nowhere to go, which is what disables the button.
+        assert_eq!(parent_of(""), None);
+        assert_eq!(parent_of("/"), None);
+    }
+
+    /// A pointer that arrived with slashes on it is the same folder.
+    #[test]
+    fn surrounding_slashes_do_not_make_a_new_level() {
+        assert_eq!(parent_of("/src/main.rs/").as_deref(), Some("src"));
     }
 }

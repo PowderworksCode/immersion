@@ -290,6 +290,19 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .area-tool svg { width: 1rem; height: 1rem; }
 /* Between the editor's own tools and the area operations, so the strip reads
    as "what this editor does" over "what any area does". */
+/* Editor controls in the area header. Sized to the header, not to the body:
+   they sit beside the editor name and must not make the strip taller. */
+.hdr-choice {
+  font: inherit; font-size: .72rem; line-height: 1;
+  padding: .15rem .35rem; border-radius: 3px; cursor: pointer;
+  border: 1px solid transparent; background: transparent; color: var(--ink-2);
+  display: inline-flex; align-items: center;
+}
+.hdr-choice:hover:not(:disabled) { color: var(--ink); background: var(--im-input-bg); }
+.hdr-choice.is-on { color: var(--im-accent); border-color: var(--im-accent); }
+.hdr-choice:disabled { opacity: .35; cursor: default; }
+.hdr-choice svg { width: .9rem; height: .9rem; }
+
 .area-tool-sep {
   width: 1.1rem; height: 1px; background: var(--grid); margin: .25rem 0;
 }

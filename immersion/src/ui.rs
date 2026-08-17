@@ -152,6 +152,13 @@ pub struct AreasProps {
     /// properties region — from `(area id, editor)`.
     #[props(default)]
     pub render_sidebar: Option<Callback<(AreaId, String), Element>>,
+    /// Optional: the editor's own controls in its header, from
+    /// `(area id, editor)` — Blender's header carries what the editor it
+    /// holds needs and nothing else. Drawn after the target chip and before
+    /// the View menu, so the row reads left to right as: what this is, what
+    /// it is looking at, what it can do, what the area can do.
+    #[props(default)]
+    pub render_header: Option<Callback<(AreaId, String), Element>>,
     /// Optional: one line along the bottom edge of a leaf, from
     /// `(area id, editor)` — what this area is showing, stated. A text
     /// editor's language and line count, a list's total. Deliberately a
@@ -333,6 +340,9 @@ fn render_leaf(
     let cmd = props.on_command;
     let body = props.render.call((id, editor_owned.clone(), arg.clone()));
     let menu = crate::contextmenu::area_menu_json(id);
+    let header_items = props
+        .render_header
+        .map(|cb| cb.call((id, editor_owned.clone())));
     // Region content is the host's — a leaf shows a toolbar / sidebar only if
     // the host offers one and the region is toggled on.
     let has_toolbar = props.render_toolbar.is_some();
@@ -396,6 +406,7 @@ fn render_leaf(
                     kinds: kinds.clone(),
                     cmd,
                     on_pick_target: props.on_pick_target,
+                    items: header_items.clone(),
                 }, &regions, has_toolbar, has_sidebar, lone, &props.chords)}
             }
             if regions.header_hidden {
@@ -432,6 +443,7 @@ fn render_leaf(
                     kinds: kinds.clone(),
                     cmd,
                     on_pick_target: props.on_pick_target,
+                    items: header_items,
                 }, &regions, has_toolbar, has_sidebar, lone, &props.chords)}
             }
         }
@@ -600,6 +612,8 @@ struct LeafHeader {
     kinds: Vec<EditorKind>,
     cmd: Callback<(String, serde_json::Value)>,
     on_pick_target: Option<Callback<AreaId>>,
+    /// The editor's own controls, already rendered by the host.
+    items: Option<Element>,
 }
 
 fn leaf_header(
@@ -617,6 +631,7 @@ fn leaf_header(
         kinds,
         cmd,
         on_pick_target,
+        items,
     } = leaf;
     let targets = kinds
         .iter()
@@ -651,6 +666,9 @@ fn leaf_header(
                         },
                         {crumb(target.as_deref())}
                     }
+                }
+                if let Some(items) = items {
+                    span { class: "im-header-items", {items} }
                 }
                 button {
                     class: "im-viewmenu",
