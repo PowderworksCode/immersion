@@ -799,18 +799,81 @@ async fn index() -> impl IntoResponse {
     Html(format!(
         r#"<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>powderman</title>{vendor}</head><body><div id="main"></div>{glue}
+<title>powderman</title>{vendor}
+<style>
+  /* The disconnected banner. Inline because it has to render when the page
+     is exactly what it says it is — cut off from the server that would
+     otherwise have styled it. */
+  #im-offline {{
+    position: fixed; inset: 0 0 auto 0; z-index: 999;
+    display: none; gap: .5rem; align-items: center; justify-content: center;
+    padding: .4rem; font: 500 .78rem ui-sans-serif, system-ui, sans-serif;
+    background: #b9821f; color: #1a1a1d;
+  }}
+  #im-offline.on {{ display: flex; }}
+  body.im-stale #main {{ opacity: .45; filter: saturate(.4); pointer-events: none; }}
+</style></head><body>
+<div id="im-offline"><span id="im-offline-text">Disconnected — reconnecting…</span></div>
+<div id="main"></div>
 <script>
-  // Reload when the daemon restarts, and when the socket has been shut long
-  // enough that the render is stale.
+  // Before the glue, deliberately: it opens its socket as it loads, so a
+  // wrapper installed afterwards watches a socket that already exists and
+  // never sees it close. Installing early is the whole reason this is a
+  // separate script tag.
+  const Native = window.WebSocket;
+  window.WebSocket = function (...args) {{
+    const ws = new Native(...args);
+    const gone = () => window.__imOffline && window.__imOffline("Disconnected — reconnecting…");
+    ws.addEventListener("close", gone);
+    ws.addEventListener("error", gone);
+    return ws;
+  }};
+  window.WebSocket.prototype = Native.prototype;
+</script>
+{glue}
+<script>
+  // A liveview page whose socket has died looks exactly like one that is
+  // working: the last render is still on screen, and nothing about it says
+  // the numbers stopped being true. This is that signal.
+  //
+  // Two detectors, because they catch different failures. The socket closing
+  // is immediate and covers a daemon that went away mid-session; the /boot
+  // poll covers a machine that stopped before the socket noticed, and its id
+  // changing is how a restart is told from a hiccup.
+  const banner = document.getElementById("im-offline");
+  const text = document.getElementById("im-offline-text");
+  let offline = false;
+  const show = (msg) => {{
+    offline = true;
+    text.textContent = msg;
+    banner.classList.add("on");
+    document.body.classList.add("im-stale");
+  }};
+
+  // The early wrapper calls this when the socket goes. Reconnecting is not
+  // attempted — dioxus-liveview does not resume a session — so the page
+  // reloads once the server answers again.
+  window.__imOffline = show;
+
   let boot = null;
+  let misses = 0;
   setInterval(async () => {{
     try {{
       const r = await fetch("/boot", {{cache: "no-store"}});
       const b = await r.text();
+      misses = 0;
       if (boot === null) boot = b;
+      // A new boot id means a restart: the render on screen belongs to a
+      // daemon that no longer exists. Reload whether or not we noticed the
+      // socket go.
       else if (b !== boot) location.reload();
-    }} catch (e) {{ /* daemon down; try again shortly */ }}
+      // Server is back and it is the same one: the socket is still dead, so
+      // only a reload restores a live page.
+      else if (offline) location.reload();
+    }} catch (e) {{
+      // One miss is a hiccup; a second is the machine being gone.
+      if (++misses >= 2) show("Server unreachable — waiting…");
+    }}
   }}, 4000);
 </script>
 </body></html>"#,
