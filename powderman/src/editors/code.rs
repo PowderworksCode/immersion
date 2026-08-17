@@ -2,9 +2,12 @@
 
 use dioxus::prelude::*;
 
+use immersion::Panel;
+
 use super::files::files_root;
 use super::human_size;
 use super::stamp_of;
+use crate::editors::{Draw, prop};
 
 /// The code viewer: one file, highlighted, read-only.
 ///
@@ -92,6 +95,61 @@ pub(crate) fn kind() -> immersion::EditorKind {
         icon: "code",
         hints: &[("Chip", "Pick file")],
         targets: true,
+    }
+}
+
+/// The file's own statistics — Blender's sidebar over a text editor, which is
+/// where the line count and the language live rather than in the header.
+pub(crate) fn sidebar(d: &Draw) -> Element {
+    let Some(path) = d.arg.clone().filter(|t| !t.is_empty()) else {
+        return rsx! { div { class: "area-props", div { class: "empty", "No file" } } };
+    };
+    let src = match read_source(&path) {
+        Ok(src) => src,
+        Err(e) => return rsx! { div { class: "area-props", div { class: "empty", "{e}" } } },
+    };
+    let name = path.rsplit('/').next().unwrap_or(&path).to_string();
+    let lines = src.lines().count();
+    let longest = src.lines().map(|l| l.chars().count()).max().unwrap_or(0);
+    let blank = src.lines().filter(|l| l.trim().is_empty()).count();
+    rsx! {
+        div { class: "area-props",
+            Panel { title: "Document",
+                {prop("File", name)}
+                {prop("Language", language_of(&path).to_string())}
+                {prop("Lines", lines.to_string())}
+                {prop("Size", human_size(src.len() as u64))}
+            }
+            Panel { title: "Statistics", open: false,
+                {prop("Characters", src.chars().count().to_string())}
+                {prop("Blank lines", blank.to_string())}
+                {prop("Longest line", longest.to_string())}
+            }
+        }
+    }
+}
+
+/// The language a path reads as, for the sidebar. The renderer does its own
+/// detection from the same extension; this is the human-readable name, and an
+/// extension neither of them knows is honestly "text" rather than a guess.
+pub(crate) fn language_of(path: &str) -> &'static str {
+    match path.rsplit('.').next().unwrap_or("") {
+        "rs" => "Rust",
+        "ts" | "tsx" => "TypeScript",
+        "js" | "jsx" | "mjs" => "JavaScript",
+        "py" => "Python",
+        "go" => "Go",
+        "c" | "h" => "C",
+        "cpp" | "cc" | "hpp" => "C++",
+        "css" => "CSS",
+        "html" => "HTML",
+        "json" => "JSON",
+        "toml" => "TOML",
+        "yaml" | "yml" => "YAML",
+        "md" => "Markdown",
+        "sh" | "bash" => "Shell",
+        "sql" => "SQL",
+        _ => "Text",
     }
 }
 

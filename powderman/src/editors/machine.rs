@@ -2,6 +2,9 @@
 
 use dioxus::prelude::*;
 
+use immersion::Panel;
+
+use crate::editors::{Draw, prop};
 use crate::ui::State;
 use crate::ui::{gib, tile};
 
@@ -47,5 +50,30 @@ pub(crate) fn kind() -> immersion::EditorKind {
         icon: "server-2",
         hints: &[],
         targets: false,
+    }
+}
+
+/// What the machine editor is showing, as numbers rather than plots. The
+/// tiles round hard for legibility; this is where the reading is exact.
+pub(crate) fn sidebar(d: &Draw) -> Element {
+    let s = &d.state;
+    let m = |k: &str| s.machine.get(k).copied().unwrap_or(0.0);
+    let minutes = (s.window.1 - s.window.0).max(0) / 60_000;
+    rsx! {
+        div { class: "area-props",
+            Panel { title: "Machine",
+                {prop("CPU", format!("{:.1}%", m("box.cpu_pct")))}
+                {prop("Load", format!("{:.2}", m("box.load1")))}
+                {prop("Memory", format!("{} / {}", gib(m("box.mem_used")), gib(m("box.mem_total"))))}
+                {prop("Disk", format!("{} / {}", gib(m("box.disk_used")), gib(m("box.disk_total"))))}
+                {prop("Agents", s.fleet.len().to_string())}
+            }
+            Panel { title: "Samples", open: false,
+                {prop("CPU points", s.cpu.len().to_string())}
+                {prop("Memory points", s.mem.len().to_string())}
+                {prop("Window", format!("{minutes} min"))}
+                {prop("Annotations", s.annotations.len().to_string())}
+            }
+        }
     }
 }

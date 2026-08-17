@@ -1,7 +1,9 @@
 //! The files editor.
 
 use dioxus::prelude::*;
-use immersion::{FilterBox, TreeView};
+use immersion::{FilterBox, Panel, TreeView};
+
+use crate::editors::{Draw, prop};
 
 use super::human_size;
 
@@ -155,6 +157,27 @@ pub(crate) fn kind() -> immersion::EditorKind {
         icon: "folder",
         hints: &[("Click", "Expand"), ("Chip", "Root here")],
         targets: true,
+    }
+}
+
+/// What the browser is looking at. `has_children` is the only thing a row
+/// says about its kind, so it is what the folder/file split counts.
+pub(crate) fn sidebar(d: &Draw) -> Element {
+    let root = d.arg.clone().unwrap_or_default();
+    let rows = file_children(&root);
+    let folders = rows.iter().filter(|r| r.has_children).count();
+    rsx! {
+        div { class: "area-props",
+            Panel { title: "Folder",
+                {prop("Root", if root.is_empty() { "/".to_string() } else { root.clone() })}
+                {prop("Entries", rows.len().to_string())}
+                {prop("Folders", folders.to_string())}
+                {prop("Files", (rows.len() - folders).to_string())}
+            }
+            Panel { title: "Changed", open: false,
+                {prop("Files", changed_files().len().to_string())}
+            }
+        }
     }
 }
 

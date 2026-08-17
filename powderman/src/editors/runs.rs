@@ -1,7 +1,9 @@
 //! The runs editor.
 
 use dioxus::prelude::*;
-use immersion::{AreaId, FilterBox};
+use immersion::{AreaId, FilterBox, Panel};
+
+use crate::editors::{Draw, prop};
 
 use crate::ui::{RunView, State, StepView, resume};
 use crate::ui::{hhmmss, short};
@@ -200,5 +202,32 @@ pub(crate) fn detail_kind() -> immersion::EditorKind {
         icon: "file-text",
         hints: &[("Chip", "Pick run")],
         targets: true,
+    }
+}
+
+/// The run list as a tally, by the same status words the rows are coloured
+/// by, so the sidebar and the list never disagree about what "failed" means.
+pub(crate) fn sidebar(d: &Draw) -> Element {
+    let s = &d.state;
+    let n = |status: &str| s.runs.iter().filter(|r| r.status == status).count();
+    let mut workflows: Vec<&str> = s.runs.iter().map(|r| r.workflow.as_str()).collect();
+    workflows.sort_unstable();
+    workflows.dedup();
+    let steps: usize = s.runs.iter().map(|r| r.steps.len()).sum();
+    rsx! {
+        div { class: "area-props",
+            Panel { title: "Runs",
+                {prop("Total", s.runs.len().to_string())}
+                {prop("Running", n("running").to_string())}
+                {prop("Suspended", n("suspended").to_string())}
+                {prop("Done", n("done").to_string())}
+                {prop("Failed", n("failed").to_string())}
+            }
+            Panel { title: "Work", open: false,
+                {prop("Workflows", workflows.len().to_string())}
+                {prop("Steps", steps.to_string())}
+                {prop("Errors", s.runs.iter().filter(|r| r.error.is_some()).count().to_string())}
+            }
+        }
     }
 }
