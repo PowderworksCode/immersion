@@ -26,6 +26,12 @@ pub struct StatusBarProps {
     /// view.
     #[props(default)]
     pub right: String,
+    /// A running task: `(label, fraction)`. Blender's status bar grows a
+    /// progress bar while something long is happening and loses it again when
+    /// nothing is. The fraction is 0..=1; `None` for work whose size is not
+    /// known, which shows the label and a bar that does not claim a position.
+    #[props(default)]
+    pub task: Option<(String, Option<f32>)>,
     /// A standing label pinned to the far right — what this instance *is*,
     /// not what it is doing. A demo says DEMO here so its numbers are never
     /// read as a live box. `None` shows nothing.
@@ -49,6 +55,24 @@ pub fn StatusBar(props: StatusBarProps) -> Element {
             }
             if let Some(msg) = props.message.clone() {
                 div { class: "im-status-report", "{msg}" }
+            }
+            if let Some((label, done)) = props.task.clone() {
+                div { class: "im-status-task",
+                    span { class: "im-status-task-label", "{label}" }
+                    div {
+                        class: if done.is_some() { "im-progress" } else { "im-progress im-progress-idle" },
+                        // The width is the whole mechanism: a bar with no
+                        // known fraction gets a stripe that says "working"
+                        // rather than a position it would be inventing.
+                        div {
+                            class: "im-progress-fill",
+                            style: match done {
+                                Some(f) => format!("width:{:.0}%", (f.clamp(0.0, 1.0)) * 100.0),
+                                None => String::new(),
+                            },
+                        }
+                    }
+                }
             }
             div { class: "im-status-right", "{props.right}" }
             if let Some(badge) = props.badge.clone() {

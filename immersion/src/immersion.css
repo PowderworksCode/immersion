@@ -415,6 +415,18 @@
   border-color: var(--im-invalid);
   color: var(--im-invalid);
 }
+.im-status-task { display: flex; align-items: center; gap: .4rem; flex: none; }
+.im-status-task-label { color: var(--im-text-muted); }
+.im-progress {
+  width: 7rem; height: .5rem; border: 1px solid var(--im-border);
+  border-radius: 3px; overflow: hidden; background: var(--im-input-bg);
+}
+.im-progress-fill { height: 100%; background: var(--im-accent); }
+/* Size unknown: the bar fills, dimmed, saying that work is happening without
+   claiming a position. Deliberately still — this workbench has no motion
+   system, and one animation for one bar would be the start of one. */
+.im-progress-idle .im-progress-fill { width: 100%; opacity: .35; }
+
 .im-status-badge {
   flex: none; font-family: var(--im-mono); font-size: .66rem;
   letter-spacing: .06em; text-transform: uppercase;
