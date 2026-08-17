@@ -395,33 +395,312 @@ pub async fn sample_loop(db: Db) {
 /// checkout that does not exist. Same contract as the seeded runs: it looks
 /// like the real thing and is entirely made up.
 ///
-/// `(path, size)`; a path ending in `/` is a directory. Children are derived
-/// from the paths, so adding a row is one line.
-const FILES: &[(&str, u64)] = &[
-    ("/README.md", 4_182),
-    ("/Cargo.toml", 1_204),
-    ("/docs/", 0),
-    ("/docs/roadmap.md", 11_930),
-    ("/docs/keymap-web-safety.md", 3_418),
-    ("/immersion/", 0),
-    ("/immersion/Cargo.toml", 892),
-    ("/immersion/src/", 0),
-    ("/immersion/src/area.rs", 18_204),
-    ("/immersion/src/command.rs", 12_866),
-    ("/immersion/src/tree.rs", 7_741),
-    ("/immersion/src/widget.rs", 24_110),
-    ("/immersion/ts/", 0),
-    ("/immersion/ts/gestures.ts", 6_882),
-    ("/immersion/ts/types.ts", 2_140),
-    ("/powderman/", 0),
-    ("/powderman/Cargo.toml", 1_536),
-    ("/powderman/src/", 0),
-    ("/powderman/src/daemon.rs", 28_774),
-    ("/powderman/src/editors.rs", 16_402),
-    ("/powderman/src/mcp.rs", 14_918),
-    ("/powderman/src/ui.rs", 42_330),
+/// `(path, contents)`; a path ending in `/` is a directory and its contents
+/// are ignored. Sizes shown in the browser are derived from the contents, so
+/// what the file browser claims and what the code viewer shows agree — a demo
+/// that listed a 4 KB file and then displayed six lines would be a demo of a
+/// bug.
+const FILES: &[(&str, &str)] = &[
+    ("/README.md", README_MD),
+    ("/Cargo.toml", CARGO_TOML),
+    ("/docs/", ""),
+    ("/docs/roadmap.md", ROADMAP_MD),
+    ("/immersion/", ""),
+    ("/immersion/src/", ""),
+    ("/immersion/src/tree.rs", TREE_RS),
+    ("/immersion/src/area.rs", AREA_RS),
+    ("/immersion/ts/", ""),
+    ("/immersion/ts/gestures.ts", GESTURES_TS),
+    ("/powderman/", ""),
+    ("/powderman/src/", ""),
+    ("/powderman/src/daemon.rs", DAEMON_RS),
+    ("/powderman/src/workflows.rs", WORKFLOWS_RS),
 ];
 
+const README_MD: &str = r#"# powderman
+
+Durable workflows on a Blender-style workbench.
+
+## What this is
+
+A daemon that runs long jobs and survives restarts, and a tiled workbench for
+watching them. Every mutation goes through one command bus, so a header
+button, a keystroke and an agent's tool call are the same operation.
+
+## Running it
+
+    cargo run -p powderman -- --db ~/.powderman.db --port 7777
+
+Schedules are on by default. `POWDERMAN_SCHEDULES=0` makes an instance
+view-only on the clock, which is what a second instance beside the real one
+should be.
+
+## The demo
+
+`POWDERMAN_DEMO=1` seeds a fabricated history and refuses to run anything.
+The instance you are reading this on is one of those: the runs, the fleet,
+the metrics and this file are all made up.
+"#;
+
+const CARGO_TOML: &str = r#"[workspace]
+members = ["immersion", "powderman"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+"#;
+
+const ROADMAP_MD: &str = r#"# The workbench, honestly
+
+## Where we are
+
+Areas with n-ary splits, regions, workspaces, menus, a command palette, a
+keymap with rebinding, a widget kit bound to serde documents by pointer, and
+a tree view with two editors over it.
+
+## Where we are going
+
+1. Parity made honest — enforced, not asserted.
+2. Errors surface — one type, two surfaces.
+3. The tree view, and the data editor over it.
+4. Editors have targets.
+5. Code and diff viewers.
+6. Charts as Vega-Lite documents.
+
+## What we are not doing
+
+Runtime extensibility. Hosts add editors and commands at compile time; there
+is no plugin loading and no runtime schema registry.
+"#;
+
+const TREE_RS: &str = r#"//! The tree view: expandable rows over any hierarchical value.
+//!
+//! One component, many editors. The host supplies children through a
+//! callback, so the same view walks a serde document, a directory, or
+//! anything else that answers "what is under this node".
+
+use dioxus::prelude::*;
+
+/// One row the host hands back from its children callback.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TreeRow {
+    /// Where this node lives. Opaque to the component.
+    pub pointer: String,
+    /// The name shown on the row.
+    pub label: String,
+    /// A short value preview, dimmed, after the label.
+    pub preview: String,
+    /// Whether the row can expand.
+    pub has_children: bool,
+}
+
+/// Children of a node inside a serde document.
+pub fn value_children(doc: &serde_json::Value, pointer: &str) -> Vec<TreeRow> {
+    let Some(node) = doc.pointer(pointer) else {
+        return Vec::new();
+    };
+    match node {
+        serde_json::Value::Object(map) => map
+            .iter()
+            .map(|(k, v)| TreeRow {
+                pointer: format!("{pointer}/{k}"),
+                label: k.clone(),
+                preview: preview(v),
+                has_children: branches(v),
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+"#;
+
+const AREA_RS: &str = r#"//! The layout tree: areas, splits, and the operations on them.
+//!
+//! An area is a leaf with an editor, or a split with children and the sizes
+//! between them. That is the whole model — no tabs, no floating panels, no
+//! z-order — so persistence and undo are serialization, not integration.
+
+use serde::{Deserialize, Serialize};
+
+pub type AreaId = u64;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Area {
+    Leaf {
+        id: AreaId,
+        editor: String,
+        arg: Option<String>,
+    },
+    Split {
+        id: AreaId,
+        dir: Dir,
+        sizes: Vec<f32>,
+        children: Vec<Area>,
+    },
+}
+
+impl Layout {
+    /// Split an area in two. Returns the new leaf's id, or None if the
+    /// target is not a leaf.
+    pub fn split(&mut self, target: AreaId, dir: Dir, ratio: f32) -> Option<AreaId> {
+        let id = self.next_id;
+        self.next_id += 1;
+        Some(id)
+    }
+}
+"#;
+
+const GESTURES_TS: &str = r#"// The gesture shim: corner drags, seam drags, and the drop targets.
+//
+// Everything here is frame-path work — pointer moves, a preview rectangle —
+// and it commits exactly one message on release. The server never sees the
+// drag, only its result.
+
+import { once } from "./types";
+import type { Gesture as GestureMsg } from "./generated/Gesture";
+
+const THRESHOLD = 4;
+
+if (once("__imGestures")) {
+  let seam: { splitId: number; index: number } | null = null;
+
+  const send = (msg: GestureMsg): void => {
+    try {
+      dioxus.send(JSON.stringify(msg));
+    } catch {
+      /* channel gone; a reload re-installs */
+    }
+  };
+
+  document.addEventListener("pointerup", (e) => {
+    if (!seam) return;
+    send({ t: "ratio", id: seam.splitId, index: seam.index, ratio: seamRatio(e) });
+    seam = null;
+  });
+}
+"#;
+
+const DAEMON_RS: &str = r#"//! The daemon: state, the command bus, and the routes.
+
+use anyhow::Result;
+
+/// Run a layout command and hand back the new workbench. THE one write path:
+/// every UI mutation arrives here as a named command, is applied to the
+/// workspace value, and persisted.
+pub fn dispatch_from(
+    source: &str,
+    name: &str,
+    params: serde_json::Value,
+) -> Result<immersion::Workspaces> {
+    let s = shared();
+    let mut w = s.workspaces.lock().expect("workspaces");
+    // The command runs against a clone, so a failure leaves the live
+    // workspace untouched and undo is recorded only on success.
+    let mut candidate = w.clone();
+    let outcome = s.commands.run(&mut candidate, name, &params);
+    log_command(source, name, params.clone(), outcome.is_ok());
+    outcome?;
+    if s.commands.records_undo(name) {
+        s.undo.lock().expect("undo").push(w.clone());
+        s.redo.lock().expect("redo").clear();
+    }
+    *w = candidate;
+    persist_workspaces(&s, &w);
+    Ok(w.clone())
+}
+"#;
+
+const WORKFLOWS_RS: &str = r#"//! The workflow registry: what this daemon knows how to run.
+
+use crate::engine::{Registry, WorkflowDef};
+
+pub fn registry() -> Registry {
+    let mut r = Registry::new();
+    r.insert(
+        "treebank_sweep",
+        WorkflowDef {
+            description: "Pull, build, then rank every grammar; hand any with gaps to a fix run.",
+            example: Some("{\"limit\": 100}"),
+            schedule: Some("0 6 * * *"),
+            cwd: None,
+            run: crate::treebank::sweep_all,
+        },
+    );
+    r
+}
+"#;
+
+/// A file the demo presents as changed, with the patch to show for it. Two
+/// entries, so the diff editor has both a modified file and (for everything
+/// else) the "matches HEAD" case to demonstrate.
+const DIFFS: &[(&str, &str)] = &[
+    (
+        "/immersion/src/tree.rs",
+        r#"diff --git a/immersion/src/tree.rs b/immersion/src/tree.rs
+--- a/immersion/src/tree.rs
++++ b/immersion/src/tree.rs
+@@ -10,7 +10,7 @@ use dioxus::prelude::*;
+ /// One row the host hands back from its children callback.
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct TreeRow {
+-    /// Where this node lives.
++    /// Where this node lives. Opaque to the component.
+     pub pointer: String,
+     /// The name shown on the row.
+     pub label: String,
+@@ -20,6 +20,8 @@ pub struct TreeRow {
+     pub preview: String,
+     /// Whether the row can expand.
+     pub has_children: bool,
++    /// Set when the host could not read this node's children.
++    pub unreadable: bool,
+ }
+"#,
+    ),
+    (
+        "/powderman/src/daemon.rs",
+        r#"diff --git a/powderman/src/daemon.rs b/powderman/src/daemon.rs
+--- a/powderman/src/daemon.rs
++++ b/powderman/src/daemon.rs
+@@ -14,6 +14,7 @@ pub fn dispatch_from(
+     let mut candidate = w.clone();
+     let outcome = s.commands.run(&mut candidate, name, &params);
+     log_command(source, name, params.clone(), outcome.is_ok());
++    // Logged either way; surface the error after recording it.
+     outcome?;
+"#,
+    ),
+];
+
+/// Which fabricated files are presented as changed. The diff editor's picker
+/// lists these, so finding something to look at does not mean guessing which
+/// two of fourteen files have a patch.
+pub fn changed_files() -> Vec<&'static str> {
+    DIFFS.iter().map(|(p, _)| *p).collect()
+}
+
+/// The fabricated contents of one file, for the code viewer.
+pub fn file_source(path: &str) -> Option<&'static str> {
+    FILES
+        .iter()
+        .find(|(p, _)| *p == path && !p.ends_with('/'))
+        .map(|(_, body)| *body)
+}
+
+/// The fabricated patch for one file. `Some(None)` means the file exists and
+/// matches HEAD; `None` means there is no such file.
+pub fn file_diff(path: &str) -> Option<Option<&'static str>> {
+    file_source(path)?;
+    Some(DIFFS.iter().find(|(p, _)| *p == path).map(|(_, d)| *d))
+}
+
+/// Children of one directory in the fabricated tree.
 /// Children of one directory in the fabricated tree.
 pub fn file_children(pointer: &str) -> Vec<immersion::TreeRow> {
     let mut rows = fabricated_rows(pointer);
@@ -439,7 +718,7 @@ fn fabricated_rows(pointer: &str) -> Vec<immersion::TreeRow> {
     };
     FILES
         .iter()
-        .filter_map(|(path, size)| {
+        .filter_map(|(path, body)| {
             let rest = path.strip_prefix(&prefix)?;
             // One level only: a deeper path belongs to a child directory, and
             // the trailing slash of a directory row is not a level of its own.
@@ -458,7 +737,7 @@ fn fabricated_rows(pointer: &str) -> Vec<immersion::TreeRow> {
                 preview: if is_dir {
                     String::new()
                 } else {
-                    crate::editors::human_size(*size)
+                    crate::editors::human_size(body.len() as u64)
                 },
                 has_children: is_dir,
             })
@@ -565,5 +844,49 @@ mod tests {
         ] {
             assert!(now.contains_key(k), "no sample for {k}");
         }
+    }
+}
+
+#[cfg(test)]
+mod demo_files {
+    /// The demo's browser, code viewer and diff viewer read one table, so
+    /// what the browser lists is exactly what the viewers can open. A path in
+    /// the listing with no contents is the bug this catches.
+    #[test]
+    fn everything_listed_can_be_opened() {
+        fn walk(dir: &str, seen: &mut usize) {
+            for row in super::file_children(dir) {
+                if row.has_children {
+                    walk(&row.pointer, seen);
+                } else {
+                    let body = super::file_source(&row.pointer)
+                        .unwrap_or_else(|| panic!("{} is listed but has no contents", row.pointer));
+                    assert!(!body.is_empty(), "{} is empty", row.pointer);
+                    // The size the browser shows comes from the same string.
+                    assert_eq!(row.preview, crate::editors::human_size(body.len() as u64));
+                    *seen += 1;
+                }
+            }
+        }
+        let mut seen = 0;
+        walk("", &mut seen);
+        assert!(seen >= 8, "only {seen} files in the fabricated tree");
+    }
+
+    #[test]
+    fn the_diff_viewer_has_both_cases_to_show() {
+        // A changed file and an unchanged one, so the editor demonstrates
+        // its patch rendering and its "matches HEAD" state.
+        let changed = super::file_diff("/immersion/src/tree.rs")
+            .expect("the file exists")
+            .expect("and is presented as changed");
+        assert!(changed.starts_with("diff --git "), "git header: {changed}");
+        assert!(changed.contains("@@"), "a hunk header");
+        assert!(changed.contains("\n+"), "an added line");
+        assert!(
+            super::file_diff("/README.md").expect("exists").is_none(),
+            "an unchanged file matches HEAD"
+        );
+        assert!(super::file_diff("/etc/passwd").is_none(), "no such file");
     }
 }

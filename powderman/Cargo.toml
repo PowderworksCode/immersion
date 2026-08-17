@@ -37,6 +37,7 @@ rmcp = { version = "3.1.2", features = [
     "transport-streamable-http-server",
 ] }
 schemars = "1.0"
+similar = "3.1.2"
 
 
 [dev-dependencies]

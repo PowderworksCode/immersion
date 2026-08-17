@@ -698,11 +698,30 @@ async fn boot_route() -> impl IntoResponse {
     BOOT_ID.get().cloned().unwrap_or_default()
 }
 
+/// Serve one file of the vendored renderer. Immutable: every chunk's name
+/// carries its content hash, so a year is a safe cache and a redeploy that
+/// changes a chunk changes its name.
+async fn vendor_route(Path(file): Path<String>) -> impl IntoResponse {
+    let Some(bytes) = immersion::vendor_asset(&file) else {
+        return (
+            StatusCode::NOT_FOUND,
+            [("content-type", "text/plain")],
+            &b""[..],
+        );
+    };
+    let mime = if file.ends_with(".json") {
+        "application/json"
+    } else {
+        "text/javascript; charset=utf-8"
+    };
+    (StatusCode::OK, [("content-type", mime)], bytes)
+}
+
 async fn index() -> impl IntoResponse {
     Html(format!(
         r#"<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>powderman</title></head><body><div id="main"></div>{glue}
+<title>powderman</title>{vendor}</head><body><div id="main"></div>{glue}
 <script>
   // Reload when the daemon restarts, and when the socket has been shut long
   // enough that the render is stale.
@@ -717,6 +736,7 @@ async fn index() -> impl IntoResponse {
   }}, 4000);
 </script>
 </body></html>"#,
+        vendor = immersion::vendor_script_tag(),
         glue = dioxus_liveview::interpreter_glue("/ws")
     ))
 }
@@ -861,6 +881,7 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
         .route("/trigger/{name}", post(trigger_route))
         .route("/resume/{id}", post(resume_route))
         .route("/boot", get(boot_route))
+        .route("/vendor/diffs/{file}", get(vendor_route))
         .route("/health", get(health_route))
         .nest_service("/mcp", crate::mcp::service())
         .route(

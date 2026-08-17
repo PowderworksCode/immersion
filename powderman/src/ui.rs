@@ -480,6 +480,9 @@ pub(crate) fn settings_fields() -> Vec<Field> {
         )
         .with_hint("hours shown, samples, smoothing")
         .with_default(serde_json::json!([1, 60, 3])),
+        Field::new("/diff_split", "Split diffs", FieldKind::Toggle)
+            .with_hint("show diffs side by side rather than stacked")
+            .with_default(serde_json::json!(false)),
         Field::new(
             "/ui_scale",
             "Resolution scale",
@@ -558,6 +561,16 @@ fn kinds() -> Vec<EditorKind> {
         EditorKind {
             id: "files",
             label: "Files",
+            targets: true,
+        },
+        EditorKind {
+            id: "code",
+            label: "Code",
+            targets: true,
+        },
+        EditorKind {
+            id: "diff",
+            label: "Diff",
             targets: true,
         },
     ]
@@ -917,6 +930,11 @@ pub fn App() -> Element {
                 }
                 "data" => crate::editors::ed_data(&s, arg.clone()),
                 "files" => crate::editors::ed_files(arg.clone()),
+                "code" => crate::editors::ed_code(arg.clone()),
+                "diff" => crate::editors::ed_diff(
+                    arg.clone(),
+                    settings_doc["diff_split"].as_bool().unwrap_or(false),
+                ),
                 other => rsx! { div { class: "empty", "unknown editor {other}" } },
             }
         },
