@@ -120,6 +120,14 @@ pub struct SetTargetArgs {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct MoveArgs {
+    /// The tab's current position (0-based).
+    pub from: u64,
+    /// Where it should end up.
+    pub to: u64,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SwapArgs {
     /// One area id.
     pub a: u64,
@@ -368,6 +376,14 @@ impl Workbench {
             "workspace.add",
             json!({ "name": a.name, "layout": a.layout }),
         )
+    }
+
+    #[tool(description = "Move a workspace tab to another position")]
+    async fn workspace_move(
+        &self,
+        Parameters(a): Parameters<MoveArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        run("workspace.move", json!({ "from": a.from, "to": a.to }))
     }
 
     #[tool(description = "Duplicate a workspace tab")]

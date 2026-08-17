@@ -92,6 +92,34 @@ impl Workspaces {
     /// tab. `active` is kept in range and, when the closed tab was at or
     /// before it, shifted so it points at the same neighbour a user would
     /// expect rather than jumping.
+    /// Move a tab to a new position, carrying the active selection with it —
+    /// reordering must not change which workspace you are looking at, which
+    /// is what happens if the index is left pointing at a neighbour.
+    pub fn move_tab(&mut self, from: usize, to: usize) -> bool {
+        let last = self.tabs.len().saturating_sub(1);
+        if from > last || to > last || from == to {
+            return false;
+        }
+        let active_name_is = |ws: &Self, i: usize| i == ws.active;
+        let was_active = active_name_is(self, from);
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        self.active = if was_active {
+            to
+        } else {
+            // The active tab did not move, but the indices around it did.
+            let mut a = self.active;
+            if from < a {
+                a -= 1;
+            }
+            if to <= a {
+                a += 1;
+            }
+            a.min(last)
+        };
+        true
+    }
+
     pub fn close(&mut self, index: usize) -> bool {
         if self.tabs.len() <= 1 || index >= self.tabs.len() {
             return false;
@@ -168,5 +196,59 @@ mod tests {
         let w = ws();
         let json = serde_json::to_string(&w).unwrap();
         assert_eq!(w, serde_json::from_str::<Workspaces>(&json).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod move_tests {
+    use super::*;
+    use crate::Layout;
+
+    fn ws(n: usize) -> Workspaces {
+        let mut w = Workspaces::new("0", Layout::single("runs"));
+        for i in 1..n {
+            w.add(&i.to_string(), Layout::single("runs"));
+        }
+        w
+    }
+
+    fn names(w: &Workspaces) -> Vec<String> {
+        w.tabs.iter().map(|t| t.name.clone()).collect()
+    }
+
+    #[test]
+    fn a_tab_moves_and_takes_the_selection_with_it() {
+        // Reordering must not change which workspace you are looking at —
+        // dragging the tab you are on to the front and finding yourself in a
+        // different workspace is the bug this exists to prevent.
+        let mut w = ws(4);
+        w.active = 2;
+        assert!(w.move_tab(2, 0));
+        assert_eq!(names(&w), ["2", "0", "1", "3"]);
+        assert_eq!(w.active, 0, "the moved tab is still the active one");
+    }
+
+    #[test]
+    fn moving_another_tab_leaves_the_selection_where_it_looks() {
+        let mut w = ws(4);
+        w.active = 1; // looking at "1"
+        assert!(w.move_tab(3, 0)); // drag the last tab to the front
+        assert_eq!(names(&w), ["3", "0", "1", "2"]);
+        assert_eq!(w.tabs[w.active].name, "1", "still looking at the same tab");
+
+        let mut w = ws(4);
+        w.active = 2; // looking at "2"
+        assert!(w.move_tab(0, 3)); // drag the first tab to the end
+        assert_eq!(names(&w), ["1", "2", "3", "0"]);
+        assert_eq!(w.tabs[w.active].name, "2", "still looking at the same tab");
+    }
+
+    #[test]
+    fn a_move_that_cannot_happen_is_refused() {
+        let mut w = ws(3);
+        assert!(!w.move_tab(0, 0), "a tab does not move onto itself");
+        assert!(!w.move_tab(5, 0), "no such tab");
+        assert!(!w.move_tab(0, 5), "no such position");
+        assert_eq!(names(&w), ["0", "1", "2"], "and nothing changed");
     }
 }
