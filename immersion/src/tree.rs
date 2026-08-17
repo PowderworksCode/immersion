@@ -36,6 +36,10 @@ pub struct TreeRow {
     /// Whether the row can expand. A branch with no children yet still shows
     /// a caret; the callback answers when it opens.
     pub has_children: bool,
+    /// Icon name from the sprite. Blender's Outliner marks every row by what
+    /// it is, which is what lets you skim a tree instead of reading it.
+    /// Empty for a row that would rather not say.
+    pub icon: String,
 }
 
 #[derive(Props, Clone, PartialEq)]
@@ -125,6 +129,9 @@ fn tree_row(
                 }
             },
             span { class: "im-tree-caret", "{caret}" }
+            if !row.icon.is_empty() {
+                span { class: "im-tree-icon", dangerous_inner_html: "{crate::icons::icon(&row.icon)}" }
+            }
             span { class: "im-tree-label", "{row.label}" }
             if !row.preview.is_empty() {
                 span { class: "im-tree-preview", "{row.preview}" }
@@ -152,6 +159,7 @@ pub fn value_children(doc: &serde_json::Value, pointer: &str) -> Vec<TreeRow> {
                 label: k.clone(),
                 preview: preview(v),
                 has_children: branches(v),
+                icon: value_icon(v).to_string(),
             })
             .collect(),
         serde_json::Value::Array(items) => items
@@ -162,9 +170,24 @@ pub fn value_children(doc: &serde_json::Value, pointer: &str) -> Vec<TreeRow> {
                 label: format!("[{i}]"),
                 preview: preview(v),
                 has_children: branches(v),
+                icon: value_icon(v).to_string(),
             })
             .collect(),
         _ => Vec::new(),
+    }
+}
+
+/// What a value is, as a glyph. The type is the useful thing to show in a
+/// data tree: the preview already says the value, and the shape is what you
+/// are scanning for when you are looking for the array among the strings.
+pub fn value_icon(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Object(_) => "braces",
+        serde_json::Value::Array(_) => "brackets",
+        serde_json::Value::String(_) => "letter-case",
+        serde_json::Value::Number(_) => "hash",
+        serde_json::Value::Bool(_) => "toggle-left",
+        serde_json::Value::Null => "circle-dot",
     }
 }
 
@@ -228,6 +251,31 @@ mod tests {
         let below = value_children(&doc, "/a~1b");
         assert_eq!(below[0].pointer, "/a~1b/c");
         assert_eq!(below[0].preview, "1");
+    }
+
+    #[test]
+    fn a_row_says_what_kind_of_value_it_is() {
+        // The type is what you scan a data tree for; the preview already says
+        // the value. Every shape gets a distinct glyph so the scan works.
+        let doc = json!({ "o": {"a": 1}, "a": [1], "s": "x", "n": 1, "b": true, "z": null });
+        let rows = value_children(&doc, "");
+        let by: std::collections::HashMap<&str, &str> = rows
+            .iter()
+            .map(|r| (r.label.as_str(), r.icon.as_str()))
+            .collect();
+        assert_eq!(by["o"], "braces");
+        assert_eq!(by["a"], "brackets");
+        assert_eq!(by["s"], "letter-case");
+        assert_eq!(by["n"], "hash");
+        assert_eq!(by["b"], "toggle-left");
+        assert_eq!(by["z"], "circle-dot");
+        let mut icons: Vec<&str> = by.values().copied().collect();
+        icons.sort_unstable();
+        icons.dedup();
+        assert_eq!(icons.len(), 6, "two shapes share a glyph: {by:?}");
+        for i in icons {
+            assert!(crate::icons::has_icon(i), "{i} is not in the sprite");
+        }
     }
 
     #[test]
