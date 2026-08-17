@@ -521,7 +521,7 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
                             button {
                                 class: "im-tab-x",
                                 onclick: move |e| { e.stop_propagation(); cmd.call(("workspace.close".to_string(), serde_json::json!({ "index": i }))); },
-                                "✕"
+                                dangerous_inner_html: "{crate::icons::icon(\"x\")}",
                             }
                         }
                     }
@@ -607,6 +607,9 @@ fn leaf_header(
                     "View"
                 }
                 span { class: "im-tools",
+                    // T and N stay letters rather than glyphs: they are the
+                    // names of the keys that do the same thing, which is what
+                    // Blender calls them and how anyone learns the shortcut.
                     if has_toolbar {
                         button {
                             class: if regions.toolbar { "im-btn active" } else { "im-btn" },
@@ -628,15 +631,18 @@ fn leaf_header(
                         }
                     }
                     button { class: "im-btn", title: "split horizontally",
-                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "row" }))), "⬒" }
+                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "row" }))),
+                        dangerous_inner_html: "{crate::icons::icon(\"layout-columns\")}" }
                     button { class: "im-btn", title: "split vertically",
-                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "col" }))), "◧" }
+                        onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "col" }))),
+                        dangerous_inner_html: "{crate::icons::icon(\"layout-rows\")}" }
                     // Close-is-join: the sibling absorbs the space. The last
                     // area has no sibling, so it gets no close button rather
                     // than a button that refuses.
                     if !lone {
                         button { class: "im-btn", title: "close (join into neighbor)",
-                            onclick: move |_| cmd.call(("join".to_string(), serde_json::json!({ "id": id }))), "✕" }
+                            onclick: move |_| cmd.call(("join".to_string(), serde_json::json!({ "id": id }))),
+                            dangerous_inner_html: "{crate::icons::icon(\"x\")}" }
                     }
                 }
             }

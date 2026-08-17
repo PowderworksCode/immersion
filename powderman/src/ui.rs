@@ -870,6 +870,17 @@ pub fn App() -> Element {
                     button { class: "im-menubtn", "data-im-menu-click": "{edit_menu(mac())}", "Edit" }
                     button { class: "im-menubtn", "data-im-menu-click": "{help_menu(mac())}", "Help" }
                 }
+                // The palette answered only to F3, which is a palette
+                // newcomers never find. Both references put a search in the
+                // topbar; this is that, opening the thing that already exists.
+                button {
+                    class: "im-menubtn topbar-search",
+                    title: "search commands",
+                    "data-tip": "Commands",
+                    "data-tip-key": "{pretty_chord(\"F3\", mac())}",
+                    onclick: move |_| palette_open.set(true),
+                    dangerous_inner_html: "{immersion::icon(\"search\")}",
+                }
                 WorkspaceTabs {
                     names: ws.read().tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
                     active: ws.read().active,
