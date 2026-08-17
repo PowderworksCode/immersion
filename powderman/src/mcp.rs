@@ -42,6 +42,13 @@ pub struct SplitArgs {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DepthArgs {
+    /// How many undo steps to take. Past the end of the stack unwinds as far
+    /// as there is history rather than failing.
+    pub depth: usize,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct IdArgs {
     /// The area id.
     pub id: u64,
@@ -439,6 +446,18 @@ impl Workbench {
     async fn undo(&self) -> Result<CallToolResult, McpError> {
         Ok(CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string(&crate::daemon::undo("agent")).unwrap_or_default(),
+        )]))
+    }
+
+    #[tool(
+        description = "Step back several layout changes at once, to a point in the undo history. depth is how many steps to take; every one lands on the redo stack. Read the names with get_state's log."
+    )]
+    async fn undo_to(
+        &self,
+        Parameters(a): Parameters<DepthArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string(&crate::daemon::undo_to("agent", a.depth)).unwrap_or_default(),
         )]))
     }
 
