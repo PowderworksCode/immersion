@@ -754,7 +754,7 @@ pub fn App() -> Element {
         // makes it.
         if editor == "chart" {
             let target = ws.read().current().layout.target_of(id);
-            return crate::editors::chart_sidebar(
+            return crate::charts::chart_sidebar(
                 &settings.read().clone(),
                 target,
                 on_setting,
@@ -812,7 +812,7 @@ pub fn App() -> Element {
                 "data" => crate::editors::ed_data(&s, arg.clone()),
                 "files" => crate::editors::ed_files(arg.clone()),
                 "code" => crate::editors::ed_code(arg.clone()),
-                "chart" => crate::editors::ed_chart(&s, &settings_doc, arg.clone()),
+                "chart" => crate::charts::ed_chart(&s, &settings_doc, arg.clone()),
                 "diff" => crate::editors::ed_diff(
                     arg.clone(),
                     settings_doc["diff_split"].as_bool().unwrap_or(false),

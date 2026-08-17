@@ -267,11 +267,30 @@ pub fn fleet() -> Vec<FleetAgent> {
 pub fn seed(db: &Db) {
     let now = now_ms();
     let conn = db.lock().expect("db");
-    let empty: i64 = conn
+    // Seed when there is nothing, and re-seed when what is there has aged out
+    // of the window the charts draw. A preview machine idle-stops and wakes
+    // hours later with the same disk: the runs are still there, so the old
+    // check skipped, and every chart drew an empty window because the seeded
+    // history was entirely in the past. A demo that is only convincing for its
+    // first few hours is not a demo.
+    let newest: i64 = conn
+        .query_row("SELECT COALESCE(MAX(at), 0) FROM samples", [], |r| r.get(0))
+        .unwrap_or(0);
+    let runs: i64 = conn
         .query_row("SELECT COUNT(*) FROM runs", [], |r| r.get(0))
         .unwrap_or(1);
-    if empty > 0 {
+    // An hour is the chart window; past that a visitor sees bare axes.
+    let stale = now - newest > 60 * MIN;
+    if runs > 0 && !stale {
         return;
+    }
+    if stale {
+        // Everything seeded is time-relative, so the old rows cannot be
+        // salvaged — they are replaced, not appended to.
+        for table in ["samples", "steps", "runs"] {
+            let _ = conn.execute(&format!("DELETE FROM {table}"), []);
+        }
+        println!("demo mode: history had aged out; re-seeding");
     }
 
     for r in RUNS {
@@ -778,6 +797,52 @@ mod tests {
         // Nothing outside the fabricated set, whatever is asked for.
         assert!(file_children("/etc").is_empty());
         assert!(file_children("/../..").is_empty());
+    }
+
+    /// A woken preview: the disk still has the old seed, every timestamp is
+    /// hours old, and the charts would draw an empty window. Seeding again is
+    /// the only way back, and doing it must not double the history.
+    #[test]
+    fn stale_history_is_replaced_not_kept() {
+        let db = db();
+        seed(&db);
+        let count = |sql: &str| -> i64 {
+            db.lock()
+                .expect("db")
+                .query_row(sql, [], |r| r.get(0))
+                .expect("count")
+        };
+        let runs_before = count("SELECT COUNT(*) FROM runs");
+        let samples_before = count("SELECT COUNT(*) FROM samples");
+
+        // Age everything past the chart window.
+        {
+            let conn = db.lock().expect("db");
+            let old = 8 * 60 * MIN;
+            conn.execute("UPDATE samples SET at = at - ?1", [old])
+                .expect("age samples");
+            conn.execute(
+                "UPDATE runs SET created_at = created_at - ?1, updated_at = updated_at - ?1",
+                [old],
+            )
+            .expect("age runs");
+        }
+        seed(&db);
+        assert_eq!(
+            count("SELECT COUNT(*) FROM runs"),
+            runs_before,
+            "not doubled"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM samples"),
+            samples_before,
+            "not doubled"
+        );
+        let fresh = count(&format!(
+            "SELECT COUNT(*) FROM samples WHERE at > {}",
+            now_ms() - 60 * MIN
+        ));
+        assert!(fresh > 0, "the window has samples again");
     }
 
     #[test]

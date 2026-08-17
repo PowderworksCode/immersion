@@ -1,3 +1,4 @@
+mod charts;
 mod cron;
 mod daemon;
 mod db;
