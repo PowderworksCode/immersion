@@ -5,10 +5,10 @@
   --im-bg: #1a1a1d;
   --im-seam: #0e0e10;
   --im-surface: #232327;
-  --im-header: #2b2b30;
+  --im-header: #33333a;
   --im-text: #e8e8e4;
-  --im-border: #3a3a40;
-  --im-text-muted: #8b8b85;
+  --im-border: #47474f;
+  --im-text-muted: #a2a29c;
   --im-accent: #3987e5;
   --im-fill: 0%;
   --im-input-bg: #232327;
@@ -56,18 +56,18 @@
   display: flex;
   align-items: center;
   gap: .35rem;
-  padding: .12rem .3rem;
+  padding: .16rem .35rem;
   background: var(--im-header);
   border-bottom: 1px solid var(--im-seam);
   flex: none;
-  height: 1.55rem;
+  height: 1.75rem;
   user-select: none;
 }
 
 .im-kind {
   font: inherit;
-  font-size: .72rem;
-  font-weight: 500;
+  font-size: .78rem;
+  font-weight: 600;
   color: var(--im-text);
   background: var(--im-surface);
   border: 1px solid var(--im-border);
@@ -83,18 +83,18 @@
 .im-kind:focus { outline: none; border-color: var(--im-accent); }
 
 .im-title {
-  font-size: .72rem;
+  font-size: .76rem;
   color: var(--im-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.im-tools { margin-left: auto; display: flex; gap: .1rem; opacity: .35; }
+.im-tools { margin-left: auto; display: flex; gap: .1rem; opacity: .72; }
 .im-header:hover .im-tools { opacity: 1; }
 .im-btn {
   font: inherit;
-  font-size: .72rem;
+  font-size: .76rem;
   line-height: 1;
   padding: .1rem .28rem;
   color: var(--im-text-muted);
@@ -359,10 +359,10 @@
 /* Status bar: Blender's bottom strip. Left = key hints, right = host segment. */
 .im-statusbar {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 1rem; flex: none; height: 1.5rem; padding: 0 .6rem;
+  gap: 1rem; flex: none; height: 1.65rem; padding: 0 .7rem;
   background: var(--im-panel);
   border-top: 1px solid var(--im-border);
-  font-size: .72rem; color: var(--im-text-muted);
+  font-size: .76rem; color: var(--im-text-muted);
   overflow: hidden; white-space: nowrap;
 }
 .im-status-hints { display: flex; align-items: center; gap: 1rem; min-width: 0; overflow: hidden; }
@@ -371,7 +371,7 @@
   font-family: var(--im-mono); color: var(--im-text);
   background: var(--im-input-bg);
   border: 1px solid var(--im-border); border-radius: 3px;
-  padding: 0 .28rem; font-size: .68rem;
+  padding: 0 .3rem; font-size: .72rem;
 }
 .im-hint-label { color: var(--im-text-muted); }
 .im-status-right { flex: none; color: var(--im-text-muted); }
@@ -400,7 +400,7 @@
 /* The target chip — Blender's data-block selector. Reads as a breadcrumb,
    not a button, until hovered. */
 .im-target {
-  font: inherit; font-size: .72rem;
+  font: inherit; font-size: .76rem;
   background: var(--im-input-bg); color: var(--im-text);
   border: 1px solid var(--im-border); border-radius: 3px;
   padding: 0 .4rem; margin-left: .3rem; cursor: pointer;
@@ -530,8 +530,8 @@
 /* Menu-bar / header dropdown buttons, and the chord column in a menu row. */
 .im-viewmenu, .im-menubtn {
   border: 0; background: transparent; cursor: pointer; border-radius: 3px;
-  color: var(--im-text-muted); font: inherit; font-size: .74rem;
-  padding: .1rem .4rem; line-height: 1.4;
+  color: var(--im-text-muted); font: inherit; font-size: .78rem;
+  padding: .1rem .45rem; line-height: 1.4;
 }
 .im-viewmenu:hover, .im-menubtn:hover { background: var(--im-header); color: var(--im-text); }
 /* Icon, then label, then the chord pushed to the far right. space-between
