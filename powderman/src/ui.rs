@@ -124,7 +124,8 @@ pub(crate) fn tile(k: &str, v: String, of: Option<String>) -> Element {
 }
 
 use crate::menus::{
-    edit_menu, favorites_menu_json, file_menu, help_menu, pie_menu_json, view_menu, window_menu,
+    edit_menu, favorites_menu_json, file_menu, help_menu, pie_menu_json, repeat_history_menu,
+    undo_history_menu, view_menu, window_menu,
 };
 use immersion::{
     AreaId, Areas, Chrome, ContextMenu, Field, FieldKind, Keymap, KeymapHelp, Layout, LayoutFile,
@@ -153,6 +154,8 @@ use immersion::{
 pub(crate) enum HostAction {
     Undo,
     Redo,
+    /// Step back to a chosen point in the history, rather than one at a time.
+    UndoTo,
     RepeatLast,
     SetSetting,
     FavoriteAdd,
@@ -163,6 +166,7 @@ impl HostAction {
     const ALL: &'static [HostAction] = &[
         HostAction::Undo,
         HostAction::Redo,
+        HostAction::UndoTo,
         HostAction::RepeatLast,
         HostAction::SetSetting,
         HostAction::FavoriteAdd,
@@ -173,6 +177,7 @@ impl HostAction {
         match self {
             HostAction::Undo => "undo",
             HostAction::Redo => "redo",
+            HostAction::UndoTo => "undo_to",
             HostAction::RepeatLast => "repeat_last",
             HostAction::SetSetting => "set_setting",
             HostAction::FavoriteAdd => "favorite_add",
@@ -439,6 +444,10 @@ pub fn App() -> Element {
         match route(&action) {
             Route::Host(HostAction::Undo) => ws.set(crate::daemon::undo("ui")),
             Route::Host(HostAction::Redo) => ws.set(crate::daemon::redo("ui")),
+            Route::Host(HostAction::UndoTo) => {
+                let depth = params.get("depth").and_then(|d| d.as_u64()).unwrap_or(1);
+                ws.set(crate::daemon::undo_to("ui", depth as usize));
+            }
             Route::Host(HostAction::RepeatLast) => ws.set(crate::daemon::repeat_last("ui")),
             Route::Host(HostAction::SetSetting) => {
                 let pointer = params.get("pointer").and_then(|p| p.as_str()).unwrap_or("");
@@ -772,6 +781,8 @@ pub fn App() -> Element {
                 span { class: "menubar",
                     button { class: "im-menubtn", "data-im-menu-click": "{file_menu()}", "File" }
                     button { class: "im-menubtn", "data-im-menu-click": "{edit_menu(mac())}", "Edit" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{undo_history_menu(&crate::daemon::undo_history())}", "Undo History" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{repeat_history_menu(&crate::daemon::command_log())}", "Repeat History" }
                     button { class: "im-menubtn", "data-im-menu-click": "{view_menu(&settings())}", "View" }
                     button { class: "im-menubtn", "data-im-menu-click": "{window_menu(ws.read().active, mac())}", "Window" }
                     button { class: "im-menubtn", "data-im-menu-click": "{help_menu(mac())}", "Help" }
@@ -1128,6 +1139,22 @@ mod parity_tests {
         }
         for a in menu_actions(&view_menu(&crate::daemon::settings_defaults())) {
             actions.push(("view menu (topbar)".into(), a));
+        }
+        // Both are built from live history, so they are harvested against a
+        // synthetic one — the rows are what matters, not where they came from.
+        let history = vec![(1, "split".to_string()), (2, "set_editor".to_string())];
+        for a in menu_actions(&undo_history_menu(&history)) {
+            actions.push(("undo history".into(), a));
+        }
+        let log = vec![LogEntry {
+            name: "split".into(),
+            params: serde_json::json!({ "id": 1, "dir": "row" }),
+            at: 0,
+            ok: true,
+            source: "ui".into(),
+        }];
+        for a in menu_actions(&repeat_history_menu(&log)) {
+            actions.push(("repeat history".into(), a));
         }
         for a in menu_actions(&edit_menu(false)) {
             actions.push(("edit menu".into(), a));

@@ -49,8 +49,8 @@ struct Shared {
     /// Undo is a stack of past workbench values — the layout is one serde
     /// value, so a snapshot is the whole history entry, no diffing. Redo holds
     /// what undo popped, cleared the moment a new edit lands.
-    undo: Mutex<Vec<immersion::Workspaces>>,
-    redo: Mutex<Vec<immersion::Workspaces>>,
+    undo: Mutex<Vec<UndoStep>>,
+    redo: Mutex<Vec<UndoStep>>,
     timers: Mutex<Vec<crate::ui::TimerRow>>,
     in_flight: Mutex<HashSet<String>>,
     /// Every command that ran, newest last — Blender's Info log. Capped; it is
@@ -238,6 +238,29 @@ pub fn settings() -> serde_json::Value {
 /// Apply one widget edit to the settings document and persist. Not on the
 /// layout undo stack — a preference is not something you undo with the same
 /// Ctrl-Z that reverts a split.
+/// One entry on the undo stack: the workbench as it was, and the name of the
+/// command that changed it. The state alone was enough to step back one at a
+/// time; a history you can *look at* needs the label, and Blender's Undo
+/// History is a list of exactly these names.
+#[derive(Clone)]
+pub struct UndoStep {
+    /// The command that took the workbench out of this state.
+    pub label: String,
+    pub state: immersion::Workspaces,
+}
+
+/// The undo stack, newest first, as `(depth, label)` — depth is how many
+/// steps back `undo_to` must go to reach the state before that command.
+pub fn undo_history() -> Vec<(usize, String)> {
+    let s = shared();
+    let u = s.undo.lock().expect("undo");
+    u.iter()
+        .rev()
+        .enumerate()
+        .map(|(i, step)| (i + 1, step.label.clone()))
+        .collect()
+}
+
 /// Append to the Info log. One function so every mutation — bus command or
 /// host mutation (undo, a settings write) — lands in the same attributed
 /// stream. A log that only covered layout commands told a partial story:
@@ -327,7 +350,10 @@ pub fn dispatch_from(
     // is not something you undo) — capping depth so history is bounded.
     if s.commands.records_undo(name) {
         let mut u = s.undo.lock().expect("undo");
-        u.push(w.clone());
+        u.push(UndoStep {
+            label: name.to_string(),
+            state: w.clone(),
+        });
         if u.len() > 100 {
             u.remove(0);
         }
@@ -386,7 +412,10 @@ pub fn set_workspaces_from_json(source: &str, json: &str) -> immersion::Workspac
         Ok(new) => {
             log_command(source, "load_layout", serde_json::Value::Null, true);
             let mut w = s.workspaces.lock().expect("workspaces");
-            s.undo.lock().expect("undo").push(w.clone());
+            s.undo.lock().expect("undo").push(UndoStep {
+                label: "load_layout".to_string(),
+                state: w.clone(),
+            });
             *w = new;
             persist_workspaces(&s, &w);
             w.clone()
@@ -449,8 +478,11 @@ pub fn undo(source: &str) -> immersion::Workspaces {
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
     let took = if let Some(prev) = s.undo.lock().expect("undo").pop() {
-        s.redo.lock().expect("redo").push(w.clone());
-        *w = prev;
+        s.redo.lock().expect("redo").push(UndoStep {
+            label: prev.label.clone(),
+            state: w.clone(),
+        });
+        *w = prev.state;
         persist_workspaces(&s, &w);
         true
     } else {
@@ -466,14 +498,54 @@ pub fn redo(source: &str) -> immersion::Workspaces {
     let s = shared();
     let mut w = s.workspaces.lock().expect("workspaces");
     let took = if let Some(next) = s.redo.lock().expect("redo").pop() {
-        s.undo.lock().expect("undo").push(w.clone());
-        *w = next;
+        s.undo.lock().expect("undo").push(UndoStep {
+            label: next.label.clone(),
+            state: w.clone(),
+        });
+        *w = next.state;
         persist_workspaces(&s, &w);
         true
     } else {
         false
     };
     log_command(source, "redo", serde_json::Value::Null, took);
+    w.clone()
+}
+
+/// Step back to a named point in the history — Blender's Undo History, where
+/// picking a row returns the workbench to just before that command. `depth` is
+/// how many steps to take; every one of them lands on the redo stack, so
+/// jumping back ten and then redoing is the same walk in reverse.
+///
+/// A depth past the end of the stack unwinds as far as there is history rather
+/// than refusing: a stale menu built before another client undid something
+/// should land you at the beginning, not do nothing.
+pub fn undo_to(source: &str, depth: usize) -> immersion::Workspaces {
+    let s = shared();
+    let mut w = s.workspaces.lock().expect("workspaces");
+    let mut took = 0;
+    {
+        let mut u = s.undo.lock().expect("undo");
+        let mut r = s.redo.lock().expect("redo");
+        for _ in 0..depth {
+            let Some(prev) = u.pop() else { break };
+            r.push(UndoStep {
+                label: prev.label.clone(),
+                state: w.clone(),
+            });
+            *w = prev.state;
+            took += 1;
+        }
+    }
+    if took > 0 {
+        persist_workspaces(&s, &w);
+    }
+    log_command(
+        source,
+        "undo_to",
+        serde_json::json!({ "depth": depth }),
+        took > 0,
+    );
     w.clone()
 }
 

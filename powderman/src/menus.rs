@@ -74,6 +74,99 @@ pub(crate) fn favorites_menu_json(settings: &serde_json::Value) -> String {
 
 /// The menu-bar dropdowns — Blender's Window / Edit / Help, as click-open
 /// menus. Each item is an (action, params) the same router handles: host
+/// Undo History: the stack as a list you can jump into, rather than a key you
+/// press repeatedly and hope. Blender's is exactly this — the steps, newest
+/// first, with the one you are on at the top — and picking a row returns the
+/// workbench to just before that command ran.
+///
+/// Built from the live stack each time it opens, so it is never a stale
+/// picture of a history another client has already changed.
+pub(crate) fn undo_history_menu(history: &[(usize, String)]) -> String {
+    if history.is_empty() {
+        return menu_json(&[MenuItem::new("Nothing to undo", "noop", Value::Null)]);
+    }
+    let mut items = vec![
+        MenuItem::new("Undo", "undo", Value::Null).with_chord("Mod+Z"),
+        MenuItem::new("Redo", "redo", Value::Null).with_chord("Mod+Shift+Z"),
+        MenuItem::sep(),
+    ];
+    // A cap, because the stack holds 100 and a menu that long is a wall.
+    for (depth, label) in history.iter().take(20) {
+        items.push(MenuItem::new(
+            &format!("{label}  ({depth} back)"),
+            "undo_to",
+            json!({ "depth": depth }),
+        ));
+    }
+    menu_json(&items)
+}
+
+/// Repeat History: the commands that ran, newest first, each re-runnable.
+/// Blender's lists recent operators; ours is the Info log filtered the same
+/// way Repeat Last filters it — successful, and something that changed the
+/// layout, since repeating a tab switch or a command that already failed is
+/// not what the menu means.
+///
+/// The rows carry the original params, so this is the one surface where the
+/// exact command an agent ran is a thing a person can run again.
+pub(crate) fn repeat_history_menu(log: &[crate::ui::LogEntry]) -> String {
+    let commands = crate::workflows::commands();
+    let mut seen = Vec::new();
+    let mut items = vec![
+        MenuItem::new("Repeat last", "repeat_last", Value::Null).with_chord("Shift+R"),
+        MenuItem::sep(),
+    ];
+    for entry in log.iter().rev() {
+        if !entry.ok || !commands.records_undo(&entry.name) {
+            continue;
+        }
+        // The same command with the same params twice in a row is one row —
+        // a list of fifteen identical splits is not a history anyone reads.
+        let key = (entry.name.clone(), entry.params.clone());
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key);
+        items.push(MenuItem::new(
+            &format!("{}  {}", entry.name, brief(&entry.params)),
+            &entry.name,
+            entry.params.clone(),
+        ));
+        if items.len() > 16 {
+            break;
+        }
+    }
+    if items.len() == 2 {
+        items.push(MenuItem::new("Nothing repeatable yet", "noop", Value::Null));
+    }
+    menu_json(&items)
+}
+
+/// A params object as a short `k=v` line for a menu row. Long values are cut:
+/// a whole serialized layout in a menu label is not a label.
+fn brief(params: &Value) -> String {
+    let Some(map) = params.as_object() else {
+        return String::new();
+    };
+    let mut parts: Vec<String> = map
+        .iter()
+        .map(|(k, v)| {
+            let text = match v {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            let text: String = if text.chars().count() > 14 {
+                text.chars().take(13).chain("…".chars()).collect()
+            } else {
+                text
+            };
+            format!("{k}={text}")
+        })
+        .collect();
+    parts.sort();
+    parts.join(" ")
+}
+
 /// File: the workbench as a thing you make, open and keep. Blender's File menu
 /// is new/open/save of a .blend; the layout is our document, so it is the
 /// workspaces you add and the JSON you round-trip them through.
@@ -192,4 +285,109 @@ pub(crate) fn help_menu(_mac: bool) -> String {
         MenuItem::sep(),
         MenuItem::new("Splash screen", "splash", Value::Null),
     ])
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use crate::ui::LogEntry;
+
+    fn rows(menu: &str) -> Vec<serde_json::Value> {
+        serde_json::from_str(menu).expect("menu JSON parses")
+    }
+
+    fn entry(name: &str, params: Value, ok: bool) -> LogEntry {
+        LogEntry {
+            name: name.to_string(),
+            params,
+            at: 0,
+            ok,
+            source: "ui".into(),
+        }
+    }
+
+    /// An empty menu renders as an empty box — the shim draws what it is
+    /// given. A history with nothing in it has to say so.
+    #[test]
+    fn an_empty_history_still_says_something() {
+        let menu = rows(&undo_history_menu(&[]));
+        assert_eq!(menu.len(), 1);
+        assert_eq!(menu[0]["label"], "Nothing to undo");
+        let menu = rows(&repeat_history_menu(&[]));
+        assert!(
+            menu.iter().any(|r| r["label"] == "Nothing repeatable yet"),
+            "{menu:?}"
+        );
+    }
+
+    /// Each row carries the depth that reaches it. Off by one here means
+    /// picking "split (1 back)" lands somewhere else entirely.
+    #[test]
+    fn the_undo_rows_carry_the_depth_that_reaches_them() {
+        let history = vec![
+            (1, "split".to_string()),
+            (2, "set_editor".to_string()),
+            (3, "join".to_string()),
+        ];
+        let depths: Vec<u64> = rows(&undo_history_menu(&history))
+            .into_iter()
+            .filter(|r| r["action"] == "undo_to")
+            .map(|r| r["params"]["depth"].as_u64().expect("a depth"))
+            .collect();
+        assert_eq!(depths, vec![1, 2, 3]);
+    }
+
+    /// The rows are re-runnable commands with the params the log recorded. A
+    /// row whose params the registry rejects is a menu item that does nothing,
+    /// which is the whole failure mode a repeat history has.
+    #[test]
+    fn the_repeat_rows_run_with_the_params_the_log_kept() {
+        let log = vec![
+            entry("split", json!({ "id": 1, "dir": "row" }), true),
+            entry("set_editor", json!({ "id": 1, "editor": "runs" }), true),
+        ];
+        let commands = crate::workflows::commands();
+        let mut ws = immersion::Workspaces::new("test", Layout::single("runs"));
+        for row in rows(&repeat_history_menu(&log)) {
+            let Some(action) = row["action"].as_str() else {
+                continue;
+            };
+            if action == "repeat_last" {
+                continue;
+            }
+            commands
+                .run(&mut ws, action, &row["params"])
+                .unwrap_or_else(|e| panic!("repeat row {action} does nothing: {e}"));
+        }
+    }
+
+    /// Repeating a command that already failed re-runs a failure; repeating a
+    /// tab switch is not what anyone means by repeat. Both are the filter
+    /// Repeat Last already uses, applied to the list as well as the key.
+    #[test]
+    fn failed_and_navigational_commands_are_not_offered() {
+        let log = vec![
+            entry("split", json!({ "id": 99, "dir": "row" }), false),
+            entry("workspace.switch", json!({ "index": 1 }), true),
+            entry("join", json!({ "id": 2 }), true),
+        ];
+        let offered: Vec<String> = rows(&repeat_history_menu(&log))
+            .into_iter()
+            .filter_map(|r| r["action"].as_str().map(str::to_string))
+            .filter(|a| a != "repeat_last")
+            .collect();
+        assert_eq!(offered, vec!["join"], "offered: {offered:?}");
+    }
+
+    /// Fifteen identical splits is not a history anyone reads.
+    #[test]
+    fn the_same_command_twice_is_one_row() {
+        let same = || entry("split", json!({ "id": 1, "dir": "row" }), true);
+        let log = vec![same(), same(), same()];
+        let n = rows(&repeat_history_menu(&log))
+            .into_iter()
+            .filter(|r| r["action"] == "split")
+            .count();
+        assert_eq!(n, 1);
+    }
 }
