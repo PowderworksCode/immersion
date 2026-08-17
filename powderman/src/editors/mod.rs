@@ -33,21 +33,42 @@ pub(crate) mod timers;
 pub(crate) struct Editor {
     pub kind: EditorKind,
     pub draw: fn(&Draw) -> Element,
+    /// The N panel beside this editor — Blender's sidebar region. An editor
+    /// that has something to say about what it is showing says it here, in
+    /// its own file, the way it already declares its hints. `None` leaves the
+    /// host's generic area properties in place.
+    pub sidebar: Option<fn(&Draw) -> Element>,
 }
 
 /// Every editor this host offers, in the order the dropdown lists them.
 pub(crate) fn editors() -> Vec<Editor> {
     fn e(kind: EditorKind, draw: fn(&Draw) -> Element) -> Editor {
-        Editor { kind, draw }
+        Editor {
+            kind,
+            draw,
+            sidebar: None,
+        }
+    }
+    /// The same, for an editor that brings its own sidebar.
+    fn n(kind: EditorKind, draw: fn(&Draw) -> Element, sidebar: fn(&Draw) -> Element) -> Editor {
+        Editor {
+            kind,
+            draw,
+            sidebar: Some(sidebar),
+        }
     }
     vec![
-        e(machine::kind(), |d| {
-            machine::ed_machine(&d.state, &d.settings)
-        }),
-        e(fleet::kind(), |d| fleet::ed_fleet(&d.state)),
-        e(runs::kind(), |d| {
-            runs::ed_runs(&d.state, d.area, d.open_run)
-        }),
+        n(
+            machine::kind(),
+            |d| machine::ed_machine(&d.state, &d.settings),
+            machine::sidebar,
+        ),
+        n(fleet::kind(), |d| fleet::ed_fleet(&d.state), fleet::sidebar),
+        n(
+            runs::kind(),
+            |d| runs::ed_runs(&d.state, d.area, d.open_run),
+            runs::sidebar,
+        ),
         e(actions::kind(), |d| actions::ed_actions(&d.state)),
         e(timers::kind(), |d| timers::ed_timers(&d.state)),
         e(runs::detail_kind(), |d| match &d.arg {
@@ -68,18 +89,56 @@ pub(crate) fn editors() -> Vec<Editor> {
             )
         }),
         e(data::kind(), |d| data::ed_data(&d.state, d.arg.clone())),
-        e(files::kind(), |d| files::ed_files(d.arg.clone())),
-        e(code::kind(), |d| code::ed_code(d.arg.clone())),
-        e(diff::kind(), |d| {
-            diff::ed_diff(
-                d.arg.clone(),
-                d.settings["diff_split"].as_bool().unwrap_or(false),
-            )
-        }),
-        e(crate::charts::kind(), |d| {
-            crate::charts::ed_chart(&d.state, &d.settings, d.arg.clone())
-        }),
+        n(
+            files::kind(),
+            |d| files::ed_files(d.arg.clone()),
+            files::sidebar,
+        ),
+        n(
+            code::kind(),
+            |d| code::ed_code(d.arg.clone()),
+            code::sidebar,
+        ),
+        n(
+            diff::kind(),
+            |d| {
+                diff::ed_diff(
+                    d.arg.clone(),
+                    d.settings["diff_split"].as_bool().unwrap_or(false),
+                )
+            },
+            diff::sidebar,
+        ),
+        n(
+            crate::charts::kind(),
+            |d| crate::charts::ed_chart(&d.state, &d.settings, d.arg.clone()),
+            // A chart's sidebar is the document that makes it — the spec
+            // editor, not a read-out. It used to be a special case in the
+            // host's render_sidebar; it is a registration now, like the rest.
+            |d| crate::charts::chart_sidebar(&d.settings, d.arg.clone(), d.on_setting, d.on_error),
+        ),
     ]
+}
+
+/// The sidebar this editor brings, if it brings one. The host falls back to
+/// its generic area properties when this is `None`.
+pub(crate) fn sidebar(d: &Draw) -> Option<Element> {
+    editors()
+        .into_iter()
+        .find(|e| e.kind.id == d.editor)
+        .and_then(|e| e.sidebar)
+        .map(|f| f(d))
+}
+
+/// One `name — value` row in a sidebar panel. Every sidebar is made of these,
+/// so they line up across editors rather than each inventing a layout.
+pub(crate) fn prop(k: &str, v: String) -> Element {
+    rsx! {
+        div { class: "area-props-row",
+            span { class: "k", "{k}" }
+            span { "{v}" }
+        }
+    }
 }
 
 /// The registry entries alone, for the chrome.
@@ -336,6 +395,24 @@ mod tests {
             Some(&"machine"),
             "the dropdown's order is the list's order, and machine leads it"
         );
+    }
+
+    /// The chart editor's sidebar *is* its spec editor — the thing that makes
+    /// a chart editable at all. It used to be an `if editor == "chart"` in the
+    /// host, which a later refactor of the host could drop without a compile
+    /// error. It is a registration now, and this is what notices if it goes.
+    #[test]
+    fn the_editors_that_declare_a_sidebar_have_one() {
+        let with: Vec<&str> = editors()
+            .iter()
+            .filter(|e| e.sidebar.is_some())
+            .map(|e| e.kind.id)
+            .collect();
+        for id in ["chart", "machine", "runs", "fleet", "code", "diff", "files"] {
+            assert!(with.contains(&id), "{id} lost its sidebar: {with:?}");
+        }
+        // And an editor with nothing to say still gets the generic panel.
+        assert!(!with.contains(&"info"));
     }
 
     /// Hints belong to the editor now. This catches the copy that used to

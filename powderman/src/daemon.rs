@@ -88,7 +88,7 @@ async fn drive(id: String) {
 
 /// The starter workbench: an "Overview" workspace with machine on top, runs
 /// below-left, fleet below-right. Only used when the database has none yet.
-fn default_workspaces() -> immersion::Workspaces {
+pub(crate) fn default_workspaces() -> immersion::Workspaces {
     let mut l = immersion::Layout::single("machine");
     if let Some(bottom) = l.split(1, immersion::Dir::Col, 0.45) {
         l.set_editor(bottom, "runs");
@@ -96,6 +96,9 @@ fn default_workspaces() -> immersion::Workspaces {
             l.set_editor(right, "fleet");
         }
     }
+    // With the N panel on the machine area, so a first visit meets the
+    // sidebar rather than having to find the N key.
+    l.toggle_region(1, immersion::Region::Sidebar);
     immersion::Workspaces::new("Overview", l)
 }
 

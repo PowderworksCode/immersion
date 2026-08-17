@@ -2,9 +2,12 @@
 
 use dioxus::prelude::*;
 
+use immersion::Panel;
+
 use super::code::read_source;
 use super::files::{changed_files, files_root};
 use super::stamp_of;
+use crate::editors::{Draw, prop};
 
 /// The diff viewer: what changed, drawn by the same renderer as the code
 /// viewer so a file and a change to it look like the same thing.
@@ -134,5 +137,92 @@ mod diff_viewer {
         assert!(full.contains("+two point five\n"), "the added line: {full}");
         assert_eq!(full.matches("--- ").count(), 1, "headers are not doubled");
         assert_eq!(full.matches("+++ ").count(), 1, "headers are not doubled");
+    }
+}
+
+/// What the patch contains, and the one control that changes how it is drawn.
+///
+/// Split-vs-unified is a setting rather than a per-area toggle, so the check
+/// box writes `/diff_split` through the same command the preferences window
+/// does — two places showing one value, not two values.
+pub(crate) fn sidebar(d: &Draw) -> Element {
+    let split = d.settings["diff_split"].as_bool().unwrap_or(false);
+    let on_setting = d.on_setting;
+    let view = rsx! {
+        Panel { title: "View",
+            label { class: "area-props-row",
+                span { class: "k", "Split" }
+                input {
+                    r#type: "checkbox",
+                    checked: split,
+                    onchange: move |e| {
+                        on_setting.call(("/diff_split".to_string(), serde_json::json!(e.checked())));
+                    },
+                }
+            }
+        }
+    };
+    let Some(path) = d.arg.clone().filter(|t| !t.is_empty()) else {
+        return rsx! {
+            div { class: "area-props",
+                Panel { title: "Change",
+                    {prop("Changed files", changed_files().len().to_string())}
+                }
+                {view}
+            }
+        };
+    };
+    let (hunks, added, removed) = match git_diff(&path) {
+        Ok(Some(patch)) => count_patch(&patch),
+        // A file that matches HEAD has a patch of nothing, which is a reading
+        // and not an error — the zeros say so.
+        Ok(None) => (0, 0, 0),
+        Err(e) => {
+            return rsx! { div { class: "area-props", div { class: "empty", "{e}" } } };
+        }
+    };
+    rsx! {
+        div { class: "area-props",
+            Panel { title: "Change",
+                {prop("File", path.rsplit('/').next().unwrap_or(&path).to_string())}
+                {prop("Hunks", hunks.to_string())}
+                {prop("Added", format!("+{added}"))}
+                {prop("Removed", format!("-{removed}"))}
+            }
+            {view}
+        }
+    }
+}
+
+/// `(hunks, added, removed)` from a unified patch. The `+++`/`---` file
+/// headers start with the same characters as added and removed lines, so they
+/// are excluded by name rather than by counting every leading `+`.
+fn count_patch(patch: &str) -> (usize, usize, usize) {
+    let mut hunks = 0;
+    let mut added = 0;
+    let mut removed = 0;
+    for line in patch.lines() {
+        if line.starts_with("@@") {
+            hunks += 1;
+        } else if line.starts_with("+++") || line.starts_with("---") {
+            continue;
+        } else if line.starts_with('+') {
+            added += 1;
+        } else if line.starts_with('-') {
+            removed += 1;
+        }
+    }
+    (hunks, added, removed)
+}
+
+#[cfg(test)]
+mod sidebar_tests {
+    /// The file headers begin with +++ and --- , which a naive count of
+    /// leading + and - reports as one extra added and one extra removed line
+    /// in every diff ever shown.
+    #[test]
+    fn the_patch_header_is_not_counted_as_a_change() {
+        let patch = "--- a/x.rs\n+++ b/x.rs\n@@ -1,3 +1,3 @@\n ctx\n-old\n+new\n+extra\n";
+        assert_eq!(super::count_patch(patch), (1, 2, 1));
     }
 }

@@ -126,8 +126,8 @@ pub(crate) fn tile(k: &str, v: String, of: Option<String>) -> Element {
 
 use immersion::{
     AreaId, Areas, Chrome, ContextMenu, Dir, Field, FieldKind, Keymap, KeymapHelp, Layout,
-    LayoutFile, MenuItem, Palette, PaletteItem, Panel, Platform, Splash, SplashRecent, StatusBar,
-    Template, WorkspaceTabs, default_keymap, menu_json, pretty_chord,
+    LayoutFile, MenuItem, Palette, PaletteItem, Panel, Platform, Region, Splash, SplashRecent,
+    StatusBar, Template, WorkspaceTabs, default_keymap, menu_json, pretty_chord,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -135,6 +135,12 @@ use immersion::{
 /// The preset layouts offered on the splash. Each is a small tree the "New
 /// workspace" column builds from.
 fn templates() -> Vec<Template> {
+    // Each arrangement opens the N panel on its lead area. The region has
+    // existed since the areas did, but nothing shipped with it on, so the
+    // sidebar was a feature you had to already know about to ever see —
+    // Blender opens the Properties editor on its default screen for the same
+    // reason. One area per workspace, not all of them: it is a panel beside
+    // the thing you are working on, not a second column everywhere.
     let overview = {
         let mut l = Layout::single("machine");
         if let Some(b) = l.split(1, Dir::Col, 0.45) {
@@ -143,6 +149,7 @@ fn templates() -> Vec<Template> {
                 l.set_editor(r, "fleet");
             }
         }
+        l.toggle_region(1, Region::Sidebar);
         l
     };
     let runs_focus = {
@@ -150,6 +157,8 @@ fn templates() -> Vec<Template> {
         if let Some(r) = l.split(1, Dir::Row, 0.5) {
             l.set_editor(r, "run");
         }
+        // The list is the thing you scan; the tally belongs beside it.
+        l.toggle_region(1, Region::Sidebar);
         l
     };
     let monitoring = {
@@ -157,6 +166,7 @@ fn templates() -> Vec<Template> {
         if let Some(r) = l.split(1, Dir::Row, 0.62) {
             l.set_editor(r, "fleet");
         }
+        l.toggle_region(1, Region::Sidebar);
         l
     };
     vec![
@@ -178,7 +188,11 @@ fn templates() -> Vec<Template> {
         Template {
             name: "Single".into(),
             hint: "one area to split as you like".into(),
-            layout: Layout::single("machine"),
+            layout: {
+                let mut l = Layout::single("machine");
+                l.toggle_region(1, Region::Sidebar);
+                l
+            },
         },
     ]
 }
@@ -682,24 +696,38 @@ pub fn App() -> Element {
         }
     });
     let render_sidebar = use_callback(move |(id, editor): (AreaId, String)| -> Element {
-        // The chart editor's sidebar is its spec editor, not the generic
-        // properties panel: what you want beside a chart is the document that
-        // makes it.
-        if editor == "chart" {
-            let target = ws.read().current().layout.target_of(id);
-            return crate::charts::chart_sidebar(
-                &settings.read().clone(),
-                target,
-                on_setting,
-                on_editor_error,
-            );
+        // An editor's sidebar belongs with the editor — the chart's spec
+        // editor, the code viewer's statistics, the run list's tally — so the
+        // registry is asked first. What is left here is the fallback for an
+        // editor that has nothing to say about what it is showing.
+        let d = crate::editors::Draw {
+            area: id,
+            editor: editor.clone(),
+            arg: ws.read().current().layout.target_of(id),
+            state: state.read().clone(),
+            settings: settings.read().clone(),
+            mac: mac(),
+            capturing: capturing(),
+            open_run,
+            cap_start,
+            cap_reset,
+            on_setting,
+            on_error: on_editor_error,
+        };
+        if let Some(el) = crate::editors::sidebar(&d) {
+            return el;
         }
+        let label = crate::editors::kinds()
+            .into_iter()
+            .find(|k| k.id == editor)
+            .map(|k| k.label)
+            .unwrap_or("unknown");
         rsx! {
             div { class: "area-props",
                 Panel { title: "Properties",
                     div { class: "area-props-row",
                         span { class: "k", "Editor" }
-                        span { "{editor}" }
+                        span { "{label}" }
                     }
                     div { class: "area-props-row",
                         span { class: "k", "Area" }
@@ -1159,6 +1187,41 @@ mod keymap_tests {
             .find(|b| b.action == "undo")
             .expect("undo binding");
         assert_eq!(undo.chord, "Mod+Z");
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    /// Whether any leaf in a layout ships with its N panel open.
+    fn opens_a_sidebar(l: &Layout) -> bool {
+        l.root.leaves().iter().any(|id| {
+            matches!(
+                l.root.find(*id),
+                Some(immersion::Area::Leaf { regions, .. }) if regions.sidebar
+            )
+        })
+    }
+
+    /// The sidebar region existed from the start and nothing shipped with it
+    /// on, so it was a feature you had to already know about to ever see.
+    /// Turning it on is one call per layout, which is exactly the kind of
+    /// thing a new arrangement forgets.
+    #[test]
+    fn every_shipped_arrangement_opens_its_sidebar() {
+        for t in templates() {
+            assert!(
+                opens_a_sidebar(&t.layout),
+                "the {} template ships with no N panel open",
+                t.name
+            );
+        }
+        let starter = crate::daemon::default_workspaces();
+        assert!(
+            opens_a_sidebar(&starter.tabs[0].layout),
+            "a first visit meets no N panel"
+        );
     }
 }
 
