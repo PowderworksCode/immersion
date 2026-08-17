@@ -485,9 +485,13 @@ body {
    on hover is a control a keyboard and a screen reader never reach — and
    recessive until the row is hovered or one of them has focus, so a list of
    forty rows is not forty rows of buttons. Blender's outliner does the same
-   with its visibility toggles. */
+   with its visibility toggles.
+
+   The reveal is instant. A fade was the obvious thing to write and it is the
+   thing the progress bar below already refused: this workbench has no motion
+   system, and one transition for one control would be the start of one. */
 .im-row-actions { display: inline-flex; align-items: center; gap: .1rem; }
-.im-row-actions > * { opacity: 0; transition: opacity .08s linear; }
+.im-row-actions > * { opacity: 0; }
 :hover > .im-row-actions > *,
 :hover > * > .im-row-actions > *,
 .im-row-actions > *:focus-visible,
