@@ -813,6 +813,12 @@ pub(crate) fn ed_diff(target: Option<String>, split: bool) -> Element {
 /// the committed blob with `git show` rather than reimplementing object
 /// lookup; a path outside a repository is an error the viewer reports.
 fn git_diff(rel: &str) -> Result<Option<String>, String> {
+    // Same reason, and there is no repository on a demo machine to ask.
+    if crate::demo::enabled() {
+        return crate::demo::file_diff(rel)
+            .map(|d| d.map(str::to_string))
+            .ok_or_else(|| format!("no such file: {rel}"));
+    }
     let working = read_source(rel)?;
     let root = files_root();
     let inside = rel.trim_start_matches('/');
@@ -862,6 +868,14 @@ fn stamp_of(path: &str, src: &str) -> String {
 /// Read a file for display, with the limits a viewer needs: inside the root,
 /// small enough to render, and text.
 fn read_source(rel: &str) -> Result<String, String> {
+    // The demo browses a fabricated checkout, so it has to be able to read
+    // one too: a picker offering files whose contents do not exist is a
+    // picker that does nothing.
+    if crate::demo::enabled() {
+        return crate::demo::file_source(rel)
+            .map(str::to_string)
+            .ok_or_else(|| format!("no such file: {rel}"));
+    }
     // 2 MB: past that the page is the bottleneck, not the reading, and a
     // viewer that hangs the workbench is worse than one that declines.
     const MAX: u64 = 2 * 1024 * 1024;
