@@ -481,6 +481,26 @@ body {
   font-family: var(--im-mono); font-size: .72rem;
 }
 
+/* Per-row controls. Present in the DOM always — a control that only exists
+   on hover is a control a keyboard and a screen reader never reach — and
+   recessive until the row is hovered or one of them has focus, so a list of
+   forty rows is not forty rows of buttons. Blender's outliner does the same
+   with its visibility toggles. */
+.im-row-actions { display: inline-flex; align-items: center; gap: .1rem; }
+.im-row-actions > * { opacity: 0; transition: opacity .08s linear; }
+:hover > .im-row-actions > *,
+:hover > * > .im-row-actions > *,
+.im-row-actions > *:focus-visible,
+.im-row-actions > *.is-on { opacity: 1; }
+.im-row-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; cursor: pointer; border-radius: 3px;
+  color: var(--im-text-muted); padding: .1rem .2rem; font: inherit;
+  font-size: .72rem; line-height: 1;
+}
+.im-row-btn:hover { color: var(--im-text); background: var(--im-header); }
+.im-row-btn svg { width: .9rem; height: .9rem; }
+
 /* The target chip — Blender's data-block selector. Reads as a breadcrumb,
    not a button, until hovered. */
 .im-target {

@@ -812,6 +812,36 @@ mod host_guard_tests {
         assert!(guard.contains("ContextMenu"), "the warning names the fix");
     }
 
+    /// Row controls are hidden until the row is hovered, which is the whole
+    /// point — forty rows of buttons is not a list. The part that is easy to
+    /// lose is the other half: they are in the DOM always and revealed on
+    /// focus, because a control that only exists under a pointer is one a
+    /// keyboard and a screen reader never reach.
+    #[test]
+    fn row_controls_are_recessive_but_reachable() {
+        let css = crate::CSS;
+        assert!(css.contains(".im-row-actions"), "the convention is gone");
+        assert!(
+            css.contains(".im-row-actions > * { opacity: 0;"),
+            "row controls should start hidden"
+        );
+        assert!(
+            css.contains(".im-row-actions > *:focus-visible"),
+            "row controls must come back on keyboard focus"
+        );
+        // `display: none` would take them out of the tree entirely, which is
+        // the mistake this rule exists instead of.
+        let block = css
+            .split(".im-row-actions > * {")
+            .nth(1)
+            .expect("the rule is there");
+        let block = &block[..block.find('}').expect("it closes")];
+        assert!(
+            !block.contains("display: none"),
+            "hidden by opacity, not removed from the tree"
+        );
+    }
+
     /// A host that ships no CSS of its own should still get a workbench, not
     /// Times New Roman on a white page. The library owns exactly one `body`
     /// rule and it comes first, so a host with an opinion still wins.

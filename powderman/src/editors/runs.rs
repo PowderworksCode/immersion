@@ -51,13 +51,28 @@ fn run_row(
                     }
                 }
                 span { class: "when",
-                    // Pin this run into its own area beside the list.
-                    button {
-                        class: "open",
-                        title: "open in a new area",
-                        onclick: move |e| { e.stop_propagation(); open_run.call((area, open_id.clone())); },
-                        "⇱"
+                    span { class: "im-row-actions",
+                        // The id is what you paste into a CLI or hand to an
+                        // agent, and it is the one thing on the row that is
+                        // never fully shown.
+                        button {
+                            class: "im-row-btn im-copy",
+                            title: "copy this run's id",
+                            "data-im-copy": "{r.id}",
+                            onclick: move |e| e.stop_propagation(),
+                            dangerous_inner_html: "{immersion::icon(\"copy\")}",
+                        }
+                        // Pin this run into its own area beside the list.
+                        button {
+                            class: "im-row-btn",
+                            title: "open in a new area",
+                            onclick: move |e| { e.stop_propagation(); open_run.call((area, open_id.clone())); },
+                            dangerous_inner_html: "{immersion::icon(\"arrow-bar-up\")}",
+                        }
                     }
+                    // Resume stays visible: a suspended run is waiting for
+                    // someone, and an affordance you have to hover to find is
+                    // not how you tell them.
                     if r.status == "suspended" || r.status == "failed" {
                         {resume_button(r.id.clone())}
                     }

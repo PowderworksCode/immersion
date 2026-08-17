@@ -17,6 +17,24 @@ pub(crate) fn ed_fleet(s: &State) -> Element {
             div { class: "agent", key: "{a.pane}",
                 span { class: "status {a.status}", "{a.status}" }
                 span { class: "wf", "{a.name}" }
+                span { class: "im-row-actions",
+                    // What an agent row is actually for, most of the time:
+                    // the two strings on it that you need somewhere else —
+                    // the directory it is working in, and the pane to attach
+                    // to. Copying is client-side, so neither costs a message.
+                    button {
+                        class: "im-row-btn im-copy",
+                        title: "copy this agent's working directory",
+                        "data-im-copy": "{a.cwd}",
+                        dangerous_inner_html: "{immersion::icon(\"folder\")}",
+                    }
+                    button {
+                        class: "im-row-btn im-copy",
+                        title: "copy this agent's pane id",
+                        "data-im-copy": "{a.pane}",
+                        dangerous_inner_html: "{immersion::icon(\"terminal-2\")}",
+                    }
+                }
                 span { class: "procs",
                     // The two biggest by memory, not every pid. A full process
                     // table is htop's job; this row answers "what is this
