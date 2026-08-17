@@ -109,6 +109,21 @@ pub(crate) fn kind() -> immersion::EditorKind {
     }
 }
 
+/// The bottom line: the size of the change, in the terms a diff is read in.
+pub(crate) fn footer(d: &Draw) -> String {
+    let Some(path) = d.arg.clone().filter(|t| !t.is_empty()) else {
+        return String::new();
+    };
+    match git_diff(&path) {
+        Ok(Some(patch)) => {
+            let (hunks, added, removed) = count_patch(&patch);
+            format!("{hunks} hunks · +{added} −{removed}")
+        }
+        Ok(None) => "no change".to_string(),
+        Err(_) => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod diff_viewer {
     /// The renderer parses a git-style unified patch, so what we emit has to

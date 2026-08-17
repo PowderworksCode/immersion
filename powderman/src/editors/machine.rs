@@ -77,3 +77,15 @@ pub(crate) fn sidebar(d: &Draw) -> Element {
         }
     }
 }
+
+/// The bottom line: the two readings you glance at, without opening the N
+/// panel to get them.
+pub(crate) fn footer(d: &Draw) -> String {
+    let m = |k: &str| d.state.machine.get(k).copied().unwrap_or(0.0);
+    format!(
+        "cpu {:.0}% · load {:.2} · {} agents",
+        m("box.cpu_pct"),
+        m("box.load1"),
+        d.state.fleet.len()
+    )
+}

@@ -153,6 +153,38 @@ pub(crate) fn language_of(path: &str) -> &'static str {
     }
 }
 
+/// The bottom line — the one the old Immersion put in this exact corner:
+/// what language this is, and how long it is.
+pub(crate) fn footer(d: &Draw) -> String {
+    let Some(path) = d.arg.clone().filter(|t| !t.is_empty()) else {
+        return String::new();
+    };
+    match read_source(&path) {
+        Ok(src) => format!("{} · {} lines", language_of(&path), src.lines().count()),
+        // A file that will not read has its reason in the body already; the
+        // footer stating it again would be the same sentence twice.
+        Err(_) => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod language_tests {
+    use super::language_of;
+
+    /// The footer and the sidebar both name the language, and an extension
+    /// neither the renderer nor this knows should read as "Text" rather than
+    /// as the extension itself — "rs" in that corner is a bug, not a label.
+    #[test]
+    fn an_unknown_extension_is_text_not_the_extension() {
+        assert_eq!(language_of("src/main.rs"), "Rust");
+        assert_eq!(language_of("a/b/build.ts"), "TypeScript");
+        assert_eq!(language_of("Cargo.toml"), "TOML");
+        assert_eq!(language_of("notes.qqq"), "Text");
+        assert_eq!(language_of("Makefile"), "Text", "no extension at all");
+        assert_eq!(language_of(""), "Text");
+    }
+}
+
 #[cfg(test)]
 mod code_viewer {
     /// The viewer reads files, so its limits are its security surface: inside

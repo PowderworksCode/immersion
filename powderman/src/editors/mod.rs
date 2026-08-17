@@ -38,6 +38,9 @@ pub(crate) struct Editor {
     /// its own file, the way it already declares its hints. `None` leaves the
     /// host's generic area properties in place.
     pub sidebar: Option<fn(&Draw) -> Element>,
+    /// One line along the area's bottom edge — what this editor is showing,
+    /// stated. Empty, or `None`, draws no strip.
+    pub footer: Option<fn(&Draw) -> String>,
 }
 
 /// Every editor this host offers, in the order the dropdown lists them.
@@ -47,14 +50,21 @@ pub(crate) fn editors() -> Vec<Editor> {
             kind,
             draw,
             sidebar: None,
+            footer: None,
         }
     }
-    /// The same, for an editor that brings its own sidebar.
-    fn n(kind: EditorKind, draw: fn(&Draw) -> Element, sidebar: fn(&Draw) -> Element) -> Editor {
+    /// The same, for an editor that brings its own sidebar and footer.
+    fn n(
+        kind: EditorKind,
+        draw: fn(&Draw) -> Element,
+        sidebar: fn(&Draw) -> Element,
+        footer: fn(&Draw) -> String,
+    ) -> Editor {
         Editor {
             kind,
             draw,
             sidebar: Some(sidebar),
+            footer: Some(footer),
         }
     }
     vec![
@@ -62,12 +72,19 @@ pub(crate) fn editors() -> Vec<Editor> {
             machine::kind(),
             |d| machine::ed_machine(&d.state, &d.settings),
             machine::sidebar,
+            machine::footer,
         ),
-        n(fleet::kind(), |d| fleet::ed_fleet(&d.state), fleet::sidebar),
+        n(
+            fleet::kind(),
+            |d| fleet::ed_fleet(&d.state),
+            fleet::sidebar,
+            fleet::footer,
+        ),
         n(
             runs::kind(),
             |d| runs::ed_runs(&d.state, d.area, d.open_run),
             runs::sidebar,
+            runs::footer,
         ),
         e(actions::kind(), |d| actions::ed_actions(&d.state)),
         e(timers::kind(), |d| timers::ed_timers(&d.state)),
@@ -93,11 +110,13 @@ pub(crate) fn editors() -> Vec<Editor> {
             files::kind(),
             |d| files::ed_files(d.arg.clone()),
             files::sidebar,
+            files::footer,
         ),
         n(
             code::kind(),
             |d| code::ed_code(d.arg.clone()),
             code::sidebar,
+            code::footer,
         ),
         n(
             diff::kind(),
@@ -108,6 +127,7 @@ pub(crate) fn editors() -> Vec<Editor> {
                 )
             },
             diff::sidebar,
+            diff::footer,
         ),
         n(
             crate::charts::kind(),
@@ -116,6 +136,7 @@ pub(crate) fn editors() -> Vec<Editor> {
             // editor, not a read-out. It used to be a special case in the
             // host's render_sidebar; it is a registration now, like the rest.
             |d| crate::charts::chart_sidebar(&d.settings, d.arg.clone(), d.on_setting, d.on_error),
+            crate::charts::footer,
         ),
     ]
 }
@@ -128,6 +149,16 @@ pub(crate) fn sidebar(d: &Draw) -> Option<Element> {
         .find(|e| e.kind.id == d.editor)
         .and_then(|e| e.sidebar)
         .map(|f| f(d))
+}
+
+/// The footer line this editor states, if it states one.
+pub(crate) fn footer(d: &Draw) -> String {
+    editors()
+        .into_iter()
+        .find(|e| e.kind.id == d.editor)
+        .and_then(|e| e.footer)
+        .map(|f| f(d))
+        .unwrap_or_default()
 }
 
 /// One `name — value` row in a sidebar panel. Every sidebar is made of these,
@@ -413,6 +444,22 @@ mod tests {
         }
         // And an editor with nothing to say still gets the generic panel.
         assert!(!with.contains(&"info"));
+    }
+
+    /// The footer is the line the old Immersion put in an area's bottom-right
+    /// corner — "JavaScript · 16 lines". An editor states one or it does not;
+    /// the strip is only drawn for a non-empty line, so silence is free.
+    #[test]
+    fn the_editors_that_state_a_footer_have_one() {
+        let with: Vec<&str> = editors()
+            .iter()
+            .filter(|e| e.footer.is_some())
+            .map(|e| e.kind.id)
+            .collect();
+        for id in ["machine", "fleet", "runs", "code", "diff", "files", "chart"] {
+            assert!(with.contains(&id), "{id} lost its footer: {with:?}");
+        }
+        assert!(!with.contains(&"info"), "and one that has nothing to say");
     }
 
     /// Hints belong to the editor now. This catches the copy that used to

@@ -616,25 +616,34 @@ pub fn App() -> Element {
             }
         }
     });
+    // Both region renderers and the footer need the same bundle an editor is
+    // drawn from, so it is built once here rather than three times below.
+    let draw_for = move |id: AreaId, editor: String| crate::editors::Draw {
+        area: id,
+        editor,
+        arg: ws.read().current().layout.target_of(id),
+        state: state.read().clone(),
+        settings: settings.read().clone(),
+        mac: mac(),
+        capturing: capturing(),
+        open_run,
+        cap_start,
+        cap_reset,
+        on_setting,
+        on_error: on_editor_error,
+    };
+    // One line along an area's bottom edge saying what it is showing —
+    // "Rust · 148 lines", "7 runs · 1 running". Empty draws no strip, so an
+    // editor with nothing to say costs nothing.
+    let render_footer = use_callback(move |(id, editor): (AreaId, String)| -> String {
+        crate::editors::footer(&draw_for(id, editor))
+    });
     let render_sidebar = use_callback(move |(id, editor): (AreaId, String)| -> Element {
         // An editor's sidebar belongs with the editor — the chart's spec
         // editor, the code viewer's statistics, the run list's tally — so the
         // registry is asked first. What is left here is the fallback for an
         // editor that has nothing to say about what it is showing.
-        let d = crate::editors::Draw {
-            area: id,
-            editor: editor.clone(),
-            arg: ws.read().current().layout.target_of(id),
-            state: state.read().clone(),
-            settings: settings.read().clone(),
-            mac: mac(),
-            capturing: capturing(),
-            open_run,
-            cap_start,
-            cap_reset,
-            on_setting,
-            on_error: on_editor_error,
-        };
+        let d = draw_for(id, editor.clone());
         if let Some(el) = crate::editors::sidebar(&d) {
             return el;
         }
@@ -847,6 +856,7 @@ pub fn App() -> Element {
                     render,
                     render_toolbar: Some(render_toolbar),
                     render_sidebar: Some(render_sidebar),
+                    render_footer: Some(render_footer),
                     on_command: cmd,
                     on_pick_target,
                     on_focus: move |id: AreaId| focused.set(Some(id)),

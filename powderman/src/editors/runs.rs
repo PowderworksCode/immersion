@@ -231,3 +231,15 @@ pub(crate) fn sidebar(d: &Draw) -> Element {
         }
     }
 }
+
+/// The bottom line: the total, and the two counts worth knowing without
+/// reading the list.
+pub(crate) fn footer(d: &Draw) -> String {
+    let n = |status: &str| d.state.runs.iter().filter(|r| r.status == status).count();
+    format!(
+        "{} runs · {} running · {} failed",
+        d.state.runs.len(),
+        n("running"),
+        n("failed")
+    )
+}
