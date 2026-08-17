@@ -8,6 +8,7 @@ mod engine;
 mod exec;
 mod herdr;
 mod mcp;
+mod menus;
 mod metrics;
 mod panels;
 mod settings;

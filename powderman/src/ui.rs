@@ -11,7 +11,6 @@
 //! would return instead of re-executing.
 
 use dioxus::prelude::*;
-use serde_json::{Value, json};
 
 use serde::{Deserialize, Serialize};
 
@@ -124,10 +123,13 @@ pub(crate) fn tile(k: &str, v: String, of: Option<String>) -> Element {
     }
 }
 
+use crate::menus::{
+    edit_menu, favorites_menu_json, file_menu, help_menu, pie_menu_json, view_menu, window_menu,
+};
 use immersion::{
     AreaId, Areas, Chrome, ContextMenu, Field, FieldKind, Keymap, KeymapHelp, Layout, LayoutFile,
-    MenuItem, Palette, PaletteItem, Panel, Platform, Splash, StatusBar, WorkspaceTabs,
-    default_keymap, menu_json, pretty_chord,
+    Palette, PaletteItem, Panel, Platform, Splash, StatusBar, WorkspaceTabs, default_keymap,
+    pretty_chord,
 };
 
 /// The registry: what an area's dropdown offers. The ids are what the tree
@@ -195,6 +197,14 @@ pub(crate) enum ClientAction {
     AdjustLast,
     Pie,
     Favorites,
+    /// Reopen the startup splash. Per-client like the palette: one visitor
+    /// reading the shortcuts is not a thing to show everyone else.
+    Splash,
+    /// Save / load the workbench layout as a file. The browser owns the
+    /// download and the file dialog, so these end at a document event the
+    /// layout-file shim listens for rather than at server state.
+    ExportLayout,
+    ImportLayout,
     Noop,
 }
 
@@ -210,6 +220,9 @@ impl ClientAction {
         ClientAction::AdjustLast,
         ClientAction::Pie,
         ClientAction::Favorites,
+        ClientAction::Splash,
+        ClientAction::ExportLayout,
+        ClientAction::ImportLayout,
         ClientAction::Noop,
     ];
 
@@ -225,6 +238,9 @@ impl ClientAction {
             ClientAction::AdjustLast => "adjust_last",
             ClientAction::Pie => "pie",
             ClientAction::Favorites => "favorites",
+            ClientAction::Splash => "splash",
+            ClientAction::ExportLayout => "export_layout",
+            ClientAction::ImportLayout => "import_layout",
             ClientAction::Noop => "noop",
         }
     }
@@ -479,6 +495,19 @@ pub fn App() -> Element {
                 maximized.set(if cur.is_some() { None } else { first });
             }
             Route::ClientView(ClientAction::Palette) => palette_open.set(true),
+            Route::ClientView(ClientAction::Splash) => splash_open.set(true),
+            // The browser owns the download and the file dialog. The shim
+            // already knows how to do both; this only says which.
+            Route::ClientView(a @ (ClientAction::ExportLayout | ClientAction::ImportLayout)) => {
+                let event = if a == ClientAction::ExportLayout {
+                    "im:layout-save"
+                } else {
+                    "im:layout-load"
+                };
+                dioxus::document::eval(&format!(
+                    "document.dispatchEvent(new CustomEvent('{event}'))"
+                ));
+            }
             Route::ClientView(ClientAction::Preferences) => prefs_open.set(true),
             // The chord has no area in it, so it acts on the focused one —
             // and says so rather than doing nothing when nothing is focused.
@@ -741,8 +770,10 @@ pub fn App() -> Element {
                     "powderman"
                 }
                 span { class: "menubar",
-                    button { class: "im-menubtn", "data-im-menu-click": "{window_menu(ws.read().active, mac())}", "Window" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{file_menu()}", "File" }
                     button { class: "im-menubtn", "data-im-menu-click": "{edit_menu(mac())}", "Edit" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{view_menu(&settings())}", "View" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{window_menu(ws.read().active, mac())}", "Window" }
                     button { class: "im-menubtn", "data-im-menu-click": "{help_menu(mac())}", "Help" }
                 }
                 // The palette answered only to F3, which is a palette
@@ -970,114 +1001,6 @@ pub(crate) fn effective_keymap(settings: &serde_json::Value) -> Vec<immersion::B
         .collect()
 }
 
-/// The area pie (backquote): the operations worth reaching by muscle memory,
-/// laid out radially. "@area" is resolved by the shim to whichever area the
-/// The area pie (backquote): the operations worth reaching by muscle memory,
-/// laid out radially. "@area" is resolved by the shim to whichever area the
-/// pointer is over, so one definition serves every area.
-fn pie_menu_json() -> String {
-    menu_json(&[
-        MenuItem::new("Split H", "split", json!({ "id": "@area", "dir": "row" })),
-        MenuItem::new("Split V", "split", json!({ "id": "@area", "dir": "col" })),
-        MenuItem::new("Duplicate", "duplicate_area", json!({ "id": "@area" })),
-        MenuItem::new("Close", "join", json!({ "id": "@area" })),
-        MenuItem::new(
-            "Toolbar",
-            "toggle_region",
-            json!({ "id": "@area", "region": "toolbar" }),
-        ),
-        MenuItem::new(
-            "Sidebar",
-            "toggle_region",
-            json!({ "id": "@area", "region": "sidebar" }),
-        ),
-        MenuItem::new("Maximize", "maximize", Value::Null),
-        MenuItem::new("Palette", "palette", Value::Null),
-    ])
-}
-
-/// The Quick Favourites menu (Q), from the settings list. Each entry is the
-/// (label, action, params) a menu row carries, so a favourite runs exactly as
-/// The Quick Favourites menu (Q), from the settings list. Each entry is the
-/// (label, action, params) a menu row carries, so a favourite runs exactly as
-/// the menu item it was added from.
-fn favorites_menu_json(settings: &serde_json::Value) -> String {
-    let items: Vec<MenuItem> = settings["favorites"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|f| {
-            let action = f.get("action")?.as_str()?.to_string();
-            let label = f
-                .get("label")
-                .and_then(|l| l.as_str())
-                .unwrap_or(&action)
-                .to_string();
-            Some(MenuItem::new(
-                &label,
-                &action,
-                f.get("params").cloned().unwrap_or(Value::Null),
-            ))
-        })
-        .collect();
-    if items.is_empty() {
-        return menu_json(&[MenuItem::new(
-            "(no favourites — right-click a menu item to add one)",
-            "noop",
-            Value::Null,
-        )]);
-    }
-    menu_json(&items)
-}
-
-/// The menu-bar dropdowns — Blender's Window / Edit / Help, as click-open
-/// menus. Each item is an (action, params) the same router handles: host
-fn window_menu(active: usize, mac: bool) -> String {
-    menu_json(&[
-        MenuItem::new("Duplicate workspace", "workspace.duplicate", json!({})),
-        MenuItem::new(
-            "Close workspace",
-            "workspace.close",
-            json!({ "index": active }),
-        ),
-        MenuItem::sep(),
-        MenuItem::new("Next workspace", "workspace.cycle", json!({ "delta": 1 }))
-            .with_chord(&pretty_chord("Alt+PageDown", mac)),
-        MenuItem::new(
-            "Previous workspace",
-            "workspace.cycle",
-            json!({ "delta": -1 }),
-        )
-        .with_chord(&pretty_chord("Alt+PageUp", mac)),
-        MenuItem::sep(),
-        MenuItem::new("Maximize area", "maximize", Value::Null)
-            .with_chord(&pretty_chord("Mod+Shift+Space", mac)),
-        MenuItem::new("Fullscreen", "fullscreen", Value::Null)
-            .with_chord(&pretty_chord("Mod+Shift+F", mac)),
-    ])
-}
-
-fn edit_menu(mac: bool) -> String {
-    menu_json(&[
-        MenuItem::new("Undo", "undo", Value::Null).with_chord(&pretty_chord("Mod+Z", mac)),
-        MenuItem::new("Redo", "redo", Value::Null).with_chord(&pretty_chord("Mod+Shift+Z", mac)),
-        MenuItem::sep(),
-        MenuItem::new("Repeat last", "repeat_last", Value::Null)
-            .with_chord(&pretty_chord("Shift+R", mac)),
-        MenuItem::new("Adjust last operation", "adjust_last", Value::Null).with_chord("F9"),
-        MenuItem::sep(),
-        MenuItem::new("Preferences", "preferences", Value::Null),
-    ])
-}
-
-fn help_menu(_mac: bool) -> String {
-    menu_json(&[
-        MenuItem::new("Command palette", "palette", Value::Null).with_chord("F3"),
-        MenuItem::new("Keyboard shortcuts", "cheatsheet", Value::Null).with_chord("F1"),
-    ])
-}
-
 // --- editors --------------------------------------------------------------
 // Each one is a body the library mounts under an area header. They read the
 // polled snapshot and call the same daemon functions the old page did; the
@@ -1200,6 +1123,12 @@ mod parity_tests {
         for a in menu_actions(&window_menu(0, false)) {
             actions.push(("window menu".into(), a));
         }
+        for a in menu_actions(&file_menu()) {
+            actions.push(("file menu".into(), a));
+        }
+        for a in menu_actions(&view_menu(&crate::daemon::settings_defaults())) {
+            actions.push(("view menu (topbar)".into(), a));
+        }
         for a in menu_actions(&edit_menu(false)) {
             actions.push(("edit menu".into(), a));
         }
@@ -1240,6 +1169,74 @@ mod parity_tests {
             "actions with no resolution (bus, host, or client-view):\n  {}",
             orphans.join("\n  ")
         );
+    }
+
+    /// Menu params, not just menu names. `every_ui_action_resolves` checks
+    /// that a row's action is *known*; a row whose params the command rejects
+    /// still does nothing when clicked. File ▸ New workspace carries a whole
+    /// serialized layout, which is exactly the kind of payload that rots.
+    #[test]
+    fn the_file_menus_rows_run_with_the_params_they_carry() {
+        let commands = crate::workflows::commands();
+        let mut ws = immersion::Workspaces::new("test", Layout::single("runs"));
+        let before = ws.tabs.len();
+        for item in
+            serde_json::from_str::<Vec<serde_json::Value>>(&file_menu()).expect("menu JSON parses")
+        {
+            let Some(action) = item.get("action").and_then(|a| a.as_str()) else {
+                continue;
+            };
+            if !matches!(route(action), Route::Bus) {
+                continue;
+            }
+            let params = item
+                .get("params")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            commands
+                .run(&mut ws, action, &params)
+                .unwrap_or_else(|e| panic!("File menu row {action} does nothing: {e}"));
+        }
+        assert!(
+            ws.tabs.len() > before,
+            "and the rows actually did something"
+        );
+    }
+
+    /// The View menu writes settings, so each row has to name a pointer the
+    /// document has. A typo would write a key nothing reads — a control that
+    /// appears to work and does not.
+    #[test]
+    fn the_view_menu_writes_pointers_the_settings_document_has() {
+        let defaults = crate::daemon::settings_defaults();
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_str(&view_menu(&defaults)).expect("menu JSON parses");
+        for row in &rows {
+            if row.get("action").and_then(|a| a.as_str()) != Some("set_setting") {
+                continue;
+            }
+            let pointer = row["params"]["pointer"].as_str().expect("a pointer");
+            assert!(
+                defaults.pointer(pointer).is_some(),
+                "the View menu writes {pointer}, which the settings document does not have"
+            );
+        }
+        // Every theme the library ships is offered, so adding one there does
+        // not need a row added here.
+        for t in immersion::themes() {
+            assert!(
+                rows.iter()
+                    .any(|r| r.get("label").and_then(|l| l.as_str()) == Some(t.name)),
+                "the {} theme is not on the View menu",
+                t.name
+            );
+        }
+        // And exactly one of them is ticked — the active one.
+        let ticked = rows
+            .iter()
+            .filter(|r| r["params"]["pointer"] == "/theme" && r.get("icon").is_some())
+            .count();
+        assert_eq!(ticked, 1, "themes ticked: {ticked}");
     }
 
     /// The complement: a host action that stops being routed is as broken as
