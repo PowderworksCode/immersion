@@ -44,13 +44,13 @@ const THEMES: &[Theme] = &[
         tokens: &[
             ("bg", "#1a1a1d"),
             ("panel", "#2b2b30"),
-            ("header", "#2b2b30"),
+            ("header", "#33333a"),
             ("surface", "#232327"),
             ("input-bg", "#232327"),
-            ("border", "#3a3a40"),
+            ("border", "#47474f"),
             ("seam", "#0e0e10"),
             ("text", "#e8e8e4"),
-            ("text-muted", "#8b8b85"),
+            ("text-muted", "#a2a29c"),
         ],
     },
     Theme {
@@ -58,13 +58,13 @@ const THEMES: &[Theme] = &[
         tokens: &[
             ("bg", "#202022"),
             ("panel", "#2c2c30"),
-            ("header", "#323236"),
+            ("header", "#3b3b41"),
             ("surface", "#28282b"),
             ("input-bg", "#252528"),
-            ("border", "#45454a"),
+            ("border", "#4f4f56"),
             ("seam", "#141416"),
             ("text", "#ededed"),
-            ("text-muted", "#9a9a95"),
+            ("text-muted", "#aaaaa4"),
         ],
     },
     Theme {
@@ -72,13 +72,13 @@ const THEMES: &[Theme] = &[
         tokens: &[
             ("bg", "#d6d6d8"),
             ("panel", "#cacace"),
-            ("header", "#c0c0c4"),
+            ("header", "#cdcdd2"),
             ("surface", "#e6e6e8"),
             ("input-bg", "#f2f2f4"),
-            ("border", "#adadb2"),
+            ("border", "#9c9ca3"),
             ("seam", "#9a9a9e"),
             ("text", "#1c1c1f"),
-            ("text-muted", "#63636a"),
+            ("text-muted", "#54545b"),
         ],
     },
 ];
@@ -94,6 +94,42 @@ mod tests {
         assert!(css.contains("--im-bg: #d6d6d8;"));
         // An unknown name yields the first preset, never an empty block.
         assert_eq!(theme_css("nope"), theme_css("Blender Dark"));
+    }
+
+    /// The module doc promises "Blender Dark" and no-theme-at-all look
+    /// identical — the base stylesheet's `:root` fallbacks *are* that theme.
+    /// Nothing held the two in step, so a contrast pass on one silently
+    /// desynced the other. This is the thing that notices.
+    #[test]
+    fn the_default_theme_matches_the_stylesheet_fallbacks() {
+        let fallbacks = root_tokens(crate::CSS);
+        for (key, value) in THEMES[0].tokens {
+            let name = format!("--im-{key}");
+            let found = fallbacks
+                .iter()
+                .find(|(k, _)| k == &name)
+                .unwrap_or_else(|| panic!("{name} has no fallback in immersion.css"));
+            assert_eq!(
+                &found.1, value,
+                "{name}: immersion.css says {}, theme \"{}\" says {value}",
+                found.1, THEMES[0].name,
+            );
+        }
+    }
+
+    /// `(--im-name, value)` pairs from the first `:root { … }` block.
+    fn root_tokens(css: &str) -> Vec<(String, String)> {
+        let start = css
+            .find(":root {")
+            .expect("immersion.css has a :root block");
+        let block = &css[start + ":root {".len()..];
+        let block = &block[..block.find('}').expect("the :root block closes")];
+        block
+            .split(';')
+            .filter_map(|decl| decl.split_once(':'))
+            .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+            .filter(|(k, _)| k.starts_with("--im-"))
+            .collect()
     }
 
     #[test]
