@@ -387,22 +387,46 @@ impl PartialEq for WorkspaceTabsProps {
 }
 
 /// The `data-im-menu` JSON for a workspace tab — duplicate it, or close it.
-fn tab_menu_json(index: usize) -> String {
+fn tab_menu_json(index: usize, last: usize) -> String {
     use crate::contextmenu::{MenuItem, menu_json};
-    menu_json(&[
-        MenuItem::new("Duplicate", "workspace.duplicate", serde_json::json!({})),
-        MenuItem::sep(),
-        MenuItem::new(
-            "Close",
-            "workspace.close",
-            serde_json::json!({ "index": index }),
-        ),
-    ])
+    let mut items = vec![MenuItem::new(
+        "Duplicate",
+        "workspace.duplicate",
+        serde_json::json!({}),
+    )];
+    // Reordering by menu as well as by drag: a drag is the quick way and a
+    // menu is the one that works from a trackpad, a screen reader, or an
+    // agent reading the same item list a person sees.
+    if index > 0 {
+        items.push(MenuItem::new(
+            "Move left",
+            "workspace.move",
+            serde_json::json!({ "from": index, "to": index - 1 }),
+        ));
+    }
+    if index < last {
+        items.push(MenuItem::new(
+            "Move right",
+            "workspace.move",
+            serde_json::json!({ "from": index, "to": index + 1 }),
+        ));
+    }
+    items.push(MenuItem::sep());
+    items.push(MenuItem::new(
+        "Close",
+        "workspace.close",
+        serde_json::json!({ "index": index }),
+    ));
+    menu_json(&items)
 }
 
 #[component]
 pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
     let mut editing = use_signal(|| None::<usize>);
+    // Which tab is being dragged. Per-client and never persisted: a drag in
+    // one browser is not a drag in another, and the reorder itself commits
+    // one command on drop.
+    let mut dragging = use_signal(|| None::<usize>);
     // The in-progress rename text. oninput keeps it current locally; the
     // commit reads it once on blur/Enter, so the round trip is one message,
     // not one per keystroke.
@@ -440,7 +464,26 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
                 } else {
                     div {
                         class: if i == props.active { "im-tab active" } else { "im-tab" },
-                        "data-im-menu": "{tab_menu_json(i)}",
+                        "data-im-menu": "{tab_menu_json(i, props.names.len() - 1)}",
+                        // Blender reorders workspace tabs by dragging them.
+                        // The drag is the browser's own — no shim, no messages
+                        // while it moves — and the drop commits one command.
+                        draggable: true,
+                        ondragstart: move |_| dragging.set(Some(i)),
+                        ondragover: move |e| e.prevent_default(),
+                        ondrop: move |e| {
+                            e.prevent_default();
+                            if let Some(from) = dragging() {
+                                if from != i {
+                                    cmd.call((
+                                        "workspace.move".to_string(),
+                                        serde_json::json!({ "from": from, "to": i }),
+                                    ));
+                                }
+                            }
+                            dragging.set(None);
+                        },
+                        ondragend: move |_| dragging.set(None),
                         onclick: move |_| cmd.call(("workspace.switch".to_string(), serde_json::json!({ "index": i }))),
                         ondoubleclick: {
                             let name = name.clone();

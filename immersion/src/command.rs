@@ -345,6 +345,17 @@ const BUILTINS: &[Command] = &[
         },
     },
     Command {
+        name: "workspace.move",
+        description: "Move a workspace tab to another position",
+        navigational: false,
+        run: |ws, p| {
+            let from = u64_field(p, "from")? as usize;
+            let to = u64_field(p, "to")? as usize;
+            let applied = ws.move_tab(from, to);
+            took(applied, &format!("workspace.move {from}->{to}"))
+        },
+    },
+    Command {
         name: "workspace.close",
         description: "Close a workspace",
         navigational: false,
