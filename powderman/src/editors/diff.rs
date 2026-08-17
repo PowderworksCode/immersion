@@ -124,6 +124,39 @@ pub(crate) fn footer(d: &Draw) -> String {
     }
 }
 
+/// The T region: the two things you do while reading a diff — look at the
+/// whole file instead, and change how the change is laid out.
+pub(crate) fn toolbar(d: &Draw) -> Element {
+    let split = d.settings["diff_split"].as_bool().unwrap_or(false);
+    let on_setting = d.on_setting;
+    let (area, cmd) = (d.area, d.cmd);
+    let path = d.arg.clone().unwrap_or_default();
+    let has_path = !path.is_empty();
+    rsx! {
+        if has_path {
+            button {
+                class: "area-tool",
+                title: "show the whole file",
+                onclick: move |_| {
+                    cmd.call((
+                        "open_editor".to_string(),
+                        crate::editors::swap_viewer(area, "code", &path),
+                    ));
+                },
+                dangerous_inner_html: "{immersion::icon(\"file-code\")}",
+            }
+        }
+        button {
+            class: if split { "area-tool is-on" } else { "area-tool" },
+            title: if split { "side by side \u{2014} click for unified" } else { "unified \u{2014} click for side by side" },
+            onclick: move |_| {
+                on_setting.call(("/diff_split".to_string(), serde_json::json!(!split)));
+            },
+            dangerous_inner_html: "{immersion::icon(\"columns-2\")}",
+        }
+    }
+}
+
 #[cfg(test)]
 mod diff_viewer {
     /// The renderer parses a git-style unified patch, so what we emit has to

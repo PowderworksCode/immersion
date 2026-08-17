@@ -286,6 +286,13 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .area-tools { display: flex; flex-direction: column; align-items: center; gap: .2rem; padding: .3rem .1rem; }
 .area-tool { width: 1.8rem; height: 1.8rem; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; border-radius: 3px; font-size: .9rem; }
 .area-tool:hover { background: var(--im-input-bg); color: var(--ink); }
+.area-tool.is-on { color: var(--im-accent); background: var(--im-input-bg); }
+.area-tool svg { width: 1rem; height: 1rem; }
+/* Between the editor's own tools and the area operations, so the strip reads
+   as "what this editor does" over "what any area does". */
+.area-tool-sep {
+  width: 1.1rem; height: 1px; background: var(--grid); margin: .25rem 0;
+}
 .area-props { padding: .5rem .6rem; }
 .area-props-title { color: var(--ink); font-size: .8rem; margin-bottom: .5rem; }
 .area-props-row { display: flex; justify-content: space-between; gap: .5rem; font-size: .76rem; color: var(--ink-2); padding: .15rem 0; }

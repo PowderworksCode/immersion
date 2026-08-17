@@ -192,6 +192,24 @@ pub(crate) fn footer(d: &Draw) -> String {
     )
 }
 
+/// The T region: the browser's root is a path, and a path is a thing you
+/// paste somewhere else.
+pub(crate) fn toolbar(d: &Draw) -> Element {
+    let root = d
+        .arg
+        .clone()
+        .filter(|r| !r.is_empty())
+        .unwrap_or_else(|| "/".to_string());
+    rsx! {
+        button {
+            class: "area-tool im-copy",
+            title: "copy this folder's path",
+            "data-im-copy": "{root}",
+            dangerous_inner_html: "{immersion::icon(\"copy\")}",
+        }
+    }
+}
+
 #[cfg(test)]
 mod file_browser {
     /// Containment is the property that matters: whatever pointer arrives,

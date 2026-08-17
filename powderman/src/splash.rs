@@ -57,6 +57,9 @@ pub(crate) fn templates() -> Vec<Template> {
         if let Some(r) = l.split(1, Dir::Row, 0.3) {
             l.set_editor(r, editor);
             l.toggle_region(r, Region::Sidebar);
+            // The viewer is the one pane with tools of its own, so this is
+            // the arrangement where the T strip is worth opening.
+            l.toggle_region(r, Region::Toolbar);
         }
         l
     };
