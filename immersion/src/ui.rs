@@ -127,6 +127,12 @@ pub struct AreasProps {
     /// here, so there is exactly one way to mutate the layout — the property
     /// that lets undo, the keymap, and a future agent reach everything.
     pub on_command: Callback<(String, serde_json::Value)>,
+    /// An area was clicked: the host learns which one has focus. Blender's
+    /// status bar shows the shortcuts for the area under the pointer; a click
+    /// is the cheaper signal — one message when you act on an area, rather
+    /// than one per mouse move — and it survives the pointer leaving.
+    #[props(default)]
+    pub on_focus: Option<Callback<AreaId>>,
     /// A target chip was clicked: the host opens its own picker (only it
     /// knows what can be pointed at) and answers with a `set_target` command.
     /// Without it, chips render as read-only labels.
@@ -295,6 +301,9 @@ fn render_leaf(
     } else {
         None
     };
+    // Copied out of props before the view: a Callback is Copy, the props
+    // reference is not, and the handler outlives this function.
+    let on_focus = props.on_focus;
     let toolbar_style = if regions.toolbar_w > 0 {
         format!("width:{}px", regions.toolbar_w)
     } else {
@@ -307,7 +316,16 @@ fn render_leaf(
     };
 
     rsx! {
-        div { class: "im-area", key: "{id}", "data-im-area": "{id}", "data-im-menu": "{menu}",
+        div {
+            class: "im-area",
+            key: "{id}",
+            "data-im-area": "{id}",
+            "data-im-menu": "{menu}",
+            onpointerdown: move |_| {
+                if let Some(focus) = on_focus {
+                    focus.call(id);
+                }
+            },
             // Corner grips: invisible hit-zones in all four corners, per the
             // locked decision — no visual reveal in any state; the diagonal
             // resize cursor is the only affordance. Drag inward to split,
