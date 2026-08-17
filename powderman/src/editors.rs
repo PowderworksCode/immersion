@@ -1120,6 +1120,9 @@ pub(crate) fn chart_element(s: &State, doc: &serde_json::Value, name: &str) -> E
         return rsx! { div { class: "empty", "no chart called {name}" } };
     };
     match resolve_spec(s, doc, spec) {
+        Ok(resolved) if nothing_to_draw(&resolved) => rsx! {
+            div { class: "empty", "no data in this window" }
+        },
         Err(e) => rsx! { div { class: "chart-error-inline", "{e}" } },
         Ok(resolved) => {
             let json = serde_json::to_string(&resolved).unwrap_or_default();
@@ -1291,6 +1294,15 @@ fn resolve_feeds(
                     resolve_feeds(s, doc, child)?;
                 }
             }
+            // After the children, not before: a layer's feed is resolved by
+            // the recursion above, so dropping empties first would inspect
+            // layers that had no values yet and keep all of them. Vega warns
+            // "Infinite extent" for every field of an empty layer and draws it
+            // anyway; the honest rendering of "no run was alive in this
+            // window" is no shading, not a warning per axis.
+            if let Some(layers) = map.get_mut("layer").and_then(|l| l.as_array_mut()) {
+                layers.retain(|l| !is_empty_layer(l));
+            }
             Ok(())
         }
         serde_json::Value::Array(items) => {
@@ -1301,6 +1313,30 @@ fn resolve_feeds(
         }
         _ => Ok(()),
     }
+}
+
+/// Whether a resolved spec has any rows at all. A chart of an empty window
+/// says so, rather than drawing bare axes over nothing — which is what Vega
+/// does, loudly, if handed empty values.
+fn nothing_to_draw(spec: &serde_json::Value) -> bool {
+    match spec.get("layer").and_then(|l| l.as_array()) {
+        // Every layer named a feed and every feed was empty.
+        Some(layers) => layers.is_empty(),
+        None => spec
+            .pointer("/data/values")
+            .and_then(|v| v.as_array())
+            .is_some_and(|rows| rows.is_empty()),
+    }
+}
+
+/// Whether a layer has been left with no rows to draw. Only a layer that
+/// named a feed counts: a layer with inline values, or one that inherits the
+/// parent's data, is the author's business.
+fn is_empty_layer(layer: &serde_json::Value) -> bool {
+    layer
+        .pointer("/data/values")
+        .and_then(|v| v.as_array())
+        .is_some_and(|rows| rows.is_empty())
 }
 
 /// The feeds a spec may name. Small and explicit: a chart that asks for
@@ -1464,5 +1500,50 @@ mod chart_editor {
         let names = chart_names(&doc);
         assert!(names.contains(&"cpu".to_string()), "{names:?}");
         assert_eq!(target_noun("chart"), "Chart");
+    }
+}
+
+#[cfg(test)]
+mod empty_charts {
+    use super::*;
+
+    /// The reported symptom: a woken demo drew charts whose annotation layer
+    /// had no rows, and Vega logged "Infinite extent" for every field of it.
+    /// An empty layer is dropped instead — after its feed resolves, which is
+    /// the part the first attempt got wrong.
+    #[test]
+    fn an_empty_layer_is_dropped_after_its_feed_resolves() {
+        let doc = crate::daemon::settings_defaults();
+        // A state with cpu samples but no runs: exactly a quiet box.
+        let s = State {
+            cpu: vec![(1, 10.0), (2, 20.0)],
+            annotations: vec![],
+            ..Default::default()
+        };
+        let spec = doc.pointer("/charts/cpu").expect("the seeded cpu chart");
+        let out = resolve_spec(&s, &doc, spec).expect("resolves");
+        let layers = out["layer"].as_array().expect("still layered");
+        assert_eq!(
+            layers.len(),
+            1,
+            "the annotation layer went, the line stayed"
+        );
+        assert_eq!(layers[0]["data"]["values"].as_array().unwrap().len(), 2);
+        assert!(!nothing_to_draw(&out), "there is still a line to draw");
+    }
+
+    #[test]
+    fn a_chart_with_no_data_at_all_says_so() {
+        let doc = crate::daemon::settings_defaults();
+        let s = State::default(); // nothing anywhere
+        let out = resolve_spec(&s, &doc, doc.pointer("/charts/cpu").unwrap()).expect("resolves");
+        assert!(
+            nothing_to_draw(&out),
+            "every layer was empty, so there is nothing to draw: {out}"
+        );
+        // And the single-feed shape too, which has no layers to count.
+        let flat = serde_json::json!({ "data": { "name": "cpu" }, "mark": "line" });
+        let out = resolve_spec(&s, &doc, &flat).expect("resolves");
+        assert!(nothing_to_draw(&out));
     }
 }
