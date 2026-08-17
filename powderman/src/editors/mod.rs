@@ -82,7 +82,7 @@ pub(crate) fn editors() -> Vec<Editor> {
         ),
         n(
             runs::kind(),
-            |d| runs::ed_runs(&d.state, d.area, d.open_run),
+            |d| runs::ed_runs(d, d.open_run),
             runs::sidebar,
             runs::footer,
         ),
@@ -382,6 +382,11 @@ pub(crate) struct Draw {
     pub arg: Option<String>,
     pub state: State,
     pub settings: serde_json::Value,
+    /// Everything the current workspace is pointed at — the arg of every leaf
+    /// in the layout. A list that shows the thing an area is open on marks
+    /// that row, which is the only way to tell, from the list, what you are
+    /// already looking at.
+    pub targets: Vec<String>,
     pub mac: bool,
     pub capturing: Option<String>,
     pub open_run: Callback<(AreaId, String)>,

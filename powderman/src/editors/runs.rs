@@ -8,7 +8,9 @@ use crate::editors::{Draw, prop};
 use crate::ui::{RunView, State, StepView, resume};
 use crate::ui::{hhmmss, short};
 
-pub(crate) fn ed_runs(s: &State, area: AreaId, open_run: Callback<(AreaId, String)>) -> Element {
+pub(crate) fn ed_runs(d: &Draw, open_run: Callback<(AreaId, String)>) -> Element {
+    let s = &d.state;
+    let area = d.area;
     rsx! {
         div { class: "im-filter-scope runs-list",
             if s.runs.is_empty() {
@@ -17,7 +19,7 @@ pub(crate) fn ed_runs(s: &State, area: AreaId, open_run: Callback<(AreaId, Strin
                 div { class: "runs-filter", FilterBox { placeholder: "filter runs…" } }
             }
             for r in s.runs.iter().cloned() {
-                {run_row(r, area, open_run)}
+                {run_row(r.clone(), area, open_run, d.targets.contains(&r.id))}
             }
         }
     }
@@ -25,11 +27,16 @@ pub(crate) fn ed_runs(s: &State, area: AreaId, open_run: Callback<(AreaId, Strin
 
 /// One expandable run. Pulled out of `ed_runs` so the view tree stays shallow
 /// — a nine-deep rsx block reads no better than a nine-deep function.
-fn run_row(r: RunView, area: AreaId, open_run: Callback<(AreaId, String)>) -> Element {
+fn run_row(
+    r: RunView,
+    area: AreaId,
+    open_run: Callback<(AreaId, String)>,
+    open_here: bool,
+) -> Element {
     let open_id = r.id.clone();
     rsx! {
         details {
-            class: "run",
+            class: if open_here { "run is-sel" } else { "run" },
             key: "{r.id}",
             "data-filter-text": "{r.workflow} {r.status} {r.note.clone().unwrap_or_default()} {r.error.clone().unwrap_or_default()}",
             summary {

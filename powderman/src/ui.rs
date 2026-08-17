@@ -285,6 +285,22 @@ pub(crate) fn client_view_actions() -> Vec<&'static str> {
     ClientAction::ALL.iter().map(|c| c.name()).collect()
 }
 
+/// Everything the layout is pointed at: the arg of every leaf that has one.
+///
+/// A list showing something an area is already open on marks that row, which
+/// is the only way to tell — from the list — what you are looking at. The
+/// values are whatever an editor's target is, so a run's is its id and a
+/// file's is its path; they are compared as-is and never parsed.
+fn targets_of(layout: &Layout) -> Vec<String> {
+    layout
+        .root
+        .leaves()
+        .into_iter()
+        .filter_map(|leaf| layout.target_of(leaf))
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
 fn palette_items(ws: &immersion::Workspaces) -> Vec<PaletteItem> {
     let mut items = vec![
         PaletteItem::new("undo", "Undo")
@@ -662,6 +678,7 @@ pub fn App() -> Element {
         arg: ws.read().current().layout.target_of(id),
         state: state.read().clone(),
         settings: settings.read().clone(),
+        targets: targets_of(&ws.read().current().layout),
         mac: mac(),
         capturing: capturing(),
         open_run,
@@ -712,23 +729,13 @@ pub fn App() -> Element {
         }
     });
 
-    let render_state = state;
     let render = use_callback(
         move |(area, editor, arg): (AreaId, String, Option<String>)| {
-            crate::editors::render(crate::editors::Draw {
-                area,
-                editor,
-                arg,
-                state: render_state.read().clone(),
-                settings: settings.read().clone(),
-                mac: mac(),
-                capturing: capturing(),
-                open_run,
-                cap_start,
-                cap_reset,
-                on_setting,
-                on_error: on_editor_error,
-            })
+            // The library is rendering this leaf and says what it is pointed
+            // at, so its arg wins over the one read back from the layout.
+            let mut d = draw_for(area, editor);
+            d.arg = arg;
+            crate::editors::render(d)
         },
     );
 
@@ -1111,6 +1118,30 @@ mod layout_tests {
                 Some(immersion::Area::Leaf { regions, .. }) if regions.sidebar
             )
         })
+    }
+
+    /// A list marks the row an area is already open on, which needs the
+    /// layout's targets as the editors store them. The bug this guards is the
+    /// one the target picker had: a run's target is its id, and a list
+    /// comparing ids against JSON pointers marks nothing, forever, silently.
+    #[test]
+    fn the_targets_are_what_the_editors_actually_store() {
+        let mut l = Layout::single("runs");
+        let detail = l.split(1, immersion::Dir::Row, 0.5).expect("a second area");
+        l.set_editor(detail, "run");
+        l.set_target(detail, "aaaa1111");
+        let files = l
+            .split(detail, immersion::Dir::Col, 0.5)
+            .expect("a third area");
+        l.set_editor(files, "code");
+        l.set_target(files, "src/main.rs");
+
+        let mut targets = targets_of(&l);
+        targets.sort();
+        assert_eq!(targets, vec!["aaaa1111", "src/main.rs"]);
+        // The list area itself points at nothing, and an empty target is not
+        // a target — it would match every row with a blank id.
+        assert_eq!(targets.len(), 2, "the bare list contributes nothing");
     }
 
     /// The sidebar region existed from the start and nothing shipped with it
