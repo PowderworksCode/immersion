@@ -1144,6 +1144,34 @@ mod layout_tests {
         assert_eq!(targets.len(), 2, "the bare list contributes nothing");
     }
 
+    /// A starter set built by naming templates is a starter set that ships
+    /// fewer tabs than it means to the moment a name is renamed — silently,
+    /// because a missing template is skipped rather than refused.
+    #[test]
+    fn every_starter_workspace_names_a_template_that_exists() {
+        let names: Vec<String> = crate::splash::templates()
+            .iter()
+            .map(|t| t.name.clone())
+            .collect();
+        for want in crate::daemon::STARTER {
+            assert!(
+                names.iter().any(|n| n == want),
+                "the starter set names {want}, which is not a template: {names:?}"
+            );
+        }
+        let ws = crate::daemon::default_workspaces();
+        assert_eq!(
+            ws.tabs.len(),
+            crate::daemon::STARTER.len(),
+            "a starter tab went missing"
+        );
+        assert_eq!(
+            ws.active, 0,
+            "you land on the first tab, not the last added"
+        );
+        assert_eq!(ws.tabs[0].name, "Overview");
+    }
+
     /// The sidebar region existed from the start and nothing shipped with it
     /// on, so it was a feature you had to already know about to ever see.
     /// Turning it on is one call per layout, which is exactly the kind of
