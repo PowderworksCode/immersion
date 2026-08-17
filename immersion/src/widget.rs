@@ -706,11 +706,35 @@ pub fn apply_edit(doc: &mut Value, pointer: &str, value: Value) {
     }
     let mut cur = doc;
     for (i, part) in parts.iter().enumerate() {
+        let last = i == parts.len() - 1;
+        // An index into an array that is already there. Without this the walk
+        // replaced the array with an object keyed "0", which is a setting
+        // quietly turned into a different shape — and the writer that does it
+        // is the one an agent uses, since `set_setting` takes any pointer.
+        if cur.is_array() {
+            let Some(index) = part
+                .parse::<usize>()
+                .ok()
+                .filter(|n| cur.as_array().is_some_and(|a| *n < a.len()))
+            else {
+                // Past the end, or not a number: an array does not grow a
+                // named key, and appending to one by writing /9 is a shape
+                // nobody meant. Leaving it alone is the honest no-op.
+                return;
+            };
+            let slot = &mut cur.as_array_mut().expect("checked above")[index];
+            if last {
+                *slot = value;
+                return;
+            }
+            cur = slot;
+            continue;
+        }
         if !cur.is_object() {
             *cur = json!({});
         }
         let obj = cur.as_object_mut().expect("just made it an object");
-        if i == parts.len() - 1 {
+        if last {
             obj.insert((*part).to_string(), value);
             return;
         }
@@ -720,6 +744,58 @@ pub fn apply_edit(doc: &mut Value, pointer: &str, value: Value) {
 
 #[cfg(test)]
 mod tests {
+    /// A vector setting is an array, and `set_setting` takes any pointer —
+    /// so an agent writing `/chart_window/0` was the shape this walk could
+    /// not do. It replaced the array with an object keyed "0", which reads
+    /// back as a setting that quietly changed type: nothing errors, the
+    /// widget stops rendering, and the value it held is gone.
+    #[test]
+    fn an_index_into_an_array_writes_the_element_not_over_the_array() {
+        let mut doc = json!({ "chart_window": [1, 60, 3] });
+        apply_edit(&mut doc, "/chart_window/0", json!(6));
+        assert_eq!(doc["chart_window"], json!([6, 60, 3]));
+        apply_edit(&mut doc, "/chart_window/2", json!(0));
+        assert_eq!(doc["chart_window"], json!([6, 60, 0]));
+    }
+
+    /// Nested: an array of objects is how a favourites list is shaped, and
+    /// editing one entry should not flatten the rest.
+    #[test]
+    fn the_walk_goes_through_an_array_into_what_it_holds() {
+        let mut doc = json!({ "favorites": [{ "label": "a" }, { "label": "b" }] });
+        apply_edit(&mut doc, "/favorites/1/label", json!("renamed"));
+        assert_eq!(
+            doc["favorites"],
+            json!([{ "label": "a" }, { "label": "renamed" }])
+        );
+    }
+
+    /// Out of range, or not a number at all. An array does not grow a named
+    /// key, and appending by writing /9 is a shape nobody meant — so the
+    /// write does nothing rather than inventing one.
+    #[test]
+    fn a_pointer_an_array_cannot_answer_changes_nothing() {
+        let before = json!({ "chart_window": [1, 60, 3] });
+        for pointer in ["/chart_window/9", "/chart_window/hours", "/chart_window/-1"] {
+            let mut doc = before.clone();
+            apply_edit(&mut doc, pointer, json!(99));
+            assert_eq!(doc, before, "{pointer} changed the document");
+        }
+    }
+
+    /// The object path is untouched, including the one that builds missing
+    /// levels on the way down.
+    #[test]
+    fn objects_still_work_the_way_they_did() {
+        let mut doc = json!({ "a": { "b": 1 } });
+        apply_edit(&mut doc, "/a/b", json!(2));
+        assert_eq!(doc["a"]["b"], 2);
+        apply_edit(&mut doc, "/x/y/z", json!("new"));
+        assert_eq!(doc["x"]["y"]["z"], "new");
+        apply_edit(&mut doc, "", json!("whole"));
+        assert_eq!(doc, json!("whole"));
+    }
+
     use super::*;
 
     #[test]
