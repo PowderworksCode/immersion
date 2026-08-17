@@ -78,6 +78,12 @@
         }
         const row = document.createElement("div");
         row.className = "im-ctx-item";
+        if (it.icon) {
+          const glyph = document.createElement("span");
+          glyph.className = "im-ctx-icon";
+          glyph.innerHTML = it.icon;
+          row.appendChild(glyph);
+        }
         const label = document.createElement("span");
         label.textContent = it.label ?? "";
         row.appendChild(label);

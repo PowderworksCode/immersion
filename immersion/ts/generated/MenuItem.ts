@@ -13,6 +13,11 @@ export type MenuItem = { label?: string, action?: string, params?: unknown,
  */
 chord?: string, 
 /**
+ * Inline SVG shown before the label. The shim inserts it as markup, so
+ * it is the library's own sprite output and never user text.
+ */
+icon?: string, 
+/**
  * A divider rather than a row. Always emitted, so the type can promise it.
  */
 sep: boolean, };

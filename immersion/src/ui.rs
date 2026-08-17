@@ -98,6 +98,9 @@ pub struct EditorKind {
     pub id: &'static str,
     /// What the dropdown shows.
     pub label: &'static str,
+    /// The icon name from the library's sprite (`crate::icon`). Empty for an
+    /// editor that has none; the header then shows its label alone.
+    pub icon: &'static str,
     /// Whether this editor looks *at* something — a subtree, a file, a run.
     /// Blender's header carries a data-block selector only for editors that
     /// have one; ours shows the target chip on the same rule, so an editor
@@ -575,7 +578,7 @@ fn leaf_header(
                     class: "im-kind",
                     title: "editor type",
                     "data-im-menu-click": "{crate::contextmenu::editor_menu_json(id, &kinds, &editor_owned)}",
-                    "{kinds.iter().find(|k| k.id == editor_owned).map(|k| k.label).unwrap_or(\"editor\")} ▾"
+                    dangerous_inner_html: "{kind_button_html(&kinds, &editor_owned)}",
                 }
                 // The target chip — Blender's data-block selector. Shows what
                 // this editor is looking at, and opens the host's picker.
@@ -662,6 +665,21 @@ fn crumb(target: Option<&str>) -> String {
         tail
     };
     format!("\u{25c6} {tail}")
+}
+
+/// The editor-selector button's contents: the icon, the label, the chevron.
+/// Built as markup rather than elements because the icon is markup — a sprite
+/// glyph is an `<svg>` string, and threading it through rsx as children would
+/// mean parsing it back into nodes for no gain.
+fn kind_button_html(kinds: &[EditorKind], current: &str) -> String {
+    let found = kinds.iter().find(|k| k.id == current);
+    let label = found.map(|k| k.label).unwrap_or("editor");
+    let icon = found
+        .map(|k| crate::icons::icon(k.icon))
+        .unwrap_or_default();
+    format!(
+        "{icon}<span class=\"im-kind-label\">{label}</span><span class=\"im-kind-caret\">▾</span>"
+    )
 }
 
 #[cfg(test)]

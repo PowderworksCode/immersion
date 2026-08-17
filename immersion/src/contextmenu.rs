@@ -38,6 +38,11 @@ pub struct MenuItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub chord: Option<String>,
+    /// Inline SVG shown before the label. The shim inserts it as markup, so
+    /// it is the library's own sprite output and never user text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub icon: Option<String>,
     /// A divider rather than a row. Always emitted, so the type can promise it.
     pub sep: bool,
 }
@@ -54,6 +59,14 @@ impl MenuItem {
     }
 
     /// Show a chord beside the label.
+    /// Show an icon before the label. Takes a sprite name, not markup, so a
+    /// caller cannot put arbitrary HTML into a menu.
+    pub fn with_icon(mut self, name: &str) -> Self {
+        let svg = crate::icons::icon(name);
+        self.icon = (!svg.is_empty()).then_some(svg);
+        self
+    }
+
     pub fn with_chord(mut self, chord: &str) -> Self {
         self.chord = Some(chord.to_string());
         self
@@ -127,6 +140,7 @@ pub fn editor_menu_json(id: crate::AreaId, kinds: &[crate::EditorKind], current:
                 "set_editor",
                 serde_json::json!({ "id": id, "editor": k.id }),
             )
+            .with_icon(k.icon)
         })
         .collect();
     menu_json(&items)
