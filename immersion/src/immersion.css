@@ -415,6 +415,17 @@
   border-color: var(--im-invalid);
   color: var(--im-invalid);
 }
+/* Icons sit on the text baseline and take its colour, so one glyph works in
+   a header, a menu row, or a tree. */
+.im-icon { display: inline-block; vertical-align: -0.15em; flex: none; }
+.im-kind { display: inline-flex; align-items: center; gap: .3rem; }
+.im-kind-caret { opacity: .7; }
+.im-ctx-icon {
+  display: inline-flex; align-items: center; width: 1em;
+  color: var(--im-text-muted); flex: none;
+}
+.im-ctx-item:hover .im-ctx-icon, .im-ctx-item.is-sel .im-ctx-icon { color: inherit; }
+
 .im-status-task { display: flex; align-items: center; gap: .4rem; flex: none; }
 .im-status-task-label { color: var(--im-text-muted); }
 .im-progress {
@@ -518,7 +529,10 @@
   padding: .1rem .4rem; line-height: 1.4;
 }
 .im-viewmenu:hover, .im-menubtn:hover { background: var(--im-header); color: var(--im-text); }
-.im-ctx-item { display: flex; align-items: baseline; justify-content: space-between; gap: 1.2rem; }
+/* Icon, then label, then the chord pushed to the far right. space-between
+   put the label there instead the moment rows grew a third child. */
+.im-ctx-item { display: flex; align-items: baseline; gap: .5rem; }
+.im-ctx-chord { margin-left: auto; padding-left: 1.2rem; }
 .im-ctx-chord {
   color: var(--im-text-muted); font-family: var(--im-mono); font-size: .68rem; flex: none;
 }

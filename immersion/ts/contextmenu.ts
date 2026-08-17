@@ -82,6 +82,15 @@ if (once("__imCtxMenu")) {
       }
       const row = document.createElement("div");
       row.className = "im-ctx-item";
+      if (it.icon) {
+        // The icon is the library's own sprite output — markup by
+        // construction, never user text — so it is inserted as markup while
+        // the label stays textContent.
+        const glyph = document.createElement("span");
+        glyph.className = "im-ctx-icon";
+        glyph.innerHTML = it.icon;
+        row.appendChild(glyph);
+      }
       const label = document.createElement("span");
       label.textContent = it.label ?? "";
       row.appendChild(label);

@@ -21,6 +21,7 @@ mod client;
 mod command;
 mod contextmenu;
 mod filter;
+mod icons;
 mod keymap;
 mod layoutfile;
 mod palette;
@@ -42,6 +43,7 @@ pub use contextmenu::{
     view_menu_json,
 };
 pub use filter::{FilterBox, FilterBoxProps};
+pub use icons::{has_icon, icon};
 pub use keymap::{
     Binding, Keymap, KeymapHelp, KeymapHelpProps, KeymapProps, Platform, PlatformProps,
     default_keymap, pretty_chord,
