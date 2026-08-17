@@ -573,6 +573,11 @@ fn kinds() -> Vec<EditorKind> {
             label: "Diff",
             targets: true,
         },
+        EditorKind {
+            id: "chart",
+            label: "Chart",
+            targets: true,
+        },
     ]
 }
 
@@ -880,6 +885,18 @@ pub fn App() -> Element {
         }
     });
     let render_sidebar = use_callback(move |(id, editor): (AreaId, String)| -> Element {
+        // The chart editor's sidebar is its spec editor, not the generic
+        // properties panel: what you want beside a chart is the document that
+        // makes it.
+        if editor == "chart" {
+            let target = ws.read().current().layout.target_of(id);
+            return crate::editors::chart_sidebar(
+                &settings.read().clone(),
+                target,
+                on_setting,
+                on_editor_error,
+            );
+        }
         rsx! {
             div { class: "area-props",
                 Panel { title: "Properties",
@@ -931,6 +948,7 @@ pub fn App() -> Element {
                 "data" => crate::editors::ed_data(&s, arg.clone()),
                 "files" => crate::editors::ed_files(arg.clone()),
                 "code" => crate::editors::ed_code(arg.clone()),
+                "chart" => crate::editors::ed_chart(&s, &settings_doc, arg.clone()),
                 "diff" => crate::editors::ed_diff(
                     arg.clone(),
                     settings_doc["diff_split"].as_bool().unwrap_or(false),

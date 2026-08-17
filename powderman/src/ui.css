@@ -306,3 +306,23 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
   margin: 0; padding: .4rem .6rem; white-space: pre;
   font-family: var(--im-mono); font-size: .74rem; color: var(--im-text);
 }
+
+/* Charts fill their area; the renderer sizes to the container. */
+.chart-host { flex: 1; overflow: auto; padding: .4rem; }
+.chart-host .im-chart-drawn { width: 100%; height: 100%; }
+.im-chart-error {
+  padding: .6rem; font-family: var(--im-mono); font-size: .74rem;
+  color: var(--im-invalid, #cc4b4b); white-space: pre-wrap;
+}
+
+/* Vega draws with its own defaults; the palette is applied here, where the
+   theme tokens are, rather than written into every spec. A spec that sets a
+   colour explicitly still wins — these are defaults, matched on Vega's own
+   role classes. */
+.chart-host svg text { fill: var(--im-text-muted); }
+.chart-host svg .mark-text text { fill: var(--im-text); }
+.chart-host svg line, .chart-host svg .mark-rule line { stroke: var(--im-border); }
+.chart-host svg path.background { fill: none; }
+.chart-host svg .mark-line path { stroke: var(--im-accent); }
+.chart-host svg .mark-rect path, .chart-host svg .mark-arc path { fill: var(--im-accent); }
+.chart-host svg .mark-symbol path { fill: var(--im-accent); }
