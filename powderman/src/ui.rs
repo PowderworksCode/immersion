@@ -254,6 +254,8 @@ pub(crate) enum ClientAction {
     Fullscreen,
     Palette,
     Preferences,
+    ToggleToolbar,
+    ToggleSidebar,
     Cheatsheet,
     AdjustLast,
     Pie,
@@ -267,6 +269,8 @@ impl ClientAction {
         ClientAction::Fullscreen,
         ClientAction::Palette,
         ClientAction::Preferences,
+        ClientAction::ToggleToolbar,
+        ClientAction::ToggleSidebar,
         ClientAction::Cheatsheet,
         ClientAction::AdjustLast,
         ClientAction::Pie,
@@ -280,6 +284,8 @@ impl ClientAction {
             ClientAction::Fullscreen => "fullscreen",
             ClientAction::Palette => "palette",
             ClientAction::Preferences => "preferences",
+            ClientAction::ToggleToolbar => "toggle_toolbar",
+            ClientAction::ToggleSidebar => "toggle_sidebar",
             ClientAction::Cheatsheet => "cheatsheet",
             ClientAction::AdjustLast => "adjust_last",
             ClientAction::Pie => "pie",
@@ -539,6 +545,22 @@ pub fn App() -> Element {
             }
             Route::ClientView(ClientAction::Palette) => palette_open.set(true),
             Route::ClientView(ClientAction::Preferences) => prefs_open.set(true),
+            // The chord has no area in it, so it acts on the focused one —
+            // and says so rather than doing nothing when nothing is focused.
+            Route::ClientView(a @ (ClientAction::ToggleToolbar | ClientAction::ToggleSidebar)) => {
+                let region = if a == ClientAction::ToggleToolbar {
+                    "toolbar"
+                } else {
+                    "sidebar"
+                };
+                match focused() {
+                    Some(id) => cmd.call((
+                        "toggle_region".to_string(),
+                        serde_json::json!({ "id": id, "region": region }),
+                    )),
+                    None => do_report.call("Click an area first".to_string()),
+                }
+            }
             Route::Bus => cmd.call((action, params)),
         }
     });
@@ -1244,5 +1266,40 @@ mod parity_tests {
                 "{a} is both client-view and a bus command — one must win"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod region_chord_tests {
+    use super::*;
+
+    /// The header has always labelled these buttons T and N. For a long time
+    /// neither key was bound to anything, so the labels named keys that did
+    /// nothing — the kind of wrong that is invisible until someone presses one.
+    #[test]
+    fn the_letters_on_the_buttons_are_bound() {
+        let km = immersion::default_keymap();
+        for (chord, action) in [("T", "toggle_toolbar"), ("N", "toggle_sidebar")] {
+            let b = km
+                .iter()
+                .find(|b| b.chord == chord)
+                .unwrap_or_else(|| panic!("{chord} is on a button but bound to nothing"));
+            assert_eq!(b.action, action);
+        }
+    }
+
+    /// They act on the focused area, so they are client-view state that the
+    /// host turns into a bus command — not commands themselves, which would
+    /// need an area id the chord cannot carry.
+    #[test]
+    fn they_route_through_the_client_view() {
+        assert!(matches!(
+            route("toggle_toolbar"),
+            Route::ClientView(ClientAction::ToggleToolbar)
+        ));
+        assert!(matches!(
+            route("toggle_sidebar"),
+            Route::ClientView(ClientAction::ToggleSidebar)
+        ));
     }
 }

@@ -117,6 +117,25 @@ pub fn default_keymap() -> Vec<Binding> {
             params: Value::Null,
         },
         Binding {
+            // Blender's T and N, which act on the area under the pointer.
+            // Ours act on the focused area — the one last clicked — because a
+            // hover under liveview is a message per mouse move. Bare letters,
+            // so the shim's input guard keeps them from firing while typing.
+            //
+            // The header has labelled these buttons T and N since before
+            // either key was bound to anything at all.
+            chord: "T".into(),
+            action: "toggle_toolbar".into(),
+            description: "Toggle the toolbar".into(),
+            params: Value::Null,
+        },
+        Binding {
+            chord: "N".into(),
+            action: "toggle_sidebar".into(),
+            description: "Toggle the sidebar".into(),
+            params: Value::Null,
+        },
+        Binding {
             // Blender's Quick Favourites. A bare letter, so the shim's input
             // guard keeps it from firing while typing in a field.
             chord: "Q".into(),
