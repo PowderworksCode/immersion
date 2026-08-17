@@ -434,6 +434,20 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
     let cmd = props.on_command;
     let on_add = props.on_add;
     let multi = props.names.len() > 1;
+    // Its own callback rather than a closure in the view: the drop needs two
+    // conditions and a command call, which inside the tab loop is four levels
+    // deeper than anything else in this file.
+    let drop_tab = use_callback(move |onto: usize| {
+        let from = dragging();
+        dragging.set(None);
+        match from {
+            Some(from) if from != onto => cmd.call((
+                "workspace.move".to_string(),
+                serde_json::json!({ "from": from, "to": onto }),
+            )),
+            _ => {}
+        }
+    });
 
     rsx! {
         div { class: "im-tabs",
@@ -473,15 +487,7 @@ pub fn WorkspaceTabs(props: WorkspaceTabsProps) -> Element {
                         ondragover: move |e| e.prevent_default(),
                         ondrop: move |e| {
                             e.prevent_default();
-                            if let Some(from) = dragging() {
-                                if from != i {
-                                    cmd.call((
-                                        "workspace.move".to_string(),
-                                        serde_json::json!({ "from": from, "to": i }),
-                                    ));
-                                }
-                            }
-                            dragging.set(None);
+                            drop_tab.call(i);
                         },
                         ondragend: move |_| dragging.set(None),
                         onclick: move |_| cmd.call(("workspace.switch".to_string(), serde_json::json!({ "index": i }))),
