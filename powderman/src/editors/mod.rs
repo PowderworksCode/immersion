@@ -27,24 +27,64 @@ pub(crate) mod runs;
 pub(crate) mod settings;
 pub(crate) mod timers;
 
+/// An editor: its registry entry, and the function that draws it. One record
+/// rather than a list and a matching set of match arms — the shape `Command`
+/// already uses, and for the same reason.
+pub(crate) struct Editor {
+    pub kind: EditorKind,
+    pub draw: fn(&Draw) -> Element,
+}
+
 /// Every editor this host offers, in the order the dropdown lists them.
-pub(crate) fn kinds() -> Vec<EditorKind> {
+pub(crate) fn editors() -> Vec<Editor> {
+    fn e(kind: EditorKind, draw: fn(&Draw) -> Element) -> Editor {
+        Editor { kind, draw }
+    }
     vec![
-        machine::kind(),
-        fleet::kind(),
-        runs::kind(),
-        actions::kind(),
-        timers::kind(),
-        runs::detail_kind(),
-        settings::kind(),
-        info::kind(),
-        keymap::kind(),
-        data::kind(),
-        files::kind(),
-        code::kind(),
-        diff::kind(),
-        crate::charts::kind(),
+        e(machine::kind(), |d| {
+            machine::ed_machine(&d.state, &d.settings)
+        }),
+        e(fleet::kind(), |d| fleet::ed_fleet(&d.state)),
+        e(runs::kind(), |d| {
+            runs::ed_runs(&d.state, d.area, d.open_run)
+        }),
+        e(actions::kind(), |d| actions::ed_actions(&d.state)),
+        e(timers::kind(), |d| timers::ed_timers(&d.state)),
+        e(runs::detail_kind(), |d| match &d.arg {
+            Some(id) => runs::ed_run_detail(&d.state, id),
+            None => runs::ed_run_picker(&d.state, d.area, d.open_run),
+        }),
+        e(settings::kind(), |d| {
+            settings::ed_settings(d.settings.clone(), d.on_setting, d.on_error)
+        }),
+        e(info::kind(), |d| info::ed_info(&d.state)),
+        e(keymap::kind(), |d| {
+            keymap::ed_keymap(
+                d.settings.clone(),
+                d.mac,
+                d.capturing.clone(),
+                d.cap_start,
+                d.cap_reset,
+            )
+        }),
+        e(data::kind(), |d| data::ed_data(&d.state, d.arg.clone())),
+        e(files::kind(), |d| files::ed_files(d.arg.clone())),
+        e(code::kind(), |d| code::ed_code(d.arg.clone())),
+        e(diff::kind(), |d| {
+            diff::ed_diff(
+                d.arg.clone(),
+                d.settings["diff_split"].as_bool().unwrap_or(false),
+            )
+        }),
+        e(crate::charts::kind(), |d| {
+            crate::charts::ed_chart(&d.state, &d.settings, d.arg.clone())
+        }),
     ]
+}
+
+/// The registry entries alone, for the chrome.
+pub(crate) fn kinds() -> Vec<EditorKind> {
+    editors().into_iter().map(|e| e.kind).collect()
 }
 
 /// What an editor answers to, for the status bar. Read off the registry now,
@@ -265,33 +305,14 @@ pub(crate) struct Draw {
 /// to the code that draws it; a kind in `kinds()` with no arm here is an
 /// editor that would render as "unknown", which the test below refuses.
 pub(crate) fn render(d: Draw) -> Element {
-    let Draw { area, arg, .. } = &d;
-    let (area, arg) = (*area, arg.clone());
-    match d.editor.as_str() {
-        "machine" => machine::ed_machine(&d.state, &d.settings),
-        "fleet" => fleet::ed_fleet(&d.state),
-        "runs" => runs::ed_runs(&d.state, area, d.open_run),
-        "actions" => actions::ed_actions(&d.state),
-        "timers" => timers::ed_timers(&d.state),
-        "info" => info::ed_info(&d.state),
-        "keymap" => keymap::ed_keymap(
-            d.settings.clone(),
-            d.mac,
-            d.capturing.clone(),
-            d.cap_start,
-            d.cap_reset,
-        ),
-        "run" => match arg {
-            Some(id) => runs::ed_run_detail(&d.state, &id),
-            None => runs::ed_run_picker(&d.state, area, d.open_run),
-        },
-        "settings" => settings::ed_settings(d.settings.clone(), d.on_setting, d.on_error),
-        "data" => data::ed_data(&d.state, arg),
-        "files" => files::ed_files(arg),
-        "code" => code::ed_code(arg),
-        "diff" => diff::ed_diff(arg, d.settings["diff_split"].as_bool().unwrap_or(false)),
-        "chart" => crate::charts::ed_chart(&d.state, &d.settings, arg),
-        other => rsx! { div { class: "empty", "unknown editor {other}" } },
+    match editors().into_iter().find(|e| e.kind.id == d.editor) {
+        Some(e) => (e.draw)(&d),
+        // An id the registry does not know: a stale layout naming an editor
+        // this host no longer has.
+        None => {
+            let editor = d.editor.clone();
+            rsx! { div { class: "empty", "unknown editor {editor}" } }
+        }
     }
 }
 
@@ -299,25 +320,22 @@ pub(crate) fn render(d: Draw) -> Element {
 mod tests {
     use super::*;
 
-    /// A registry entry with no arm in `render` draws "unknown editor", which
-    /// is a menu offering something that does not exist. The two lists are
-    /// written in different places, so this is what keeps them the same.
+    /// The registry is one list now, so an editor cannot be offered without
+    /// something to draw it — that is a type error rather than a test. What
+    /// is still worth checking is that no two editors claim the same id, and
+    /// that the order the dropdown shows is the order written here.
     #[test]
-    fn every_registered_editor_can_be_drawn() {
-        // The ids `render` handles, read off its own match rather than a copy.
-        const DRAWN: &[&str] = &[
-            "machine", "fleet", "runs", "actions", "timers", "info", "keymap", "run", "settings",
-            "data", "files", "code", "diff", "chart",
-        ];
-        for k in kinds() {
-            assert!(DRAWN.contains(&k.id), "{} is offered but never drawn", k.id);
-        }
-        for id in DRAWN {
-            assert!(
-                kinds().iter().any(|k| k.id == *id),
-                "{id} is drawn but not in the registry, so nothing can reach it"
-            );
-        }
+    fn the_registry_is_unambiguous_and_ordered() {
+        let ids: Vec<&str> = editors().iter().map(|e| e.kind.id).collect();
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), ids.len(), "two editors share an id: {ids:?}");
+        assert_eq!(
+            ids.first(),
+            Some(&"machine"),
+            "the dropdown's order is the list's order, and machine leads it"
+        );
     }
 
     /// Hints belong to the editor now. This catches the copy that used to
