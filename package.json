@@ -7,9 +7,11 @@
     "check": "tsc --noEmit",
     "build:diffs": "bun run scripts/build-diffs.ts",
     "build:vega": "bun run scripts/build-vega.ts",
-    "build:vendor": "bun run scripts/build-diffs.ts && bun run scripts/build-vega.ts"
+    "build:vendor": "bun run scripts/build-diffs.ts && bun run scripts/build-vega.ts && bun run scripts/build-icons.ts",
+    "build:icons": "bun run scripts/build-icons.ts"
   },
   "devDependencies": {
+    "@tabler/icons": "^3.46.0",
     "@types/bun": "^1.3.14",
     "typescript": "^7.0.2"
   },

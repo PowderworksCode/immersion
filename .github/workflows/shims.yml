@@ -43,6 +43,7 @@ jobs:
       # renderer forever.
       - name: Vendored renderers are up to date
         run: |
+          bun install --frozen-lockfile
           bun run build:vendor
           git diff --exit-code -- immersion/vendor \
             || { echo "::error::a vendored renderer is stale — run 'bun run build:vendor' and commit"; exit 1; }

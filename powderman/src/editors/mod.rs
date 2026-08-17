@@ -335,3 +335,21 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod icon_tests {
+    /// An editor naming an icon that is not in the set draws a header with a
+    /// gap where its glyph should be. Cheap to check, and the whole reason
+    /// the full Tabler set is vendored is that this is now a wide net.
+    #[test]
+    fn every_editor_names_an_icon_that_exists() {
+        for k in super::kinds() {
+            assert!(
+                immersion::has_icon(k.icon),
+                "{} names the icon {:?}, which is not in the set",
+                k.id,
+                k.icon
+            );
+        }
+    }
+}
