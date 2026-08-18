@@ -191,6 +191,35 @@ pub(crate) fn file_menu() -> String {
     ])
 }
 
+/// The theme picker on its own, for the topbar chip beside the workspace
+/// tabs. Same rows as the View menu's middle section — one list, so the two
+/// surfaces can never offer different themes or disagree about which is on.
+pub(crate) fn theme_menu(settings: &Value) -> String {
+    menu_json(&theme_rows(
+        settings["theme"].as_str().unwrap_or("Blender Dark"),
+    ))
+}
+
+/// A row per theme the library ships, with the active one ticked. Adding a
+/// preset to `immersion::themes()` is the whole of adding it here.
+fn theme_rows(active: &str) -> Vec<MenuItem> {
+    immersion::themes()
+        .iter()
+        .map(|t| {
+            let row = MenuItem::new(
+                t.name,
+                "set_setting",
+                json!({ "pointer": "/theme", "value": t.name }),
+            );
+            if t.name == active {
+                row.with_icon("check")
+            } else {
+                row
+            }
+        })
+        .collect()
+}
+
 /// View: how the workbench looks, rather than what it holds. Every row is a
 /// `set_setting`, so the menu, the preferences window and an agent are all
 /// writing the same document — the menu is a shortcut to values, not a second
@@ -210,16 +239,7 @@ pub(crate) fn view_menu(settings: &Value) -> String {
         MenuItem::new("Reset zoom", "set_setting", set("/ui_scale", json!(1.0))),
         MenuItem::sep(),
     ];
-    // Themes come from the library's list, so a preset added there appears
-    // here without anyone remembering to add a row.
-    for t in immersion::themes() {
-        let row = MenuItem::new(t.name, "set_setting", set("/theme", json!(t.name)));
-        items.push(if t.name == theme {
-            row.with_icon("check")
-        } else {
-            row
-        });
-    }
+    items.extend(theme_rows(theme));
     items.push(MenuItem::sep());
     let tips = MenuItem::new(
         "Tooltips",
@@ -389,5 +409,79 @@ mod history_tests {
             .filter(|r| r["action"] == "split")
             .count();
         assert_eq!(n, 1);
+    }
+}
+
+#[cfg(test)]
+mod topbar_tests {
+    use super::*;
+
+    fn labels(menu: &str) -> Vec<String> {
+        serde_json::from_str::<Vec<Value>>(menu)
+            .expect("menu JSON parses")
+            .into_iter()
+            .filter_map(|r| r["label"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    /// The topbar chip and the View menu are two ways to the same setting.
+    /// They were about to be two lists of themes; they are one list read
+    /// twice, and this is what says so.
+    #[test]
+    fn the_theme_chip_and_the_view_menu_offer_the_same_themes() {
+        let doc = serde_json::json!({ "theme": "Light" });
+        let chip = labels(&theme_menu(&doc));
+        let names: Vec<String> = immersion::themes()
+            .iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        assert_eq!(chip, names, "the chip offers every theme, in order");
+        let view = labels(&view_menu(&doc));
+        for name in &names {
+            assert!(view.contains(name), "the View menu lost {name}");
+        }
+    }
+
+    /// The tick follows the setting, in both places. A chip that always says
+    /// "Blender Dark" is worse than one with no tick at all.
+    #[test]
+    fn the_active_theme_is_the_ticked_one() {
+        for active in immersion::themes().iter().map(|t| t.name) {
+            let doc = serde_json::json!({ "theme": active });
+            let ticked: Vec<String> = serde_json::from_str::<Vec<Value>>(&theme_menu(&doc))
+                .expect("menu JSON parses")
+                .into_iter()
+                .filter(|r| r.get("icon").is_some())
+                .filter_map(|r| r["label"].as_str().map(str::to_string))
+                .collect();
+            assert_eq!(ticked, vec![active.to_string()]);
+        }
+    }
+
+    /// The connection chip has no signal of its own: the disconnect script
+    /// marks the body and the stylesheet swaps the two labels. That is right —
+    /// by the time the chip is wrong there is no server left to re-render it —
+    /// but it means a string in daemon.rs and a rule in ui.css have to agree,
+    /// with nothing between them that would notice if they stopped.
+    #[test]
+    fn the_connection_chip_reads_the_class_the_page_actually_sets() {
+        let html = crate::daemon::index_html();
+        let class = crate::daemon::STALE_CLASS;
+        assert!(
+            html.contains(&format!("classList.add(\"{class}\")")),
+            "the disconnect script no longer sets {class}"
+        );
+        // Matched with the brace: without it `.conn-on` also matches a rule
+        // renamed to `.conn-onn`, which is exactly the drift being guarded.
+        for rule in [
+            format!("body.{class} .conn-on {{"),
+            format!("body.{class} .conn-off {{"),
+            format!("body.{class} .conn-dot {{"),
+        ] {
+            assert!(
+                crate::ui::CSS.contains(&rule),
+                "ui.css has no `{rule}` — the chip would say Connected while offline"
+            );
+        }
     }
 }
