@@ -91,6 +91,29 @@ impl Gesture {
 
 const GESTURES_JS: &str = include_str!("gestures.js");
 
+/// The flag [`crate::ContextMenu`]'s shim sets when it installs. Named here
+/// because this is the file that checks for it; `menu_shim_flag` in the tests
+/// holds the two spellings together.
+pub(crate) const MENU_FLAG: &str = "__imCtxMenu";
+
+/// Warn, once, if areas are on the page and no menu shim is listening.
+///
+/// Two seconds rather than a tick: both components mount in the same frame,
+/// their evals are separate tasks, and the order is not ours to decide. A
+/// warning nobody is waiting for can afford to be late; a false one that
+/// fires because the shim installed second cannot happen.
+fn menu_guard_js() -> String {
+    format!(
+        "setTimeout(() => {{ \
+           if (window.{MENU_FLAG} || window.__imMenuWarned) return; \
+           window.__imMenuWarned = true; \
+           console.warn('immersion: areas are mounted but no context-menu shim is. \
+Every menu — the editor dropdown, the View menu, every right-click — will silently \
+do nothing. Mount immersion::ContextMenu once, beside Areas.'); \
+         }}, 2000);"
+    )
+}
+
 /// One entry in the editor-type dropdown.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditorKind {
@@ -187,6 +210,19 @@ impl PartialEq for AreasProps {
 #[component]
 pub fn Areas(props: AreasProps) -> Element {
     let on_command = props.on_command;
+
+    // Every area header emits menu attributes, and nothing draws them unless
+    // the host has also mounted [`crate::ContextMenu`]. Forget it and the
+    // editor dropdown, the View menu and every right-click do nothing at all
+    // — no error, no console line, just a control that does not respond. A
+    // second host found this within an hour of existing.
+    //
+    // So the component that *emits* the attributes checks that something is
+    // listening. Deferred a tick, because both components mount in the same
+    // frame and the order is not ours to decide.
+    use_effect(move || {
+        dioxus::document::eval(&menu_guard_js());
+    });
 
     // The shim installs once per page and speaks back over the eval channel:
     // one JSON message per completed drag, mapped to a bus command and sent to
@@ -730,6 +766,52 @@ mod crumb_tests {
         assert_eq!(
             crumb(Some("5c7e9a1b3d5f7091a3c5e7d9b1f3a5c7")),
             "\u{25c6} 5c7e9a1b\u{2026}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod host_guard_tests {
+    use super::*;
+
+    /// The guard names a flag the shim sets. Two strings in two files with
+    /// nothing between them, and the failure is the quiet kind: a rename on
+    /// either side turns the warning into one that fires on every correctly
+    /// wired page, which is worse than no warning at all.
+    #[test]
+    fn the_menu_guard_watches_the_flag_the_shim_sets() {
+        let shim = include_str!("contextmenu.js");
+        assert!(
+            shim.contains(MENU_FLAG),
+            "the context-menu shim no longer sets {MENU_FLAG}"
+        );
+        let guard = menu_guard_js();
+        assert!(
+            guard.contains(MENU_FLAG),
+            "the guard watches something else"
+        );
+        // And it says what to do, not just that something is wrong.
+        assert!(guard.contains("ContextMenu"), "the warning names the fix");
+    }
+
+    /// A host that ships no CSS of its own should still get a workbench, not
+    /// Times New Roman on a white page. The library owns exactly one `body`
+    /// rule and it comes first, so a host with an opinion still wins.
+    #[test]
+    fn the_library_ships_a_readable_default() {
+        assert!(crate::CSS.contains("--im-font:"), "no font token");
+        let body = crate::CSS
+            .split("body {")
+            .nth(1)
+            .expect("the library defines one body rule");
+        let body = &body[..body.find('}').expect("it closes")];
+        for want in ["font-family: var(--im-font)", "background: var(--im-bg)"] {
+            assert!(body.contains(want), "the body rule lost `{want}`");
+        }
+        assert_eq!(
+            crate::CSS.matches("\nbody {").count(),
+            1,
+            "the library should own exactly one body rule"
         );
     }
 }

@@ -16,6 +16,22 @@
   --im-panel: #2b2b30;
   --im-badge: #b9821f;
   --im-invalid: #cc4b4b;
+  --im-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* A host that ships no typography of its own gets one rather than the
+   browser's serif default, and the ground the workbench is drawn on rather
+   than white behind a dark theme. A second host rendered in Times on a white
+   page for exactly as long as it took to look at it.
+
+   This is the library's only rule on `body`, and it is first in the cascade:
+   the host's stylesheet is concatenated after, so anything it has an opinion
+   about still wins. */
+body {
+  font-family: var(--im-font);
+  background: var(--im-bg);
+  color: var(--im-text);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Immersion chrome. Flat, gap-free, 1px seams — the locked Blender look.
