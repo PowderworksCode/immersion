@@ -1,0 +1,107 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  /* Nothing here paints a background. If the overlay webview is genuinely
+     transparent, the page underneath shows through everywhere except what
+     this document actually draws. If it is not, you will see a white or
+     black sheet and the spike has answered its main question in the
+     negative, immediately. */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body { font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; color: #e8e8e4; }
+
+  /* The z-order proof. A frame this loud cannot be mistaken for part of the
+     page beneath, and if it is clipped or hidden the stacking is wrong. */
+  #frame {
+    position: fixed; inset: 4px; border: 2px solid #ff00c8;
+    border-radius: 6px; pointer-events: none; display: none;
+  }
+  #frame::after {
+    content: "overlay webview — above the page"; position: absolute;
+    top: -1px; left: 12px; transform: translateY(-50%);
+    background: #ff00c8; color: #111; padding: 0 .4rem;
+    font-size: 11px; font-weight: 700; border-radius: 3px;
+  }
+
+  /* The transparency proof: a dimmed backdrop, exactly like the workbench's
+     own modals. You should be able to read the page through it. */
+  #backdrop {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, .55); display: none;
+  }
+  #menu {
+    position: fixed; min-width: 12rem; display: none;
+    background: #2b2b30; border: 1px solid #47474f; border-radius: 5px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .5); padding: .25rem;
+  }
+  #menu div { padding: .25rem .6rem; border-radius: 3px; }
+  #menu div:hover { background: #3987e5; }
+  #card {
+    position: fixed; left: 50%; top: 30%; transform: translateX(-50%);
+    display: none; background: #2b2b30; border: 1px solid #47474f;
+    border-radius: 5px; padding: 1rem 1.4rem; text-align: center;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
+  }
+  #card b { display: block; font-size: 1.2rem; margin-bottom: .2rem; }
+</style>
+
+<div id="frame"></div>
+<div id="backdrop"></div>
+<div id="menu"></div>
+<div id="card"></div>
+
+<script>
+  const el = (id) => document.getElementById(id);
+  const post = (msg) => {
+    try { window.ipc.postMessage(JSON.stringify(msg)); } catch (_) {}
+  };
+
+  window.imOverlay = {
+    // A context menu at the point the guest page was right-clicked. The
+    // coordinates are the guest's client coordinates; both webviews fill the
+    // window here, so they need no translation — in the real thing they
+    // would be offset by the area's rect.
+    menu(x, y) {
+      this.clear();
+      el("frame").style.display = "block";
+      const m = el("menu");
+      m.innerHTML = "";
+      for (const label of ["Split H", "Split V", "Duplicate", "Close"]) {
+        const row = document.createElement("div");
+        row.textContent = label;
+        row.onclick = () => { post({ kind: "picked", label }); window.imOverlay.clear(); };
+        m.appendChild(row);
+      }
+      m.style.left = x + "px";
+      m.style.top = y + "px";
+      m.style.display = "block";
+    },
+
+    // A modal, to prove the thing the screenshot idea was invented for: a
+    // card over a web pane, with the pane legible behind it.
+    card(text) {
+      this.clear();
+      el("frame").style.display = "block";
+      el("backdrop").style.display = "block";
+      const c = el("card");
+      c.innerHTML = "<b>" + text + "</b>captured inside the page, drawn above it";
+      c.style.display = "block";
+    },
+
+    clear() {
+      for (const id of ["frame", "backdrop", "menu", "card"]) {
+        el(id).style.display = "none";
+      }
+      post({ kind: "cleared" });
+    },
+  };
+
+  // Escape and a backdrop click dismiss, so the overlay can be got rid of
+  // without going back to the guest page.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") window.imOverlay.clear();
+  });
+  el("backdrop").addEventListener("click", () => window.imOverlay.clear());
+
+  // If this ever fires while the overlay is meant to be idle-and-invisible,
+  // the overlay is eating clicks that belong to the page.
+  document.addEventListener("click", () => post({ kind: "overlay_click" }), true);
+</script>
