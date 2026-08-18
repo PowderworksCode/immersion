@@ -646,30 +646,6 @@ pub fn App() -> Element {
     // Region content (Blender's T toolbar / N sidebar). The toolbar is a
     // vertical strip of area actions; the sidebar is a small properties panel
     // for the focused area. Both route through the same command bus.
-    let render_toolbar = use_callback(move |(id, _editor): (AreaId, String)| -> Element {
-        rsx! {
-            div { class: "area-tools",
-                button {
-                    class: "area-tool",
-                    title: "split horizontal",
-                    onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "row" }))),
-                    "⬒"
-                }
-                button {
-                    class: "area-tool",
-                    title: "split vertical",
-                    onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "col" }))),
-                    "◧"
-                }
-                button {
-                    class: "area-tool",
-                    title: "duplicate",
-                    onclick: move |_| cmd.call(("duplicate_area".to_string(), serde_json::json!({ "id": id }))),
-                    "⧉"
-                }
-            }
-        }
-    });
     // Both region renderers and the footer need the same bundle an editor is
     // drawn from, so it is built once here rather than three times below.
     let draw_for = move |id: AreaId, editor: String| crate::editors::Draw {
@@ -678,7 +654,6 @@ pub fn App() -> Element {
         arg: ws.read().current().layout.target_of(id),
         state: state.read().clone(),
         settings: settings.read().clone(),
-        targets: targets_of(&ws.read().current().layout),
         mac: mac(),
         capturing: capturing(),
         open_run,
@@ -686,6 +661,8 @@ pub fn App() -> Element {
         cap_reset,
         on_setting,
         on_error: on_editor_error,
+        targets: targets_of(&ws.read().current().layout),
+        cmd,
     };
     // One line along an area's bottom edge saying what it is showing —
     // "Rust · 148 lines", "7 runs · 1 running". Empty draws no strip, so an
@@ -693,6 +670,40 @@ pub fn App() -> Element {
     let render_footer = use_callback(move |(id, editor): (AreaId, String)| -> String {
         crate::editors::footer(&draw_for(id, editor))
     });
+    let render_toolbar = use_callback(move |(id, editor): (AreaId, String)| -> Element {
+        // The editor's own tools first, then the area operations. Splitting
+        // and duplicating are worth having in every area; what is particular
+        // to a code viewer is not, and used to be crowded out by three
+        // buttons that meant the same thing everywhere.
+        let own = crate::editors::toolbar(&draw_for(id, editor));
+        rsx! {
+            div { class: "area-tools",
+                if let Some(tools) = own {
+                    {tools}
+                    div { class: "area-tool-sep" }
+                }
+                button {
+                    class: "area-tool",
+                    title: "split horizontally",
+                    onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "row" }))),
+                    dangerous_inner_html: "{immersion::icon(\"layout-columns\")}",
+                }
+                button {
+                    class: "area-tool",
+                    title: "split vertically",
+                    onclick: move |_| cmd.call(("split".to_string(), serde_json::json!({ "id": id, "dir": "col" }))),
+                    dangerous_inner_html: "{immersion::icon(\"layout-rows\")}",
+                }
+                button {
+                    class: "area-tool",
+                    title: "duplicate",
+                    onclick: move |_| cmd.call(("duplicate_area".to_string(), serde_json::json!({ "id": id }))),
+                    dangerous_inner_html: "{immersion::icon(\"copy\")}",
+                }
+            }
+        }
+    });
+
     let render_sidebar = use_callback(move |(id, editor): (AreaId, String)| -> Element {
         // An editor's sidebar belongs with the editor — the chart's spec
         // editor, the code viewer's statistics, the run list's tally — so the

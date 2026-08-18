@@ -167,6 +167,36 @@ pub(crate) fn footer(d: &Draw) -> String {
     }
 }
 
+/// The T region: what to do with the file you are reading. Small, because a
+/// toolbar with everything in it is a menu — these are the two moves that are
+/// worth a click rather than a trip through the header.
+pub(crate) fn toolbar(d: &Draw) -> Element {
+    let Some(path) = d.arg.clone().filter(|t| !t.is_empty()) else {
+        return rsx! {};
+    };
+    let (area, cmd) = (d.area, d.cmd);
+    let changed = path.clone();
+    rsx! {
+        button {
+            class: "area-tool",
+            title: "show what changed in this file",
+            onclick: move |_| {
+                cmd.call((
+                    "open_editor".to_string(),
+                    crate::editors::swap_viewer(area, "diff", &changed),
+                ));
+            },
+            dangerous_inner_html: "{immersion::icon(\"git-compare\")}",
+        }
+        button {
+            class: "area-tool im-copy",
+            title: "copy this file's path",
+            "data-im-copy": "{path}",
+            dangerous_inner_html: "{immersion::icon(\"copy\")}",
+        }
+    }
+}
+
 #[cfg(test)]
 mod language_tests {
     use super::language_of;

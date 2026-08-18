@@ -41,6 +41,28 @@ pub(crate) struct Editor {
     /// One line along the area's bottom edge — what this editor is showing,
     /// stated. Empty, or `None`, draws no strip.
     pub footer: Option<fn(&Draw) -> String>,
+    /// The T region's own tools — Blender's toolbar. The host appends the
+    /// area operations (split, duplicate) after these, so an editor declares
+    /// only what is particular to it.
+    pub toolbar: Option<fn(&Draw) -> Element>,
+}
+
+impl Editor {
+    /// The parts beyond a body are optional and there are three of them, so
+    /// they are named at the call site rather than counted into a
+    /// five-argument constructor.
+    fn with_sidebar(mut self, f: fn(&Draw) -> Element) -> Self {
+        self.sidebar = Some(f);
+        self
+    }
+    fn with_footer(mut self, f: fn(&Draw) -> String) -> Self {
+        self.footer = Some(f);
+        self
+    }
+    fn with_toolbar(mut self, f: fn(&Draw) -> Element) -> Self {
+        self.toolbar = Some(f);
+        self
+    }
 }
 
 /// Every editor this host offers, in the order the dropdown lists them.
@@ -51,41 +73,21 @@ pub(crate) fn editors() -> Vec<Editor> {
             draw,
             sidebar: None,
             footer: None,
-        }
-    }
-    /// The same, for an editor that brings its own sidebar and footer.
-    fn n(
-        kind: EditorKind,
-        draw: fn(&Draw) -> Element,
-        sidebar: fn(&Draw) -> Element,
-        footer: fn(&Draw) -> String,
-    ) -> Editor {
-        Editor {
-            kind,
-            draw,
-            sidebar: Some(sidebar),
-            footer: Some(footer),
+            toolbar: None,
         }
     }
     vec![
-        n(
-            machine::kind(),
-            |d| machine::ed_machine(&d.state, &d.settings),
-            machine::sidebar,
-            machine::footer,
-        ),
-        n(
-            fleet::kind(),
-            |d| fleet::ed_fleet(&d.state),
-            fleet::sidebar,
-            fleet::footer,
-        ),
-        n(
-            runs::kind(),
-            |d| runs::ed_runs(d, d.open_run),
-            runs::sidebar,
-            runs::footer,
-        ),
+        e(machine::kind(), |d| {
+            machine::ed_machine(&d.state, &d.settings)
+        })
+        .with_sidebar(machine::sidebar)
+        .with_footer(machine::footer),
+        e(fleet::kind(), |d| fleet::ed_fleet(&d.state))
+            .with_sidebar(fleet::sidebar)
+            .with_footer(fleet::footer),
+        e(runs::kind(), |d| runs::ed_runs(d, d.open_run))
+            .with_sidebar(runs::sidebar)
+            .with_footer(runs::footer),
         e(actions::kind(), |d| actions::ed_actions(&d.state)),
         e(timers::kind(), |d| timers::ed_timers(&d.state)),
         e(runs::detail_kind(), |d| match &d.arg {
@@ -106,38 +108,33 @@ pub(crate) fn editors() -> Vec<Editor> {
             )
         }),
         e(data::kind(), |d| data::ed_data(&d.state, d.arg.clone())),
-        n(
-            files::kind(),
-            |d| files::ed_files(d.arg.clone()),
-            files::sidebar,
-            files::footer,
-        ),
-        n(
-            code::kind(),
-            |d| code::ed_code(d.arg.clone()),
-            code::sidebar,
-            code::footer,
-        ),
-        n(
-            diff::kind(),
-            |d| {
-                diff::ed_diff(
-                    d.arg.clone(),
-                    d.settings["diff_split"].as_bool().unwrap_or(false),
-                )
-            },
-            diff::sidebar,
-            diff::footer,
-        ),
-        n(
-            crate::charts::kind(),
-            |d| crate::charts::ed_chart(&d.state, &d.settings, d.arg.clone()),
-            // A chart's sidebar is the document that makes it — the spec
-            // editor, not a read-out. It used to be a special case in the
-            // host's render_sidebar; it is a registration now, like the rest.
-            |d| crate::charts::chart_sidebar(&d.settings, d.arg.clone(), d.on_setting, d.on_error),
-            crate::charts::footer,
-        ),
+        e(files::kind(), |d| files::ed_files(d.arg.clone()))
+            .with_sidebar(files::sidebar)
+            .with_footer(files::footer)
+            .with_toolbar(files::toolbar),
+        e(code::kind(), |d| code::ed_code(d.arg.clone()))
+            .with_sidebar(code::sidebar)
+            .with_footer(code::footer)
+            .with_toolbar(code::toolbar),
+        e(diff::kind(), |d| {
+            diff::ed_diff(
+                d.arg.clone(),
+                d.settings["diff_split"].as_bool().unwrap_or(false),
+            )
+        })
+        .with_sidebar(diff::sidebar)
+        .with_footer(diff::footer)
+        .with_toolbar(diff::toolbar),
+        e(crate::charts::kind(), |d| {
+            crate::charts::ed_chart(&d.state, &d.settings, d.arg.clone())
+        })
+        // A chart's sidebar is the document that makes it — the spec editor,
+        // not a read-out. It used to be a special case in the host's
+        // render_sidebar; it is a registration now, like the rest.
+        .with_sidebar(|d| {
+            crate::charts::chart_sidebar(&d.settings, d.arg.clone(), d.on_setting, d.on_error)
+        })
+        .with_footer(crate::charts::footer),
     ]
 }
 
@@ -149,6 +146,23 @@ pub(crate) fn sidebar(d: &Draw) -> Option<Element> {
         .find(|e| e.kind.id == d.editor)
         .and_then(|e| e.sidebar)
         .map(|f| f(d))
+}
+
+/// The T region's own tools for this editor, if it has any.
+pub(crate) fn toolbar(d: &Draw) -> Option<Element> {
+    editors()
+        .into_iter()
+        .find(|e| e.kind.id == d.editor)
+        .and_then(|e| e.toolbar)
+        .map(|f| f(d))
+}
+
+/// Switching an area between two views of the same thing — the file and what
+/// changed in it. `open_editor` rather than `set_editor` because the target is
+/// the point: `set_editor` clears the arg, which would land you on a picker
+/// having asked to look at the file you were already reading.
+pub(crate) fn swap_viewer(area: AreaId, editor: &str, path: &str) -> serde_json::Value {
+    serde_json::json!({ "id": area, "editor": editor, "arg": path })
 }
 
 /// The footer line this editor states, if it states one.
@@ -387,6 +401,10 @@ pub(crate) struct Draw {
     /// that row, which is the only way to tell, from the list, what you are
     /// already looking at.
     pub targets: Vec<String>,
+    /// The write path, for an editor that acts on its own area — a toolbar
+    /// button that turns this pane from a file into its diff. The same bus
+    /// every header button and every chord goes through.
+    pub cmd: Callback<(String, serde_json::Value)>,
     pub mac: bool,
     pub capturing: Option<String>,
     pub open_run: Callback<(AreaId, String)>,
@@ -449,6 +467,45 @@ mod tests {
         }
         // And an editor with nothing to say still gets the generic panel.
         assert!(!with.contains(&"info"));
+    }
+
+    /// The toolbar buttons that switch a pane between a file and its diff
+    /// emit a command with params. `every_ui_action_resolves` would see the
+    /// name and be satisfied; what breaks silently is the params — and
+    /// `set_editor` instead of `open_editor` is exactly the mistake, because
+    /// it clears the arg and lands you on a picker having asked to look at
+    /// the file you were already reading.
+    #[test]
+    fn swapping_the_viewer_keeps_the_file_it_was_looking_at() {
+        let commands = crate::workflows::commands();
+        let mut ws = immersion::Workspaces::new("test", immersion::Layout::single("code"));
+        let params = swap_viewer(1, "diff", "src/main.rs");
+        commands
+            .run(&mut ws, "open_editor", &params)
+            .expect("the toolbar's command runs");
+        let layout = &ws.current().layout;
+        assert_eq!(
+            layout.target_of(1).as_deref(),
+            Some("src/main.rs"),
+            "the swap dropped the file"
+        );
+        assert!(matches!(
+            layout.root.find(1),
+            Some(immersion::Area::Leaf { editor, .. }) if editor == "diff"
+        ));
+    }
+
+    /// Which editors bring tools of their own. The area operations are
+    /// appended by the host to every strip, so an editor listed here has
+    /// something particular to it and one that is not has nothing.
+    #[test]
+    fn the_editors_that_declare_a_toolbar_have_one() {
+        let with: Vec<&str> = editors()
+            .iter()
+            .filter(|e| e.toolbar.is_some())
+            .map(|e| e.kind.id)
+            .collect();
+        assert_eq!(with, vec!["files", "code", "diff"]);
     }
 
     /// The footer is the line the old Immersion put in an area's bottom-right
