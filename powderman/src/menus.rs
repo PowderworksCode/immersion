@@ -260,23 +260,33 @@ pub(crate) fn view_menu(settings: &Value) -> String {
     menu_json(&items)
 }
 
-pub(crate) fn window_menu(active: usize, mac: bool) -> String {
+pub(crate) fn window_menu(ws: &immersion::Workspaces, mac: bool) -> String {
+    // Blender's poll, showing: with one workspace there is nothing to close,
+    // cycle to or reorder, and those rows go grey rather than staying live
+    // and failing on the click.
+    let commands = crate::workflows::commands();
+    let can = |name: &str| commands.can(ws, name, &Value::Null);
+    let active = ws.active;
     menu_json(&[
-        MenuItem::new("Duplicate workspace", "workspace.duplicate", json!({})),
+        MenuItem::new("Duplicate workspace", "workspace.duplicate", json!({}))
+            .when(can("workspace.duplicate")),
         MenuItem::new(
             "Close workspace",
             "workspace.close",
             json!({ "index": active }),
-        ),
+        )
+        .when(can("workspace.close")),
         MenuItem::sep(),
         MenuItem::new("Next workspace", "workspace.cycle", json!({ "delta": 1 }))
-            .with_chord(&pretty_chord("Alt+PageDown", mac)),
+            .with_chord(&pretty_chord("Alt+PageDown", mac))
+            .when(can("workspace.cycle")),
         MenuItem::new(
             "Previous workspace",
             "workspace.cycle",
             json!({ "delta": -1 }),
         )
-        .with_chord(&pretty_chord("Alt+PageUp", mac)),
+        .with_chord(&pretty_chord("Alt+PageUp", mac))
+        .when(can("workspace.cycle")),
         MenuItem::sep(),
         MenuItem::new("Maximize area", "maximize", Value::Null)
             .with_chord(&pretty_chord("Mod+Shift+Space", mac)),

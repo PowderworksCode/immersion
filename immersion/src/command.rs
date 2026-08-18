@@ -37,7 +37,34 @@ pub struct Command {
     /// True for commands that only read or that a palette should de-emphasize;
     /// today it marks the ones undo should not record (pure navigation).
     pub navigational: bool,
+    /// Whether this could run against the workbench as it is — Blender's
+    /// `poll()`. A menu greys out what fails it, and `run` refuses it, so a
+    /// control that cannot do anything says so instead of erroring after the
+    /// click.
+    ///
+    /// The params may be `Null`: a surface deciding whether to *offer* a
+    /// command asks before it has any. Answer for the context in that case,
+    /// and use the params to be more exact when they are there.
+    pub poll: fn(&Workspaces, &Value) -> bool,
     pub run: fn(&mut Workspaces, &Value) -> Result<()>,
+}
+
+/// A command that is always offered. Most are — splitting an area, renaming a
+/// workspace: there is no state in which they make no sense.
+pub fn always(_: &Workspaces, _: &Value) -> bool {
+    true
+}
+
+/// Needs something to act across: a second area. Join, swap and the seam
+/// between two areas all vanish from a menu when there is only one.
+pub fn many_areas(ws: &Workspaces, _: &Value) -> bool {
+    ws.current().layout.root.leaves().len() > 1
+}
+
+/// Needs a second workspace. The whole `workspace.*` family except add,
+/// rename and duplicate.
+pub fn many_workspaces(ws: &Workspaces, _: &Value) -> bool {
+    ws.tabs.len() > 1
 }
 
 /// The registry. Ordered so a palette lists commands predictably.
@@ -71,7 +98,27 @@ impl Commands {
             .0
             .get(name)
             .ok_or_else(|| anyhow!("unknown command {name}"))?;
+        // Checked here rather than only in the chrome, because the chrome is
+        // not the only caller: an agent reaches the same registry, and a
+        // command that cannot apply should say so once, in one place, rather
+        // than failing differently depending on who asked.
+        if !(cmd.poll)(ws, params) {
+            return Err(anyhow!("{name} does not apply to the workbench as it is"));
+        }
         (cmd.run)(ws, params)
+    }
+
+    /// Whether a command could run right now. `params` may be `Null` when the
+    /// question is "should this be offered at all".
+    pub fn can(&self, ws: &Workspaces, name: &str, params: &Value) -> bool {
+        self.0.get(name).is_some_and(|c| (c.poll)(ws, params))
+    }
+
+    /// The commands that apply to the workbench as it is. What a palette or a
+    /// menu should be built from — Blender lists operators the same way, and
+    /// it is why its menus shrink rather than filling with things that error.
+    pub fn available<'a>(&'a self, ws: &'a Workspaces) -> impl Iterator<Item = &'a Command> {
+        self.0.values().filter(move |c| (c.poll)(ws, &Value::Null))
     }
 
     /// Whether running `name` should be recorded for undo. Unknown or
@@ -143,6 +190,7 @@ const BUILTINS: &[Command] = &[
         name: "split",
         description: "Split an area in two",
         navigational: false,
+        poll: always,
         run: |ws, p| {
             let id = u64_field(p, "id")?;
             let applied = ws
@@ -160,6 +208,7 @@ const BUILTINS: &[Command] = &[
         name: "join",
         description: "Close an area; its sibling takes the space",
         navigational: false,
+        poll: many_areas,
         run: |ws, p| {
             let id = u64_field(p, "id")?;
             let applied = ws.current_layout_mut().join(id);
@@ -170,6 +219,7 @@ const BUILTINS: &[Command] = &[
         name: "join_into",
         description: "Merge one area into a sibling",
         navigational: false,
+        poll: many_areas,
         run: |ws, p| {
             let (a, b) = (u64_field(p, "survivor")?, u64_field(p, "victim")?);
             let applied = ws.current_layout_mut().join_into(a, b);
@@ -180,6 +230,7 @@ const BUILTINS: &[Command] = &[
         name: "ratio",
         description: "Move a seam between two areas",
         navigational: false,
+        poll: many_areas,
         run: |ws, p| {
             let id = u64_field(p, "id")?;
             let applied = ws.current_layout_mut().set_seam(
@@ -194,6 +245,7 @@ const BUILTINS: &[Command] = &[
         name: "set_region_width",
         description: "Resize an area's toolbar or sidebar",
         navigational: true,
+        poll: always,
         run: |ws, p| {
             let id = u64_field(p, "id")?;
             let applied = ws.current_layout_mut().set_region_width(
@@ -209,6 +261,7 @@ const BUILTINS: &[Command] = &[
         description: "Show or hide an area's toolbar or sidebar",
         // A view toggle, persisted with the layout but not something you undo.
         navigational: true,
+        poll: always,
         run: |ws, p| {
             let id = u64_field(p, "id")?;
             let applied = ws
@@ -221,6 +274,7 @@ const BUILTINS: &[Command] = &[
         name: "duplicate_area",
         description: "Split an area and show the same editor in the new half",
         navigational: false,
+        poll: always,
         run: |ws, p| {
             let id = u64_field(p, "id")?;
             let l = ws.current_layout_mut();
@@ -246,6 +300,7 @@ const BUILTINS: &[Command] = &[
         name: "swap",
         description: "Swap what two areas show",
         navigational: false,
+        poll: many_areas,
         run: |ws, p| {
             let (a, b) = (u64_field(p, "a")?, u64_field(p, "b")?);
             let applied = ws.current_layout_mut().swap_editors(a, b);
@@ -256,6 +311,7 @@ const BUILTINS: &[Command] = &[
         name: "set_editor",
         description: "Change what an area shows",
         navigational: false,
+        poll: always,
         run: |ws, p| {
             let id = u64_field(p, "id")?;
             let applied = ws
@@ -268,6 +324,7 @@ const BUILTINS: &[Command] = &[
         name: "set_target",
         description: "Point an area at something without changing its editor",
         navigational: false,
+        poll: always,
         run: |ws, p| {
             let id = u64_field(p, "id")?;
             // The empty string clears the target, so "show everything again"
@@ -281,6 +338,7 @@ const BUILTINS: &[Command] = &[
         name: "open_editor",
         description: "Point an area at a specific thing (editor + argument)",
         navigational: false,
+        poll: always,
         run: |ws, p| {
             let id = u64_field(p, "id")?;
             let applied = ws.current_layout_mut().set_editor_arg(
@@ -295,6 +353,7 @@ const BUILTINS: &[Command] = &[
         name: "workspace.switch",
         description: "Show a workspace by index",
         navigational: true,
+        poll: many_workspaces,
         run: |ws, p| {
             ws.switch(u64_field(p, "index")? as usize);
             Ok(())
@@ -304,6 +363,7 @@ const BUILTINS: &[Command] = &[
         name: "workspace.cycle",
         description: "Show the next or previous workspace",
         navigational: true,
+        poll: many_workspaces,
         run: |ws, p| {
             ws.cycle(p.get("delta").and_then(Value::as_i64).unwrap_or(1) as i32);
             Ok(())
@@ -313,6 +373,7 @@ const BUILTINS: &[Command] = &[
         name: "workspace.add",
         description: "Add a workspace from a layout",
         navigational: false,
+        poll: always,
         run: |ws, p| {
             let name = str_field(p, "name")?;
             let layout = p
@@ -327,6 +388,7 @@ const BUILTINS: &[Command] = &[
         name: "workspace.rename",
         description: "Rename a workspace",
         navigational: false,
+        poll: always,
         run: |ws, p| {
             ws.rename(u64_field(p, "index")? as usize, str_field(p, "name")?);
             Ok(())
@@ -336,6 +398,7 @@ const BUILTINS: &[Command] = &[
         name: "workspace.duplicate",
         description: "Duplicate a workspace",
         navigational: false,
+        poll: always,
         run: |ws, _| {
             let cur = ws.current();
             let name = format!("{} copy", cur.name);
@@ -348,6 +411,7 @@ const BUILTINS: &[Command] = &[
         name: "workspace.move",
         description: "Move a workspace tab to another position",
         navigational: false,
+        poll: many_workspaces,
         run: |ws, p| {
             let from = u64_field(p, "from")? as usize;
             let to = u64_field(p, "to")? as usize;
@@ -359,6 +423,7 @@ const BUILTINS: &[Command] = &[
         name: "workspace.close",
         description: "Close a workspace",
         navigational: false,
+        poll: many_workspaces,
         run: |ws, p| {
             ws.close(u64_field(p, "index")? as usize);
             Ok(())
@@ -471,11 +536,110 @@ mod tests {
             name: "open_run",
             description: "Open a run in a new area",
             navigational: false,
+            poll: always,
             run: open_run,
         });
         let mut w = ws();
         cmds.run(&mut w, "open_run", &json!({ "area": 1, "run": "abc123" }))
             .unwrap();
         assert_eq!(w.current().layout.root.leaves().len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod poll_tests {
+    use super::*;
+    use crate::area::{Dir, Layout};
+
+    fn lone() -> Workspaces {
+        Workspaces::new("one", Layout::single("runs"))
+    }
+
+    fn two_areas() -> Workspaces {
+        let mut w = lone();
+        w.current_layout_mut().split(1, Dir::Row, 0.5);
+        w
+    }
+
+    /// The row everybody meets: the last area has nothing to join into. It
+    /// has always been offered and has always failed on the click.
+    #[test]
+    fn what_needs_a_second_area_is_not_offered_with_one() {
+        let cmds = Commands::builtin();
+        let one = lone();
+        for name in ["join", "join_into", "ratio", "swap"] {
+            assert!(!cmds.can(&one, name, &Value::Null), "{name} was offered");
+        }
+        // And splitting always is: there is no workbench where it makes no
+        // sense, which is exactly why it needs no poll of its own.
+        assert!(cmds.can(&one, "split", &Value::Null));
+
+        let two = two_areas();
+        for name in ["join", "join_into", "ratio", "swap", "split"] {
+            assert!(cmds.can(&two, name, &Value::Null), "{name} went missing");
+        }
+    }
+
+    /// The whole workspace family, except the three that make sense alone.
+    #[test]
+    fn what_needs_a_second_workspace_is_not_offered_with_one() {
+        let cmds = Commands::builtin();
+        let mut w = lone();
+        for name in [
+            "workspace.close",
+            "workspace.cycle",
+            "workspace.switch",
+            "workspace.move",
+        ] {
+            assert!(!cmds.can(&w, name, &Value::Null), "{name} was offered");
+        }
+        for name in ["workspace.add", "workspace.rename", "workspace.duplicate"] {
+            assert!(cmds.can(&w, name, &Value::Null), "{name} went missing");
+        }
+        w.add("second", Layout::single("runs"));
+        for name in [
+            "workspace.close",
+            "workspace.cycle",
+            "workspace.switch",
+            "workspace.move",
+        ] {
+            assert!(cmds.can(&w, name, &Value::Null), "{name} went missing");
+        }
+    }
+
+    /// A poll the chrome respects and `run` does not is a poll an agent walks
+    /// straight through. It is checked in the one place both go through.
+    #[test]
+    fn run_refuses_what_poll_refuses() {
+        let cmds = Commands::builtin();
+        let mut w = lone();
+        let err = cmds
+            .run(&mut w, "join", &serde_json::json!({ "id": 1 }))
+            .expect_err("joining the only area is not a thing");
+        assert!(
+            err.to_string().contains("does not apply"),
+            "the refusal should say why: {err}"
+        );
+        // And the workbench is untouched — a refused command is not a
+        // half-applied one.
+        assert_eq!(w.current().layout.root.leaves().len(), 1);
+    }
+
+    /// `available` is what a palette or a menu is built from, so it has to
+    /// shrink with the workbench rather than listing everything always.
+    #[test]
+    fn available_shrinks_with_the_workbench() {
+        let cmds = Commands::builtin();
+        let one = lone();
+        let mut many = two_areas();
+        many.add("second", Layout::single("runs"));
+        let count = |w: &Workspaces| cmds.available(w).count();
+        assert!(
+            count(&one) < count(&many),
+            "one area and one workspace should offer less: {} vs {}",
+            count(&one),
+            count(&many)
+        );
+        assert!(!cmds.available(&one).any(|c| c.name == "join"));
     }
 }

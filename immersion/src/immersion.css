@@ -652,6 +652,10 @@ body {
 /* Icon, then label, then the chord pushed to the far right. space-between
    put the label there instead the moment rows grew a third child. */
 .im-ctx-item { display: flex; align-items: baseline; gap: .5rem; }
+/* A command that cannot run against the workbench as it is — Blender's poll,
+   showing. Dim and inert, with the pointer saying so. */
+.im-ctx-item.is-disabled { opacity: .38; cursor: default; }
+.im-ctx-item.is-disabled:hover { background: transparent; }
 .im-ctx-chord { margin-left: auto; padding-left: 1.2rem; }
 .im-ctx-chord {
   color: var(--im-text-muted); font-family: var(--im-mono); font-size: .68rem; flex: none;
