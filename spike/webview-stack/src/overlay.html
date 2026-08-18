@@ -1,6 +1,13 @@
 <!doctype html>
 <meta charset="utf-8">
 <style>
+  /* straitjacket-allow-file:color — the colours here are the instrument, not
+     a style. This document exists to be looked at once, on someone else's
+     machine, to answer whether a transparent webview stacks above another
+     one: a magenta that cannot be mistaken for part of the page beneath, and
+     a card in the workbench's own greys so the comparison is fair. Pointing
+     them at theme tokens would mean the spike depended on the library it is
+     supposed to be testing a substrate for. */
   /* Nothing here paints a background. If the overlay webview is genuinely
      transparent, the page underneath shows through everywhere except what
      this document actually draws. If it is not, you will see a white or
