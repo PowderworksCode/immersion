@@ -86,20 +86,42 @@ async fn drive(id: String) {
     }
 }
 
-/// The starter workbench: an "Overview" workspace with machine on top, runs
-/// below-left, fleet below-right. Only used when the database has none yet.
+/// The workspaces a first visit meets.
+///
+/// One tab made the strip read as a label rather than as somewhere to go —
+/// Blender ships eight, and the old Immersion did too. These are the splash's
+/// own arrangements rather than a second set built here: the things offered
+/// under "New workspace" are the things you start with, so there is one list
+/// of what a good arrangement looks like.
+///
+/// Only ever used for a database with no workspaces in it, so an existing
+/// workbench is untouched.
+pub(crate) const STARTER: &[&str] = &["Overview", "Runs", "Code", "Monitoring"];
+
 pub(crate) fn default_workspaces() -> immersion::Workspaces {
-    let mut l = immersion::Layout::single("machine");
-    if let Some(bottom) = l.split(1, immersion::Dir::Col, 0.45) {
-        l.set_editor(bottom, "runs");
-        if let Some(right) = l.split(bottom, immersion::Dir::Row, 0.6) {
-            l.set_editor(right, "fleet");
+    let templates = crate::splash::templates();
+    let layout = |name: &str| {
+        templates
+            .iter()
+            .find(|t| t.name == name)
+            .map(|t| t.layout.clone())
+    };
+    let mut names = STARTER.iter();
+    // The first is the one that opens, so it is built rather than added.
+    let first = names.next().copied().unwrap_or("Overview");
+    let mut ws = immersion::Workspaces::new(
+        first,
+        layout(first).unwrap_or_else(|| immersion::Layout::single("machine")),
+    );
+    for name in names {
+        if let Some(l) = layout(name) {
+            ws.add(name, l);
         }
     }
-    // With the N panel on the machine area, so a first visit meets the
-    // sidebar rather than having to find the N key.
-    l.toggle_region(1, immersion::Region::Sidebar);
-    immersion::Workspaces::new("Overview", l)
+    // `add` switches to what it added, which is right when someone adds one
+    // and wrong for a starter set — you land on the first tab.
+    ws.switch(0);
+    ws
 }
 
 fn load_workspaces(conn: &rusqlite::Connection) -> immersion::Workspaces {

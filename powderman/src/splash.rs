@@ -49,6 +49,34 @@ pub(crate) fn templates() -> Vec<Template> {
         l.toggle_region(1, Region::Sidebar);
         l
     };
+    // A browser beside a viewer, twice: the same arrangement reads a file or
+    // reads what changed in it, and both are editors that take a target, so
+    // the pair is the one the target chip was built for.
+    let beside_the_browser = |editor: &str| {
+        let mut l = Layout::single("files");
+        if let Some(r) = l.split(1, Dir::Row, 0.3) {
+            l.set_editor(r, editor);
+            l.toggle_region(r, Region::Sidebar);
+        }
+        l
+    };
+    let charts = {
+        // One chart with its spec open beside it. The sidebar is the document
+        // that makes the drawing, so this arrangement is the whole argument
+        // for charts being documents rather than a drawing routine.
+        let mut l = Layout::single("chart");
+        l.set_target(1, "/charts/cpu");
+        l.toggle_region(1, Region::Sidebar);
+        l
+    };
+    let shortcuts = {
+        let mut l = Layout::single("keymap");
+        if let Some(r) = l.split(1, Dir::Col, 0.62) {
+            l.set_editor(r, "info");
+        }
+        l.toggle_region(1, Region::Sidebar);
+        l
+    };
     vec![
         Template {
             name: "Overview".into(),
@@ -67,6 +95,30 @@ pub(crate) fn templates() -> Vec<Template> {
             icon: "activity-heartbeat".into(),
             hint: "machine graphs and the live fleet".into(),
             layout: monitoring,
+        },
+        Template {
+            name: "Code".into(),
+            icon: "file-code".into(),
+            hint: "the file browser beside a viewer".into(),
+            layout: beside_the_browser("code"),
+        },
+        Template {
+            name: "Changes".into(),
+            icon: "git-compare".into(),
+            hint: "what changed, file by file".into(),
+            layout: beside_the_browser("diff"),
+        },
+        Template {
+            name: "Charts".into(),
+            icon: "chart-line".into(),
+            hint: "a plot beside the spec that makes it".into(),
+            layout: charts,
+        },
+        Template {
+            name: "Shortcuts".into(),
+            icon: "keyboard".into(),
+            hint: "the keymap over the command log".into(),
+            layout: shortcuts,
         },
         Template {
             name: "Single".into(),
