@@ -1,9 +1,9 @@
 # Spike: does a stack of webviews behave like a workbench?
 
-**Not compiled. Not run.** There is no WebKit toolchain and no display on the
-machine this was written on, and `build_as_child` is macOS / Windows / X11 only
-anyway. What follows is a thing to run on your Mac, built so that one command
-answers the questions instead of you having to design the test.
+**Compiles and its tests pass; never run.** There is no display on the machine
+this was written on, and `build_as_child` is macOS / Windows / X11 only anyway.
+What follows is a thing to run on your Mac, built so that one command answers
+the questions instead of you having to design the test.
 
 ## Run it
 
@@ -81,10 +81,12 @@ now than after building on it.
 
 ## What is verified
 
-Both injected scripts parse (`bun build`). The Rust has two tests that pin the
-seams a spike like this rots at — the JSON kinds the scripts emit against the
-enum that receives them, and the `imOverlay` functions the host calls by name
-against the ones the overlay defines. They run with `cargo test`, on a machine
-that can build wry.
+`cargo check --all-targets` and `cargo clippy` are clean against wry 0.56 and
+winit 0.30 on Linux, and both tests pass — they pin the seams a spike like this
+rots at: the JSON kinds the scripts emit against the enum that receives them,
+and the `imOverlay` functions the host calls by name against the ones the
+overlay defines. Both injected scripts parse under `bun build`.
 
-Everything else is unverified, including whether it compiles.
+What remains unverified is everything that needs a screen: whether the overlay
+is transparent, whether it stacks above, whether clicks pass through it, and
+whether the injected shim actually takes the keys back from a live page.

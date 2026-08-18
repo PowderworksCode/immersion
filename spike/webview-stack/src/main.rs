@@ -17,8 +17,6 @@
 //! The fifth is the one that decides the architecture, and it is the one no
 //! program can answer for you.
 
-use std::sync::mpsc;
-
 use serde::Deserialize;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -147,7 +145,10 @@ impl App {
             position: LogicalPosition::new(0.0, 0.0).into(),
             size: LogicalSize::new(size.width as f64, size.height as f64).into(),
         };
-        for view in [self.content.as_ref(), self.overlay.as_ref()].into_iter().flatten() {
+        for view in [self.content.as_ref(), self.overlay.as_ref()]
+            .into_iter()
+            .flatten()
+        {
             let _ = view.set_bounds(rect);
         }
     }
@@ -209,7 +210,10 @@ impl ApplicationHandler<Msg> for App {
             }
             Msg::Chord { chord, action } => {
                 self.findings.chord_forwarded = true;
-                line(true, &format!("chord {chord} -> {action} (from inside the page)"));
+                line(
+                    true,
+                    &format!("chord {chord} -> {action} (from inside the page)"),
+                );
                 match action.as_str() {
                     "palette" => {
                         self.show_overlay(true);
@@ -239,7 +243,10 @@ impl ApplicationHandler<Msg> for App {
             }
             Msg::Menu { x, y } => {
                 self.findings.menu_forwarded = true;
-                line(true, &format!("right-click at ({x:.0}, {y:.0}) (from inside the page)"));
+                line(
+                    true,
+                    &format!("right-click at ({x:.0}, {y:.0}) (from inside the page)"),
+                );
                 self.show_overlay(true);
                 if let Some(o) = &self.overlay {
                     let _ = o.evaluate_script(&format!("window.imOverlay.menu({x}, {y})"));
@@ -347,7 +354,11 @@ mod protocol {
     /// a rename on either side is a menu that silently never opens.
     #[test]
     fn the_host_calls_functions_the_overlay_defines() {
-        for call in ["window.imOverlay.menu(", "window.imOverlay.card(", "window.imOverlay.clear("] {
+        for call in [
+            "window.imOverlay.menu(",
+            "window.imOverlay.card(",
+            "window.imOverlay.clear(",
+        ] {
             let name = call
                 .trim_start_matches("window.imOverlay.")
                 .trim_end_matches('(');
