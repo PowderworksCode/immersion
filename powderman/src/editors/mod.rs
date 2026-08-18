@@ -125,7 +125,7 @@ pub(crate) fn editors() -> Vec<Editor> {
             )
         }),
         e(data::kind(), |d| data::ed_data(&d.state, d.arg.clone())),
-        e(files::kind(), |d| files::ed_files(d.arg.clone()))
+        e(files::kind(), files::ed_files)
             .with_sidebar(files::sidebar)
             .with_footer(files::footer)
             .with_toolbar(files::toolbar)
@@ -270,6 +270,28 @@ pub(crate) fn target_children(
         // rows are runs and the value each carries is the id itself.
         "run" => runs::run_targets(state),
         _ => data::data_children(state_doc, pointer),
+    }
+}
+
+/// The kind of thing an editor points at — the key a selection is stored
+/// under, and the reason one click can drive two panes.
+///
+/// Deliberately not [`target_noun`], which is the word shown to a person. The
+/// code viewer and the diff viewer both point at a path, so they share a kind
+/// and picking a file drives both. The file browser points at a *folder*, so
+/// it must not share one with them: a browser that re-rooted itself onto the
+/// file you just clicked would collapse the tree you clicked it in.
+///
+/// `None` is an editor that follows nothing — either it takes no target, or
+/// its target is not the sort of thing anything else selects.
+pub(crate) fn target_kind(editor: &str) -> Option<&'static str> {
+    match editor {
+        "code" | "diff" => Some("file"),
+        "files" => Some("folder"),
+        "run" => Some("run"),
+        "chart" => Some("chart"),
+        "data" => Some("data"),
+        _ => None,
     }
 }
 
