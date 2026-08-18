@@ -49,7 +49,16 @@ pub struct TreeViewProps {
     /// A row was clicked. Fires for branches and leaves alike, after the
     /// expand toggle. The host that cares about selection listens here.
     #[props(default)]
-    pub on_pick: Option<Callback<TreeRow>>,
+    /// A row was picked. The flag is whether the pick should *extend* a
+    /// selection rather than replace it — ctrl or cmd was held — because only
+    /// the click knows that and only the host knows what to do about it.
+    pub on_pick: Option<Callback<(TreeRow, bool)>>,
+    /// Pointers the host considers selected. When given, these decide the
+    /// highlight instead of the tree's own memory of the last click — which
+    /// is what lets a selection made anywhere else show up here, and what
+    /// makes more than one row highlightable at a time.
+    #[props(default)]
+    pub selected: Option<Vec<String>>,
 }
 
 /// The tree. Place a [`crate::FilterBox`] beside it (inside one
@@ -61,7 +70,15 @@ pub fn TreeView(props: TreeViewProps) -> Element {
     let selected = use_signal(|| None::<String>);
     rsx! {
         div { class: "im-tree",
-            {branch(String::new(), 0, open, selected, props.children_of, props.on_pick)}
+            {branch(
+                String::new(),
+                0,
+                open,
+                selected,
+                props.selected.as_ref(),
+                props.children_of,
+                props.on_pick,
+            )}
         }
     }
 }
@@ -74,13 +91,14 @@ fn branch(
     depth: usize,
     open: Signal<HashSet<String>>,
     selected: Signal<Option<String>>,
+    host_selected: Option<&Vec<String>>,
     children_of: Callback<String, Vec<TreeRow>>,
-    on_pick: Option<Callback<TreeRow>>,
+    on_pick: Option<Callback<(TreeRow, bool)>>,
 ) -> Element {
     let rows = children_of.call(pointer);
     rsx! {
         for row in rows {
-            {tree_row(row, depth, open, selected, children_of, on_pick)}
+            {tree_row(row, depth, open, selected, host_selected, children_of, on_pick)}
         }
     }
 }
@@ -90,11 +108,18 @@ fn tree_row(
     depth: usize,
     mut open: Signal<HashSet<String>>,
     mut selected: Signal<Option<String>>,
+    host_selected: Option<&Vec<String>>,
     children_of: Callback<String, Vec<TreeRow>>,
-    on_pick: Option<Callback<TreeRow>>,
+    on_pick: Option<Callback<(TreeRow, bool)>>,
 ) -> Element {
     let is_open = row.has_children && open.read().contains(&row.pointer);
-    let is_sel = selected.read().as_deref() == Some(row.pointer.as_str());
+    // The host's list wins when it offers one: a selection made in another
+    // area should show here, and more than one row can be in it. Without one,
+    // the tree remembers its own last click, which is what it always did.
+    let is_sel = match host_selected {
+        Some(list) => list.iter().any(|p| p == &row.pointer),
+        None => selected.read().as_deref() == Some(row.pointer.as_str()),
+    };
     let caret = if !row.has_children {
         "\u{00a0}"
     } else if is_open {
@@ -116,7 +141,9 @@ fn tree_row(
             style: "padding-left: {depth * 14 + 6}px",
             "data-filter-text": "{row.label}",
             "data-im-menu": "{menu}",
-            onclick: move |_| {
+            onclick: move |e: Event<MouseData>| {
+                let mods = e.modifiers();
+                let extend = mods.ctrl() || mods.meta();
                 if click_row.has_children {
                     let mut o = open.write();
                     if !o.remove(&click_row.pointer) {
@@ -125,7 +152,7 @@ fn tree_row(
                 }
                 selected.set(Some(click_row.pointer.clone()));
                 if let Some(cb) = on_pick {
-                    cb.call(click_row.clone());
+                    cb.call((click_row.clone(), extend));
                 }
             },
             span { class: "im-tree-caret", "{caret}" }
@@ -138,7 +165,7 @@ fn tree_row(
             }
         }
         if is_open {
-            {branch(sub, depth + 1, open, selected, children_of, on_pick)}
+            {branch(sub, depth + 1, open, selected, host_selected, children_of, on_pick)}
         }
     }
 }
