@@ -153,6 +153,10 @@ pub(crate) fn settings_defaults() -> serde_json::Value {
         "tooltips_on": true,
         "theme": "Blender Dark",
         "ui_scale": 1.0,
+        // Declared here as well as offered in Preferences: a field whose
+        // pointer the document does not have is a control with no default to
+        // reset to, and a reader that has to guess one.
+        "diff_split": false,
         // A vector setting: the chart window as [hours, samples, smoothing].
         "chart_window": [1, 60, 3],
         // Charts are documents, not code: each is a Vega-Lite spec the chart
