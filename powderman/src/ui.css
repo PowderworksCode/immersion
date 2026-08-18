@@ -164,7 +164,16 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
   align-items: center; grid-template-columns: 5rem 1fr auto; list-style: none;
 }
 .run > summary::-webkit-details-marker { display: none; }
+.run > summary:hover { background: var(--im-header); }
 .run[open] > summary { border-bottom: 1px solid var(--line); }
+/* The run an area is already open on. Not the solid accent band the tree
+   rows use: a run row's status word is colour-coded, and filling the row
+   would erase the one colour on it that means something. An accent edge and
+   border say the same thing and leave the row readable. */
+.run.is-sel {
+  border-color: var(--im-accent);
+  box-shadow: inset 3px 0 0 var(--im-accent);
+}
 .status {
   font-size: .66rem; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;
 }
@@ -194,6 +203,7 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
   align-items: baseline; padding: .4rem .1rem; border-bottom: 1px solid var(--line);
 }
 .agent:last-child { border-bottom: 0; }
+.agent:hover { background: var(--im-header); }
 .agent .procs { display: flex; gap: .7rem; flex-wrap: wrap; font-size: .76rem; color: var(--ink-2); }
 .agent .proc { font-family: var(--mono); }
 
@@ -227,6 +237,7 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
   align-items: baseline; padding: .35rem .1rem; border-bottom: 1px solid var(--line);
 }
 .timer:last-child { border-bottom: 0; }
+.timer:hover, .action:hover { background: var(--im-header); }
 .timer .when { min-width: 8rem; text-align: right; }
 .src {
   font-size: .64rem; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;
