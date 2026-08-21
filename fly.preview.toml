@@ -29,7 +29,11 @@ primary_region = "ewr"
     idle_timeout = 900
 
   [[http_service.checks]]
-    grace_period = "10s"
+    # Long enough for a cold start. A stopped preview takes ~36s to wake and
+    # serve — the binary starts, opens SQLite and seeds the demo history — and
+    # a 10s grace meant the first probe ran against a machine that was still
+    # coming up, so a waking preview answered 503 to the person waiting on it.
+    grace_period = "45s"
     interval = "30s"
     method = "GET"
     timeout = "5s"

@@ -970,9 +970,20 @@ pub(crate) fn index_html() -> String {
 
   let boot = null;
   let misses = 0;
+  // Bounded, and shorter than the interval. Without a timeout this poll
+  // cannot detect the failure it exists for: a machine that has stopped does
+  // not refuse the request, it holds it — Fly wakes the machine and keeps the
+  // fetch open for as long as that takes, which is ~36s on a cold preview. So
+  // the catch never ran, misses never incremented, and the page sat there
+  // looking alive with a dead socket underneath it. A server that is slow and
+  // a server that is gone are the same thing to someone clicking.
+  const BOOT_TIMEOUT = 3000;
   setInterval(async () => {{
     try {{
-      const r = await fetch("/boot", {{cache: "no-store"}});
+      const r = await fetch("/boot", {{
+        cache: "no-store",
+        signal: AbortSignal.timeout(BOOT_TIMEOUT),
+      }});
       const b = await r.text();
       misses = 0;
       if (boot === null) boot = b;
