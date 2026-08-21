@@ -21,9 +21,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      # Pinned, not `latest`. The lockfile pins what goes *into* the vendor
+      # bundle; the bundler is an input too, and it was not pinned — so a Bun
+      # release that mangles identifiers differently makes the committed
+      # bundle "stale" against itself and turns every open pull request red
+      # without anyone changing a line. That is what happened between the 18th
+      # and the 21st.
+      #
+      # Bumping this is a real change: bump it, run `bun run build:vendor`, and
+      # commit the rebuilt bundle in the same commit.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.14"
 
       - name: Install
         run: bun install --frozen-lockfile

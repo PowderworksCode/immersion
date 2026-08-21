@@ -1,6 +1,8 @@
 {
   "name": "immersion-shims",
   "private": true,
+  "//": "packageManager and .github/workflows/shims.yml must name the same Bun: the vendored bundle is byte-compared against a rebuild, and different Bun versions mangle identifiers differently.",
+  "packageManager": "bun@1.3.14",
   "type": "module",
   "scripts": {
     "build": "bun run scripts/build-shims.ts",
