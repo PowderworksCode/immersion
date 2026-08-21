@@ -1192,7 +1192,12 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
         );
 
     println!(
-        "powderman on http://localhost:{port}  db={}",
+        // The bind address, not a guess at it. This printed "localhost" while
+        // binding 0.0.0.0, which is the exact string Fly Doctor looks for when
+        // it reports "App is not listening to the expected port... make sure
+        // your app is listening on 0.0.0.0 and not localhost" — so a line
+        // meant to be helpful was arguing for a bug that was not there.
+        "powderman on http://{addr}  db={}",
         db_path.display()
     );
     let listener = tokio::net::TcpListener::bind(&addr).await?;
