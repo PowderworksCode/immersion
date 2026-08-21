@@ -603,6 +603,19 @@ pub fn trigger_with(name: &str, input: Value) -> Result<()> {
 /// Everything the UI draws, in one query pass.
 pub fn snapshot() -> State {
     let s = shared();
+
+    // How far back the plots look. This was pinned to an hour while
+    // `chart_window` sat in the settings document being offered by the
+    // preferences window and read by nothing — a control that appeared to
+    // work. The machine header writes it now, and this is what makes that
+    // mean something.
+    //
+    // Read BEFORE the database lock, and not one line later: `settings()`
+    // locks the same mutex, and `std::sync::Mutex` is not reentrant. Called
+    // while `conn` is held, it parks the thread against a lock the thread
+    // itself owns, and nothing ever releases it.
+    let hours = crate::editors::machine::window_hours(&settings());
+
     let conn = s.db.lock().expect("db");
 
     let mut runs: Vec<RunView> = Vec::new();
@@ -662,12 +675,6 @@ pub fn snapshot() -> State {
         .collect();
     workflows.sort_by(|a, b| a.name.cmp(&b.name));
 
-    // How far back the plots look. This was pinned to an hour while
-    // `chart_window` sat in the settings document being offered by the
-    // preferences window and read by nothing — a control that appeared to
-    // work. The machine header writes it now, and this is what makes that
-    // mean something.
-    let hours = crate::editors::machine::window_hours(&settings());
     let since = engine::now_ms() - hours * 3_600_000;
     drop(conn);
 
