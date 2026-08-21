@@ -45,6 +45,10 @@ pub(crate) struct Editor {
     /// area operations (split, duplicate) after these, so an editor declares
     /// only what is particular to it.
     pub toolbar: Option<fn(&Draw) -> Element>,
+    /// The editor's own controls in the area header — Blender's header
+    /// carries what the editor it holds needs. For the few things that are
+    /// worth a click without opening a region first.
+    pub header: Option<fn(&Draw) -> Element>,
 }
 
 impl Editor {
@@ -63,6 +67,10 @@ impl Editor {
         self.toolbar = Some(f);
         self
     }
+    fn with_header(mut self, f: fn(&Draw) -> Element) -> Self {
+        self.header = Some(f);
+        self
+    }
 }
 
 /// Every editor this host offers, in the order the dropdown lists them.
@@ -74,6 +82,7 @@ pub(crate) fn editors() -> Vec<Editor> {
             sidebar: None,
             footer: None,
             toolbar: None,
+            header: None,
         }
     }
     vec![
@@ -81,7 +90,8 @@ pub(crate) fn editors() -> Vec<Editor> {
             machine::ed_machine(&d.state, &d.settings)
         })
         .with_sidebar(machine::sidebar)
-        .with_footer(machine::footer),
+        .with_footer(machine::footer)
+        .with_header(machine::header),
         e(fleet::kind(), |d| fleet::ed_fleet(&d.state))
             .with_sidebar(fleet::sidebar)
             .with_footer(fleet::footer),
@@ -111,7 +121,8 @@ pub(crate) fn editors() -> Vec<Editor> {
         e(files::kind(), |d| files::ed_files(d.arg.clone()))
             .with_sidebar(files::sidebar)
             .with_footer(files::footer)
-            .with_toolbar(files::toolbar),
+            .with_toolbar(files::toolbar)
+            .with_header(files::header),
         e(code::kind(), |d| code::ed_code(d.arg.clone()))
             .with_sidebar(code::sidebar)
             .with_footer(code::footer)
@@ -145,6 +156,15 @@ pub(crate) fn sidebar(d: &Draw) -> Option<Element> {
         .into_iter()
         .find(|e| e.kind.id == d.editor)
         .and_then(|e| e.sidebar)
+        .map(|f| f(d))
+}
+
+/// The editor's own controls for its area header, if it has any.
+pub(crate) fn header(d: &Draw) -> Option<Element> {
+    editors()
+        .into_iter()
+        .find(|e| e.kind.id == d.editor)
+        .and_then(|e| e.header)
         .map(|f| f(d))
 }
 

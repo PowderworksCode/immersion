@@ -89,3 +89,68 @@ pub(crate) fn footer(d: &Draw) -> String {
         d.state.fleet.len()
     )
 }
+
+/// The window the plots cover, in the header — the one control that changes
+/// what a machine area is *about* rather than how it looks, which is what a
+/// Blender header carries.
+///
+/// It writes `/chart_window/0`, the hours, and leaves the sample count and
+/// smoothing beside it alone.
+pub(crate) fn header(d: &Draw) -> Element {
+    let hours = window_hours(&d.settings);
+    let on_setting = d.on_setting;
+    rsx! {
+        for choice in [1_i64, 6, 24] {
+            button {
+                key: "{choice}",
+                class: if choice == hours { "hdr-choice is-on" } else { "hdr-choice" },
+                title: "show the last {choice}h",
+                onclick: move |_| {
+                    on_setting.call(("/chart_window/0".to_string(), serde_json::json!(choice)));
+                },
+                "{choice}h"
+            }
+        }
+    }
+}
+
+/// How far back a machine area looks, from the settings document. One place,
+/// because the snapshot and the header have to mean the same thing by it —
+/// and because the setting existed for a while reading nothing at all.
+pub(crate) fn window_hours(settings: &serde_json::Value) -> i64 {
+    settings
+        .pointer("/chart_window/0")
+        .and_then(|h| h.as_i64())
+        .filter(|h| *h > 0)
+        .unwrap_or(1)
+}
+
+#[cfg(test)]
+mod window_tests {
+    use super::window_hours;
+
+    /// `chart_window` sat in the settings document, offered by the
+    /// preferences window, read by nothing: the snapshot was pinned to an
+    /// hour. A control that appears to work is worse than one that is not
+    /// there, so the reader and the writer are pinned to the same pointer.
+    #[test]
+    fn the_window_comes_from_the_setting_and_survives_nonsense() {
+        assert_eq!(
+            window_hours(&serde_json::json!({ "chart_window": [6, 60, 3] })),
+            6
+        );
+        // The default, for a document that has never been written.
+        assert_eq!(window_hours(&serde_json::json!({})), 1);
+        // A zero or negative window would ask the database for a range that
+        // ends before it starts, which draws nothing and looks like a bug in
+        // the metrics rather than in the setting.
+        for bad in [
+            serde_json::json!({ "chart_window": [0, 60, 3] }),
+            serde_json::json!({ "chart_window": [-4, 60, 3] }),
+            serde_json::json!({ "chart_window": "an hour" }),
+            serde_json::json!({ "chart_window": [] }),
+        ] {
+            assert_eq!(window_hours(&bad), 1, "{bad} should fall back");
+        }
+    }
+}
