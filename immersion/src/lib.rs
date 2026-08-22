@@ -61,7 +61,7 @@ pub use widget::{
     EditorError, Field, FieldKind, PropertyEditor, PropertyEditorProps, apply_edit, eval_expr,
     eval_number,
 };
-pub use workspace::{Workspace, Workspaces};
+pub use workspace::{Pick, Workspace, Workspaces};
 
 /// The library's chrome styles. The host concatenates this with its own CSS —
 /// tokens (`--im-*`) have fallbacks, so it works standalone and themes if the

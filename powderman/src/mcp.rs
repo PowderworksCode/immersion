@@ -49,6 +49,11 @@ pub struct SelectArgs {
     /// The thing itself — a path for `file`, a run id for `run`, a chart
     /// pointer for `chart`.
     pub value: String,
+    /// `replace` (the default) selects only this; `extend` adds it to the
+    /// selection and makes it active; `toggle` removes it if it was already
+    /// selected. Many things can be selected; the last one is active, and
+    /// that is what unpinned areas follow.
+    pub mode: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -276,7 +281,10 @@ impl Workbench {
         &self,
         Parameters(a): Parameters<SelectArgs>,
     ) -> Result<CallToolResult, McpError> {
-        run("select", json!({ "kind": a.kind, "value": a.value }))
+        run(
+            "select",
+            json!({ "kind": a.kind, "value": a.value, "mode": a.mode.unwrap_or_else(|| "replace".into()) }),
+        )
     }
 
     #[tool(

@@ -193,6 +193,10 @@ Point every unpinned area of a kind at one thing — the file browser's click, a
 `chart` or `data`. Areas showing that sort follow it. |
 | `value` | string | yes | The thing itself — a path for `file`, a run id for `run`, a chart
 pointer for `chart`. |
+| `mode` | string | no | `replace` (the default) selects only this; `extend` adds it to the
+selection and makes it active; `toggle` removes it if it was already
+selected. Many things can be selected; the last one is active, and
+that is what unpinned areas follow. |
 
 ### `set_editor`
 

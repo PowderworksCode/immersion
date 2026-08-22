@@ -170,7 +170,14 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
    rows use: a run row's status word is colour-coded, and filling the row
    would erase the one colour on it that means something. An accent edge and
    border say the same thing and leave the row readable. */
+/* Selected, and the one of them that is active. Blender draws the same
+   distinction — the selection is what an operation applies across, the active
+   one is what a detail pane is showing — so they cannot look identical. */
 .run.is-sel {
+  border-color: var(--grid);
+  box-shadow: inset 3px 0 0 var(--grid);
+}
+.run.is-sel.is-active {
   border-color: var(--im-accent);
   box-shadow: inset 3px 0 0 var(--im-accent);
 }
