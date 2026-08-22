@@ -977,9 +977,20 @@ pub(crate) fn index_html() -> String {
 
   let boot = null;
   let misses = 0;
+  // Bounded, and shorter than the interval. Without a timeout this poll
+  // cannot detect the failure it exists for: a machine that has stopped does
+  // not refuse the request, it holds it — Fly wakes the machine and keeps the
+  // fetch open for as long as that takes, which is ~36s on a cold preview. So
+  // the catch never ran, misses never incremented, and the page sat there
+  // looking alive with a dead socket underneath it. A server that is slow and
+  // a server that is gone are the same thing to someone clicking.
+  const BOOT_TIMEOUT = 3000;
   setInterval(async () => {{
     try {{
-      const r = await fetch("/boot", {{cache: "no-store"}});
+      const r = await fetch("/boot", {{
+        cache: "no-store",
+        signal: AbortSignal.timeout(BOOT_TIMEOUT),
+      }});
       const b = await r.text();
       misses = 0;
       if (boot === null) boot = b;
@@ -1188,7 +1199,12 @@ pub async fn serve(db_path: &std::path::Path, port: u16) -> Result<()> {
         );
 
     println!(
-        "powderman on http://localhost:{port}  db={}",
+        // The bind address, not a guess at it. This printed "localhost" while
+        // binding 0.0.0.0, which is the exact string Fly Doctor looks for when
+        // it reports "App is not listening to the expected port... make sure
+        // your app is listening on 0.0.0.0 and not localhost" — so a line
+        // meant to be helpful was arguing for a bug that was not there.
+        "powderman on http://{addr}  db={}",
         db_path.display()
     );
     let listener = tokio::net::TcpListener::bind(&addr).await?;
