@@ -14,7 +14,11 @@ pub(crate) fn ed_fleet(s: &State) -> Element {
             div { class: "empty", "no agents" }
         }
         for a in s.fleet.iter() {
-            div { class: "agent", key: "{a.pane}",
+            // `im-row` marks the hover target for the row controls. The row
+            // is a three-column grid (status, name, procs); the actions float
+            // at its right edge rather than taking a fourth column, so the
+            // columns stay put whether or not a pointer is near.
+            div { class: "agent im-row", key: "{a.pane}",
                 span { class: "status {a.status}", "{a.status}" }
                 span { class: "wf", "{a.name}" }
                 span { class: "procs",
@@ -29,6 +33,24 @@ pub(crate) fn ed_fleet(s: &State) -> Element {
                     }
                     span { class: "note", "{gib(a.procs.iter().map(|p| p.rss).sum::<f64>())}" }
                     span { class: "note", "{short(&a.cwd, 46)}" }
+                }
+                span { class: "im-row-actions",
+                    // What an agent row is actually for, most of the time:
+                    // the two strings on it that you need somewhere else —
+                    // the directory it is working in, and the pane to attach
+                    // to. Copying is client-side, so neither costs a message.
+                    button {
+                        class: "im-row-btn im-copy",
+                        title: "copy this agent's working directory",
+                        "data-im-copy": "{a.cwd}",
+                        dangerous_inner_html: "{immersion::icon(\"folder\")}",
+                    }
+                    button {
+                        class: "im-row-btn im-copy",
+                        title: "copy this agent's pane id",
+                        "data-im-copy": "{a.pane}",
+                        dangerous_inner_html: "{immersion::icon(\"terminal-2\")}",
+                    }
                 }
             }
         }
