@@ -673,6 +673,12 @@ pub fn App() -> Element {
     // Whatever this editor wants in its own header — the machine area's
     // window, the browser's way back up. `None` leaves the header exactly as
     // it was.
+    // The registry's answer to "could this run right now", for the chrome that
+    // draws rows. Blender greys an operator whose poll fails; this is what
+    // lets the area menu do the same.
+    let can_run = use_callback(move |name: String| {
+        crate::workflows::commands().can(&ws.read(), &name, &serde_json::Value::Null)
+    });
     let render_header = use_callback(move |(id, editor): (AreaId, String)| -> Element {
         let own = crate::editors::header(&draw_for(id, editor.clone()));
         // The pin belongs to every editor that points at something, not to
@@ -838,7 +844,7 @@ pub fn App() -> Element {
                     button { class: "im-menubtn", "data-im-menu-click": "{undo_history_menu(&crate::daemon::undo_history())}", "Undo History" }
                     button { class: "im-menubtn", "data-im-menu-click": "{repeat_history_menu(&crate::daemon::command_log())}", "Repeat History" }
                     button { class: "im-menubtn", "data-im-menu-click": "{view_menu(&settings())}", "View" }
-                    button { class: "im-menubtn", "data-im-menu-click": "{window_menu(ws.read().active, mac())}", "Window" }
+                    button { class: "im-menubtn", "data-im-menu-click": "{window_menu(&ws.read(), mac())}", "Window" }
                     button { class: "im-menubtn", "data-im-menu-click": "{help_menu(mac())}", "Help" }
                 }
                 // Everything that is not a menu sits to the right, the way
@@ -990,6 +996,7 @@ pub fn App() -> Element {
                     layout: ws.read().current().layout.clone(),
                     kinds: crate::editors::kinds(),
                     render,
+                    can: Some(can_run),
                     render_header: Some(render_header),
                     render_toolbar: Some(render_toolbar),
                     render_sidebar: Some(render_sidebar),
@@ -1278,7 +1285,10 @@ mod parity_tests {
         for p in palette_items(&ws) {
             actions.push(("palette".into(), p.action));
         }
-        for a in menu_actions(&window_menu(0, false)) {
+        for a in menu_actions(&window_menu(
+            &immersion::Workspaces::new("t", Layout::single("runs")),
+            false,
+        )) {
             actions.push(("window menu".into(), a));
         }
         for a in menu_actions(&file_menu()) {
@@ -1322,7 +1332,7 @@ mod parity_tests {
         for a in menu_actions(&immersion::view_menu_json(1, true, true, true)) {
             actions.push(("view menu".into(), a));
         }
-        for a in menu_actions(&immersion::area_menu_json(1)) {
+        for a in menu_actions(&immersion::area_menu_json(1, |_| true)) {
             actions.push(("area menu".into(), a));
         }
 

@@ -45,6 +45,10 @@ pub struct MenuItem {
     pub icon: Option<String>,
     /// A divider rather than a row. Always emitted, so the type can promise it.
     pub sep: bool,
+    /// Shown, but not runnable — Blender greys an operator whose `poll` fails
+    /// rather than hiding it, because a row that disappears teaches nothing
+    /// and a row that is there but dim says "this exists, not now".
+    pub disabled: bool,
 }
 
 impl MenuItem {
@@ -69,6 +73,14 @@ impl MenuItem {
 
     pub fn with_chord(mut self, chord: &str) -> Self {
         self.chord = Some(chord.to_string());
+        self
+    }
+
+    /// Grey this row out unless `available`. Takes the answer rather than the
+    /// question, because only the host holds the registry the answer comes
+    /// from — `Commands::can`.
+    pub fn when(mut self, available: bool) -> Self {
+        self.disabled = !available;
         self
     }
 
@@ -206,24 +218,29 @@ pub fn view_menu_json(id: crate::AreaId, toolbar: bool, sidebar: bool, regions: 
 
 /// The `data-im-menu` JSON for an area leaf — split either way, then close.
 /// Kept here so the area view and the menu never drift: both come from the id.
-pub fn area_menu_json(id: crate::AreaId) -> String {
+pub fn area_menu_json(id: crate::AreaId, can: impl Fn(&str) -> bool) -> String {
     menu_json(&[
         MenuItem::new(
             "Split horizontal",
             "split",
             serde_json::json!({ "id": id, "dir": "row" }),
-        ),
+        )
+        .when(can("split")),
         MenuItem::new(
             "Split vertical",
             "split",
             serde_json::json!({ "id": id, "dir": "col" }),
-        ),
+        )
+        .when(can("split")),
         MenuItem::new(
             "Duplicate",
             "duplicate_area",
             serde_json::json!({ "id": id }),
-        ),
+        )
+        .when(can("duplicate_area")),
         MenuItem::sep(),
-        MenuItem::new("Close area", "join", serde_json::json!({ "id": id })),
+        // The one everybody meets: the last area has nothing to join into, so
+        // this has always been a row that looked live and did nothing.
+        MenuItem::new("Close area", "join", serde_json::json!({ "id": id })).when(can("join")),
     ])
 }

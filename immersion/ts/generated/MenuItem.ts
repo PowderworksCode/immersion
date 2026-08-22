@@ -20,4 +20,10 @@ icon?: string,
 /**
  * A divider rather than a row. Always emitted, so the type can promise it.
  */
-sep: boolean, };
+sep: boolean, 
+/**
+ * Shown, but not runnable — Blender greys an operator whose `poll` fails
+ * rather than hiding it, because a row that disappears teaches nothing
+ * and a row that is there but dim says "this exists, not now".
+ */
+disabled: boolean, };
