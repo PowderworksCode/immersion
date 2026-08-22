@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["immersion", "powderman"]
+# A spike, not a member: it needs wry and a WebKit toolchain, and neither
+# belongs in the lockfile every CI run resolves. See spike/webview-stack.
+exclude = ["spike/webview-stack"]
 
 [workspace.package]
 edition = "2024"

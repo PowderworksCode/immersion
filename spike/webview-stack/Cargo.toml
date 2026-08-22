@@ -1,0 +1,16 @@
+[package]
+name = "webview-stack"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Deliberately outside the workspace (see the root manifest's `exclude`): this
+# pulls wry, winit and a WebKit toolchain in, and none of that belongs in the
+# lockfile every CI run resolves. A spike answers a question and then either
+# becomes a design or gets deleted.
+
+[dependencies]
+wry = "0.56"
+winit = "0.30"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
