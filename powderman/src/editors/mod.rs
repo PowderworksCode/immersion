@@ -27,6 +27,7 @@ pub(crate) mod machine;
 pub(crate) mod runs;
 pub(crate) mod settings;
 pub(crate) mod timers;
+pub(crate) mod welcome;
 
 /// An editor: its registry entry, and the function that draws it. One record
 /// rather than a list and a matching set of match arms — the shape `Command`
@@ -87,6 +88,8 @@ pub(crate) fn editors() -> Vec<Editor> {
         }
     }
     vec![
+        // First, so it leads the header dropdown the way it leads the splash.
+        e(welcome::kind(), welcome::ed_welcome).with_footer(welcome::footer),
         e(machine::kind(), |d| {
             machine::ed_machine(&d.state, &d.settings)
         })
@@ -470,8 +473,8 @@ mod tests {
         assert_eq!(sorted.len(), ids.len(), "two editors share an id: {ids:?}");
         assert_eq!(
             ids.first(),
-            Some(&"machine"),
-            "the dropdown's order is the list's order, and machine leads it"
+            Some(&"welcome"),
+            "the dropdown's order is the list's order, and welcome leads it"
         );
     }
 

@@ -96,7 +96,7 @@ async fn drive(id: String) {
 ///
 /// Only ever used for a database with no workspaces in it, so an existing
 /// workbench is untouched.
-pub(crate) const STARTER: &[&str] = &["Overview", "Runs", "Code", "Monitoring"];
+pub(crate) const STARTER: &[&str] = &["Start", "Overview", "Runs", "Code", "Monitoring"];
 
 pub(crate) fn default_workspaces() -> immersion::Workspaces {
     let templates = crate::splash::templates();
@@ -108,7 +108,7 @@ pub(crate) fn default_workspaces() -> immersion::Workspaces {
     };
     let mut names = STARTER.iter();
     // The first is the one that opens, so it is built rather than added.
-    let first = names.next().copied().unwrap_or("Overview");
+    let first = names.next().copied().unwrap_or("Start");
     let mut ws = immersion::Workspaces::new(
         first,
         layout(first).unwrap_or_else(|| immersion::Layout::single("machine")),

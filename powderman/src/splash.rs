@@ -21,6 +21,16 @@ pub(crate) fn templates() -> Vec<Template> {
     // Blender opens the Properties editor on its default screen for the same
     // reason. One area per workspace, not all of them: it is a panel beside
     // the thing you are working on, not a second column everywhere.
+    let start = {
+        // The welcome pane beside the machine, so a first visit gets the page
+        // that explains the workbench *and* the workbench doing something.
+        let mut l = Layout::single("welcome");
+        if let Some(r) = l.split(1, Dir::Row, 0.55) {
+            l.set_editor(r, "machine");
+            l.toggle_region(r, Region::Sidebar);
+        }
+        l
+    };
     let overview = {
         let mut l = Layout::single("machine");
         if let Some(b) = l.split(1, Dir::Col, 0.45) {
@@ -91,6 +101,12 @@ pub(crate) fn templates() -> Vec<Template> {
         l
     };
     vec![
+        Template {
+            name: "Start".into(),
+            icon: "home".into(),
+            hint: "what this is, and every editor in one click".into(),
+            layout: start,
+        },
         Template {
             name: "Overview".into(),
             icon: "layout-dashboard".into(),
