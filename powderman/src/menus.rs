@@ -458,6 +458,47 @@ mod topbar_tests {
         }
     }
 
+    /// The poll that notices the server is gone has to be able to *finish*.
+    /// Without a timeout it cannot: a stopped machine does not refuse the
+    /// request, it holds it while the host wakes — ~36s on a cold preview —
+    /// so the failure branch never runs and the page sits there looking alive
+    /// with a dead socket underneath. The bound also has to be shorter than
+    /// the interval, or the polls stack up instead of taking turns.
+    #[test]
+    fn the_boot_poll_gives_up_before_the_next_one_starts() {
+        let html = crate::daemon::index_html();
+        assert!(
+            html.contains("AbortSignal.timeout(BOOT_TIMEOUT)"),
+            "the boot poll is unbounded again"
+        );
+        let number = |after: &str| -> u64 {
+            let rest =
+                &html[html.find(after).unwrap_or_else(|| panic!("no {after}")) + after.len()..];
+            rest.trim_start()
+                .trim_start_matches('=')
+                .trim_start()
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+                .parse()
+                .expect("a number")
+        };
+        let timeout = number("const BOOT_TIMEOUT");
+        let interval = html
+            .rsplit_once("}, ")
+            .map(|(_, tail)| {
+                tail.chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect::<String>()
+            })
+            .and_then(|n| n.parse::<u64>().ok())
+            .expect("the poll interval");
+        assert!(
+            timeout < interval,
+            "the boot poll waits {timeout}ms but fires every {interval}ms, so they overlap"
+        );
+    }
+
     /// The connection chip has no signal of its own: the disconnect script
     /// marks the body and the stylesheet swaps the two labels. That is right —
     /// by the time the chip is wrong there is no server left to re-render it —
