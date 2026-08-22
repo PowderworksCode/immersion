@@ -178,6 +178,24 @@ fn field_row(
             json!({ "label": "Copy value", "action": "copy_value", "params": { "value": val } }),
         );
         items.push(json!({ "label": "Paste value", "action": "paste_value", "params": { "pointer": f.path } }));
+        items.push(json!({ "sep": true }));
+        // Blender's Copy Data Path, and the reason it exists: to get from a
+        // thing you are looking at to the words that address it. Blender's
+        // words are Python; ours are a pointer and the command that writes it,
+        // which is what someone hands an agent.
+        items.push(json!({
+            "label": "Copy data path",
+            "action": "copy_value",
+            "params": { "value": f.path },
+        }));
+        items.push(json!({
+            "label": "Copy as command",
+            "action": "copy_value",
+            "params": { "value": format!(
+                "set_setting {}",
+                json!({ "pointer": f.path, "value": val })
+            ) },
+        }));
         Some(json!(items).to_string())
     };
     rsx! {

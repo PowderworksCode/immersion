@@ -245,6 +245,14 @@ fn run(name: &str, params: serde_json::Value) -> Result<CallToolResult, McpError
     }
 }
 
+/// MCP tool names are snake_case; command names use dots (`workspace.add`).
+/// One spelling rule, applied in one place — the parity test checks with it,
+/// and the Info log shows commands with it, so what a person copies off a log
+/// row is what an agent actually calls.
+pub(crate) fn tool_name(command: &str) -> String {
+    command.replace('.', "_")
+}
+
 /// Every tool this server offers, as the model an agent receives — name,
 /// description and the JSON Schema of its parameters. The router's own
 /// accessor is generated private, and the reference is built outside this
@@ -647,12 +655,6 @@ fn host_config() -> StreamableHttpServerConfig {
 mod parity {
     use super::*;
 
-    /// MCP tool names are snake_case; command names use dots
-    /// (`workspace.add`). One spelling rule, applied in one place.
-    fn tool_name(command: &str) -> String {
-        command.replace('.', "_")
-    }
-
     /// Commands and host actions an agent is deliberately not given, each with
     /// the reason it is absent. Anything not listed here must have a tool —
     /// adding an entry is a decision someone has to write down, which is the
@@ -679,7 +681,7 @@ mod parity {
             if NOT_FOR_AGENTS.iter().any(|(n, _)| *n == name) {
                 continue;
             }
-            if !router.has_route(&tool_name(name)) {
+            if !router.has_route(&super::tool_name(name)) {
                 missing.push(name.to_string());
             }
         }
@@ -711,7 +713,7 @@ mod parity {
         let router = Workbench::tool_router();
         for a in crate::ui::client_view_actions() {
             assert!(
-                !router.has_route(&tool_name(a)),
+                !router.has_route(&super::tool_name(a)),
                 "{a} is client-view state but has an MCP tool"
             );
         }

@@ -78,7 +78,8 @@ pub(crate) fn settings_fields() -> Vec<Field> {
                     .collect(),
             ),
         )
-        .with_hint("the workbench palette; accent stays your own"),
+        .with_hint("the workbench palette; accent stays your own")
+        .with_default(serde_json::json!("Blender Dark")),
         Field::new(
             "/chart_window",
             "Chart window",
@@ -158,5 +159,34 @@ mod tests {
             route("preferences"),
             Route::ClientView(ClientAction::Preferences)
         ));
+    }
+}
+
+#[cfg(test)]
+mod default_tests {
+    use super::settings_fields;
+
+    /// "Reset to default" resets to the value the *field* carries, and the
+    /// document has its own defaults in `settings_defaults`. Nothing held the
+    /// two together, so a field could have offered to reset a setting to a
+    /// value the daemon has never used — which looks like a working control
+    /// and is a lie.
+    #[test]
+    fn every_field_resets_to_what_the_document_actually_defaults_to() {
+        let doc = crate::daemon::settings_defaults();
+        for f in settings_fields() {
+            let want = doc
+                .pointer(&f.path)
+                .unwrap_or_else(|| panic!("{} is not in the settings document", f.path));
+            let have = f
+                .default
+                .as_ref()
+                .unwrap_or_else(|| panic!("{} offers no reset — it needs a default", f.path));
+            assert_eq!(
+                have, want,
+                "{} resets to {have}, but the document defaults to {want}",
+                f.path
+            );
+        }
     }
 }
