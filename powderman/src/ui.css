@@ -201,6 +201,15 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
 .agent {
   display: grid; grid-template-columns: 5rem 8.5rem 1fr; gap: .6rem;
   align-items: baseline; padding: .4rem .1rem; border-bottom: 1px solid var(--line);
+  position: relative;
+}
+/* The row controls float at the row's right edge instead of taking a grid
+   column, so the columns keep their rhythm with or without a pointer nearby.
+   `background: inherit` matches the hover wash, giving the buttons a clean
+   patch to sit on when they overlap the tail of the procs text. */
+.agent .im-row-actions {
+  position: absolute; right: .4rem; top: 50%; translate: 0 -50%;
+  background: inherit; border-radius: 3px; padding: 0 .15rem;
 }
 .agent:last-child { border-bottom: 0; }
 .agent:hover { background: var(--im-header); }

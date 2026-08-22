@@ -14,9 +14,26 @@ pub(crate) fn ed_fleet(s: &State) -> Element {
             div { class: "empty", "no agents" }
         }
         for a in s.fleet.iter() {
-            div { class: "agent", key: "{a.pane}",
+            // `im-row` marks the hover target for the row controls. The row
+            // is a three-column grid (status, name, procs); the actions float
+            // at its right edge rather than taking a fourth column, so the
+            // columns stay put whether or not a pointer is near.
+            div { class: "agent im-row", key: "{a.pane}",
                 span { class: "status {a.status}", "{a.status}" }
                 span { class: "wf", "{a.name}" }
+                span { class: "procs",
+                    // The two biggest by memory, not every pid. A full process
+                    // table is htop's job; this row answers "what is this
+                    // agent doing and how big is it".
+                    for p in a.procs.iter().take(2) {
+                        span { class: "proc", key: "{p.pid}", "{p.name}" }
+                    }
+                    if a.procs.len() > 2 {
+                        span { class: "note", "+{a.procs.len() - 2}" }
+                    }
+                    span { class: "note", "{gib(a.procs.iter().map(|p| p.rss).sum::<f64>())}" }
+                    span { class: "note", "{short(&a.cwd, 46)}" }
+                }
                 span { class: "im-row-actions",
                     // What an agent row is actually for, most of the time:
                     // the two strings on it that you need somewhere else —
@@ -34,19 +51,6 @@ pub(crate) fn ed_fleet(s: &State) -> Element {
                         "data-im-copy": "{a.pane}",
                         dangerous_inner_html: "{immersion::icon(\"terminal-2\")}",
                     }
-                }
-                span { class: "procs",
-                    // The two biggest by memory, not every pid. A full process
-                    // table is htop's job; this row answers "what is this
-                    // agent doing and how big is it".
-                    for p in a.procs.iter().take(2) {
-                        span { class: "proc", key: "{p.pid}", "{p.name}" }
-                    }
-                    if a.procs.len() > 2 {
-                        span { class: "note", "+{a.procs.len() - 2}" }
-                    }
-                    span { class: "note", "{gib(a.procs.iter().map(|p| p.rss).sum::<f64>())}" }
-                    span { class: "note", "{short(&a.cwd, 46)}" }
                 }
             }
         }

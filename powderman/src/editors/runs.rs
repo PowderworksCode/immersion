@@ -40,6 +40,7 @@ fn run_row(
             key: "{r.id}",
             "data-filter-text": "{r.workflow} {r.status} {r.note.clone().unwrap_or_default()} {r.error.clone().unwrap_or_default()}",
             summary {
+                class: "im-row",
                 span { class: "status {r.status}", "{r.status}" }
                 span {
                     span { class: "wf", "{r.workflow}" }
