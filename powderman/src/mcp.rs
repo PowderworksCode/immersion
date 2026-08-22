@@ -227,6 +227,14 @@ fn run(name: &str, params: serde_json::Value) -> Result<CallToolResult, McpError
     }
 }
 
+/// Every tool this server offers, as the model an agent receives — name,
+/// description and the JSON Schema of its parameters. The router's own
+/// accessor is generated private, and the reference is built outside this
+/// module, so this is the door.
+pub(crate) fn tools() -> Vec<rmcp::model::Tool> {
+    Workbench::tool_router().list_all()
+}
+
 #[tool_router]
 impl Workbench {
     pub fn new() -> Self {

@@ -72,6 +72,16 @@ pub(crate) fn templates() -> Vec<Template> {
         l.toggle_region(1, Region::Sidebar);
         l
     };
+    let reference = {
+        // Help beside the keymap: the two halves of "what can this do" — the
+        // list of everything, and the chords that reach some of it.
+        let mut l = Layout::single("help");
+        if let Some(r) = l.split(1, Dir::Row, 0.58) {
+            l.set_editor(r, "keymap");
+        }
+        l.toggle_region(1, Region::Sidebar);
+        l
+    };
     let shortcuts = {
         let mut l = Layout::single("keymap");
         if let Some(r) = l.split(1, Dir::Col, 0.62) {
@@ -124,6 +134,12 @@ pub(crate) fn templates() -> Vec<Template> {
             layout: shortcuts,
         },
         Template {
+            name: "Reference".into(),
+            icon: "help".into(),
+            hint: "every command, tool and key this build has".into(),
+            layout: reference,
+        },
+        Template {
             name: "Single".into(),
             icon: "square".into(),
             hint: "one area to split as you like".into(),
@@ -152,6 +168,13 @@ pub(crate) fn splash_foot(mac: bool) -> Vec<SplashSection> {
                     label: "GitHub repo".into(),
                     href: "https://github.com/PowderworksCode/immersion".into(),
                     icon: "brand-github".into(),
+                },
+                SplashRow::Link {
+                    label: "Reference".into(),
+                    href:
+                        "https://github.com/PowderworksCode/immersion/blob/main/docs/reference.md"
+                            .into(),
+                    icon: "help".into(),
                 },
                 SplashRow::Link {
                     label: "Roadmap".into(),

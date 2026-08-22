@@ -20,6 +20,7 @@ pub(crate) mod data;
 pub(crate) mod diff;
 pub(crate) mod files;
 pub(crate) mod fleet;
+pub(crate) mod help;
 pub(crate) mod info;
 pub(crate) mod keymap;
 pub(crate) mod machine;
@@ -108,6 +109,9 @@ pub(crate) fn editors() -> Vec<Editor> {
             settings::ed_settings(d.settings.clone(), d.on_setting, d.on_error)
         }),
         e(info::kind(), |d| info::ed_info(&d.state)),
+        e(help::kind(), help::ed_help)
+            .with_sidebar(help::sidebar)
+            .with_footer(help::footer),
         e(keymap::kind(), |d| {
             keymap::ed_keymap(
                 d.settings.clone(),
