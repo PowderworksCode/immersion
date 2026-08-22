@@ -358,10 +358,262 @@ pub fn commands() -> immersion::Commands {
         }
         Ok(())
     }
-    immersion::Commands::builtin().with(immersion::Command {
-        name: "open_run",
-        description: "Open a run in a new area beside the list",
-        navigational: false,
-        run: open_run,
-    })
+    /// Point every unpinned area of a kind at one thing.
+    ///
+    /// The whole of linked targets. Selection is not resolved when an area is
+    /// drawn — it is written into the layout here, so the document keeps
+    /// saying exactly what each area shows and every reader of it, the target
+    /// chip and `get_state` and a saved workspace, needs no new concept.
+    ///
+    /// Pinned areas are skipped; that is what pinning is.
+    fn select(ws: &mut immersion::Workspaces, p: &serde_json::Value) -> anyhow::Result<()> {
+        let kind = p
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("select needs a kind, e.g. \"file\""))?;
+        let value = p
+            .get("value")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("select needs a value"))?;
+        let layout = ws.current_layout_mut();
+        let followers: Vec<immersion::AreaId> = layout
+            .root
+            .leaves()
+            .into_iter()
+            .filter(|id| !layout.is_pinned(*id))
+            .filter(|id| match layout.root.find(*id) {
+                Some(immersion::Area::Leaf { editor, .. }) => {
+                    crate::editors::target_kind(editor) == Some(kind)
+                }
+                _ => false,
+            })
+            .collect();
+        for id in &followers {
+            layout.set_target(*id, value);
+        }
+        // Nothing followed is not an error: selecting a file in a workspace
+        // with no viewer open is a reasonable thing to do, and the next
+        // viewer opened will be pointed at it. Saying so would be noise.
+        Ok(())
+    }
+
+    /// Freeze an area on what it is looking at, or let it follow again.
+    fn set_pinned(ws: &mut immersion::Workspaces, p: &serde_json::Value) -> anyhow::Result<()> {
+        let id = p
+            .get("id")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| anyhow::anyhow!("set_pinned needs an integer id"))?;
+        let pinned = p
+            .get("pinned")
+            .and_then(serde_json::Value::as_bool)
+            .ok_or_else(|| anyhow::anyhow!("set_pinned needs a boolean pinned"))?;
+        if !ws.current_layout_mut().set_pinned(id, pinned) {
+            anyhow::bail!("no area {id}");
+        }
+        Ok(())
+    }
+
+    immersion::Commands::builtin()
+        .with(immersion::Command {
+            name: "open_run",
+            description: "Open a run in a new area beside the list",
+            navigational: false,
+            run: open_run,
+        })
+        .with(immersion::Command {
+            name: "select",
+            description: "Point every unpinned area of a kind (file, run, chart) at one thing",
+            // Navigational: a click in a list is not an edit, and putting one
+            // on the undo stack per click would bury the splits and joins
+            // that are.
+            navigational: true,
+            run: select,
+        })
+        .with(immersion::Command {
+            name: "set_pinned",
+            description: "Freeze an area on what it is showing, or let it follow the selection",
+            navigational: false,
+            run: set_pinned,
+        })
+}
+
+#[cfg(test)]
+mod linked_targets {
+    use immersion::{Area, Dir, Layout, Workspaces};
+    use serde_json::json;
+
+    /// A workspace with a browser, a code viewer and a diff viewer — the
+    /// Code and Changes arrangements, in one tree.
+    fn workbench() -> Workspaces {
+        let mut l = Layout::single("files");
+        let code = l.split(1, Dir::Row, 0.3).expect("a second area");
+        l.set_editor(code, "code");
+        let diff = l.split(code, Dir::Col, 0.5).expect("a third area");
+        l.set_editor(diff, "diff");
+        Workspaces::new("test", l)
+    }
+
+    fn target(ws: &Workspaces, id: u64) -> Option<String> {
+        ws.current().layout.target_of(id)
+    }
+
+    fn ids(ws: &Workspaces) -> (u64, u64, u64) {
+        let leaves = ws.current().layout.root.leaves();
+        let of = |editor: &str| {
+            *leaves
+                .iter()
+                .find(|id| {
+                    matches!(ws.current().layout.root.find(**id),
+                        Some(Area::Leaf { editor: e, .. }) if e == editor)
+                })
+                .unwrap_or_else(|| panic!("no {editor} area"))
+        };
+        (of("files"), of("code"), of("diff"))
+    }
+
+    /// The payoff, and the reason kind is not the same thing as the noun the
+    /// picker shows: a code viewer and a diff viewer both point at a path, so
+    /// one click drives both.
+    #[test]
+    fn one_pick_moves_every_area_that_points_at_that_kind() {
+        let commands = super::commands();
+        let mut ws = workbench();
+        let (files, code, diff) = ids(&ws);
+        commands
+            .run(
+                &mut ws,
+                "select",
+                &json!({ "kind": "file", "value": "src/main.rs" }),
+            )
+            .expect("select runs");
+        assert_eq!(target(&ws, code).as_deref(), Some("src/main.rs"));
+        assert_eq!(target(&ws, diff).as_deref(), Some("src/main.rs"));
+        // And the browser is untouched. Its target is the folder it is rooted
+        // at; re-rooting it onto the file you just clicked would collapse the
+        // tree you clicked it in.
+        assert_eq!(target(&ws, files), None, "the browser followed a file");
+    }
+
+    /// Pinning is the only thing that stops an area following, and it has to
+    /// stop it completely — a pinned viewer that drifts is worse than no pin.
+    #[test]
+    fn a_pinned_area_stays_where_it_was_put() {
+        let commands = super::commands();
+        let mut ws = workbench();
+        let (_, code, diff) = ids(&ws);
+        commands
+            .run(
+                &mut ws,
+                "select",
+                &json!({ "kind": "file", "value": "a.rs" }),
+            )
+            .expect("select runs");
+        commands
+            .run(
+                &mut ws,
+                "set_pinned",
+                &json!({ "id": code, "pinned": true }),
+            )
+            .expect("pin runs");
+        commands
+            .run(
+                &mut ws,
+                "select",
+                &json!({ "kind": "file", "value": "b.rs" }),
+            )
+            .expect("select runs");
+        assert_eq!(target(&ws, code).as_deref(), Some("a.rs"), "the pin leaked");
+        assert_eq!(target(&ws, diff).as_deref(), Some("b.rs"));
+
+        // Unpinning does not retroactively move it; the next selection does.
+        commands
+            .run(
+                &mut ws,
+                "set_pinned",
+                &json!({ "id": code, "pinned": false }),
+            )
+            .expect("unpin runs");
+        assert_eq!(target(&ws, code).as_deref(), Some("a.rs"));
+        commands
+            .run(
+                &mut ws,
+                "select",
+                &json!({ "kind": "file", "value": "c.rs" }),
+            )
+            .expect("select runs");
+        assert_eq!(target(&ws, code).as_deref(), Some("c.rs"));
+    }
+
+    /// Selecting a kind nothing shows is a normal thing to do — a file picked
+    /// in a workspace with no viewer open. It must not be an error, or the UI
+    /// reports a failure for a click that was fine.
+    #[test]
+    fn selecting_a_kind_nothing_shows_is_not_a_failure() {
+        let commands = super::commands();
+        let mut ws = Workspaces::new("test", Layout::single("runs"));
+        commands
+            .run(
+                &mut ws,
+                "select",
+                &json!({ "kind": "file", "value": "x.rs" }),
+            )
+            .expect("a selection nothing follows is still a selection");
+        // But a malformed one is an error, because that is a caller bug.
+        assert!(
+            commands
+                .run(&mut ws, "select", &json!({ "kind": "file" }))
+                .is_err()
+        );
+        assert!(
+            commands
+                .run(&mut ws, "set_pinned", &json!({ "id": 99, "pinned": true }))
+                .is_err()
+        );
+    }
+
+    /// Splitting is how you get a second view of *this* thing. A fresh half
+    /// that immediately followed the next selection away would be the
+    /// opposite of what the gesture means.
+    #[test]
+    fn the_half_you_split_off_keeps_what_it_was_showing() {
+        let commands = super::commands();
+        let mut ws = workbench();
+        let (_, code, _) = ids(&ws);
+        commands
+            .run(
+                &mut ws,
+                "select",
+                &json!({ "kind": "file", "value": "a.rs" }),
+            )
+            .expect("select runs");
+        let new = ws
+            .current_layout_mut()
+            .split(code, Dir::Col, 0.5)
+            .expect("split");
+        commands
+            .run(
+                &mut ws,
+                "select",
+                &json!({ "kind": "file", "value": "b.rs" }),
+            )
+            .expect("select runs");
+        assert_eq!(
+            target(&ws, new).as_deref(),
+            Some("a.rs"),
+            "the new half drifted"
+        );
+        assert_eq!(target(&ws, code).as_deref(), Some("b.rs"));
+    }
+
+    /// Every layout saved before pinning existed reads as unpinned, which is
+    /// the behaviour those layouts had. A default that came out the other way
+    /// would freeze every existing workbench silently.
+    #[test]
+    fn a_layout_saved_before_pins_existed_follows() {
+        // Exactly what a workbench wrote before this field existed: no
+        // `pinned` key anywhere.
+        let json = r#"{"root":{"kind":"leaf","id":1,"editor":"code","arg":"old.rs"},"next_id":2}"#;
+        let layout: Layout = serde_json::from_str(json).expect("an old layout still loads");
+        assert!(!layout.is_pinned(1), "an old layout came back pinned");
+    }
 }

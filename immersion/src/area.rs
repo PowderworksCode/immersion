@@ -102,6 +102,12 @@ pub enum Area {
         /// The collapsible regions around the body.
         #[serde(default, skip_serializing_if = "Regions::is_default")]
         regions: Regions,
+        /// Frozen on whatever it is looking at, rather than following the
+        /// workspace's selection — Blender's pin. Default false, so an area
+        /// follows unless told otherwise, and `serde(default)` so every
+        /// layout saved before this field reads as unpinned.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        pinned: bool,
     },
     Split {
         id: AreaId,
@@ -283,6 +289,7 @@ impl Layout {
                 editor: editor.to_string(),
                 arg: None,
                 regions: Regions::default(),
+                pinned: false,
             },
             next_id: 2,
         }
@@ -316,6 +323,7 @@ impl Layout {
             editor,
             arg,
             regions,
+            pinned,
         } = node
         else {
             return None;
@@ -325,12 +333,17 @@ impl Layout {
             editor: editor.clone(),
             arg: arg.clone(),
             regions: regions.clone(),
+            pinned: *pinned,
         };
+        // The new half is pinned to what it was split from. Splitting is how
+        // you get a second view of *this* thing; a fresh half that immediately
+        // followed the next selection away would be the opposite of that.
         let fresh = Area::Leaf {
             id: new_id,
             editor: editor.clone(),
             arg: arg.clone(),
             regions: Regions::default(),
+            pinned: arg.is_some(),
         };
         let r = clamp(ratio);
         *node = Area::Split {
@@ -504,6 +517,25 @@ impl Layout {
             }
             _ => false,
         }
+    }
+
+    /// Freeze a leaf on what it is looking at, or let it follow again —
+    /// Blender's pin. Returns false if there is no such leaf.
+    pub fn set_pinned(&mut self, leaf: AreaId, value: bool) -> bool {
+        match self.root.find_mut(leaf) {
+            Some(Area::Leaf { pinned, .. }) => {
+                *pinned = value;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether a leaf is pinned. A missing leaf reads as unpinned rather than
+    /// panicking: the question "is this frozen" has a sensible answer for an
+    /// area that is not there, and every caller is drawing chrome.
+    pub fn is_pinned(&self, leaf: AreaId) -> bool {
+        matches!(self.root.find(leaf), Some(Area::Leaf { pinned, .. }) if *pinned)
     }
 
     /// Toggle a leaf's toolbar (T) or sidebar (N) region.

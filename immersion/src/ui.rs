@@ -275,6 +275,7 @@ fn render_node(node: &Area, props: &AreasProps, lone: bool) -> Element {
             editor,
             arg,
             regions,
+            ..
         } => render_leaf(*id, editor, arg.clone(), regions.clone(), props, lone),
         Area::Split {
             id,
