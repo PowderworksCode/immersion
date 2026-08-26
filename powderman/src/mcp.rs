@@ -42,6 +42,24 @@ pub struct SplitArgs {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SelectArgs {
+    /// What sort of thing is being selected: `file`, `folder`, `run`,
+    /// `chart` or `data`. Areas showing that sort follow it.
+    pub kind: String,
+    /// The thing itself — a path for `file`, a run id for `run`, a chart
+    /// pointer for `chart`.
+    pub value: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct PinArgs {
+    /// The area id.
+    pub id: u64,
+    /// True freezes it on what it is showing; false lets it follow again.
+    pub pinned: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct DepthArgs {
     /// How many undo steps to take. Past the end of the stack unwinds as far
     /// as there is history rather than failing.
@@ -241,6 +259,26 @@ impl Workbench {
         Self {
             tool_router: Self::tool_router(),
         }
+    }
+
+    #[tool(
+        description = "Point every unpinned area of a kind at one thing — the file browser's click, as a command. Selecting a file moves both a code viewer and a diff viewer, since both point at a path. Pinned areas are left alone."
+    )]
+    async fn select(
+        &self,
+        Parameters(a): Parameters<SelectArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        run("select", json!({ "kind": a.kind, "value": a.value }))
+    }
+
+    #[tool(
+        description = "Freeze an area on what it is showing so the selection stops moving it, or let it follow again. Blender's pin."
+    )]
+    async fn set_pinned(
+        &self,
+        Parameters(a): Parameters<PinArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        run("set_pinned", json!({ "id": a.id, "pinned": a.pinned }))
     }
 
     #[tool(description = "Split an area in two")]
