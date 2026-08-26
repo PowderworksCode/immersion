@@ -77,7 +77,7 @@
           continue;
         }
         const row = document.createElement("div");
-        row.className = "im-ctx-item";
+        row.className = it.disabled ? "im-ctx-item is-disabled" : "im-ctx-item";
         if (it.icon) {
           const glyph = document.createElement("span");
           glyph.className = "im-ctx-icon";
@@ -96,6 +96,8 @@
         row.dataset.action = it.action ?? "";
         row.dataset.params = JSON.stringify(it.params ?? null);
         row.addEventListener("click", () => {
+          if (it.disabled)
+            return;
           pick(row.dataset.action ?? "", row.dataset.params);
           close();
         });
@@ -132,7 +134,7 @@
       menu.style.left = Math.max(4, x) + "px";
       menu.style.top = Math.max(4, y) + "px";
       const el = menu;
-      const rows = () => Array.from(el.querySelectorAll(".im-ctx-item"));
+      const rows = () => Array.from(el.querySelectorAll(".im-ctx-item:not(.is-disabled)"));
       let sel = 0;
       const paint = () => rows().forEach((r, i) => r.classList.toggle("is-sel", i === sel));
       paint();

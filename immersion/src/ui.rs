@@ -152,6 +152,13 @@ pub struct AreasProps {
     /// properties region — from `(area id, editor)`.
     #[props(default)]
     pub render_sidebar: Option<Callback<(AreaId, String), Element>>,
+    /// Optional: "could this command run against the workbench as it is" —
+    /// Blender's `poll`, asked of the host because the host holds the
+    /// registry. Menu rows it answers `false` for are drawn grey and inert.
+    /// Without it every row is live, which is what these menus did before
+    /// there was a poll to ask.
+    #[props(default)]
+    pub can: Option<Callback<String, bool>>,
     /// Optional: the editor's own controls in its header, from
     /// `(area id, editor)` — Blender's header carries what the editor it
     /// holds needs and nothing else. Drawn after the target chip and before
@@ -340,7 +347,16 @@ fn render_leaf(
     let editor_owned = editor.to_string();
     let cmd = props.on_command;
     let body = props.render.call((id, editor_owned.clone(), arg.clone()));
-    let menu = crate::contextmenu::area_menu_json(id);
+    // The host holds the registry, so it answers whether a row can run. A
+    // host that does not offer an answer gets every row live, which is what
+    // this did before there was a poll to ask.
+    let can = |name: &str| {
+        props
+            .can
+            .map(|cb| cb.call(name.to_string()))
+            .unwrap_or(true)
+    };
+    let menu = crate::contextmenu::area_menu_json(id, can);
     let header_items = props
         .render_header
         .map(|cb| cb.call((id, editor_owned.clone())));

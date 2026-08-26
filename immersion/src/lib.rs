@@ -37,7 +37,7 @@ mod workspace;
 
 pub use area::{Area, AreaId, Dir, Layout, MIN_RATIO, Region};
 pub use client::{Chrome, ChromeProps};
-pub use command::{Command, Commands};
+pub use command::{Command, Commands, always, many_areas, many_workspaces};
 pub use contextmenu::{
     ContextMenu, ContextMenuProps, MenuItem, area_menu_json, editor_menu_json, menu_json,
     view_menu_json,

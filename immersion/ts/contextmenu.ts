@@ -81,7 +81,10 @@ if (once("__imCtxMenu")) {
         continue;
       }
       const row = document.createElement("div");
-      row.className = "im-ctx-item";
+      // A row whose command cannot run right now is dim and inert, not
+      // missing: a row that disappears teaches nothing, and one that is there
+      // but grey says "this exists, not now".
+      row.className = it.disabled ? "im-ctx-item is-disabled" : "im-ctx-item";
       if (it.icon) {
         // The icon is the library's own sprite output — markup by
         // construction, never user text — so it is inserted as markup while
@@ -103,6 +106,7 @@ if (once("__imCtxMenu")) {
       row.dataset.action = it.action ?? "";
       row.dataset.params = JSON.stringify(it.params ?? null);
       row.addEventListener("click", () => {
+        if (it.disabled) return;
         pick(row.dataset.action ?? "", row.dataset.params);
         close();
       });
@@ -139,7 +143,12 @@ if (once("__imCtxMenu")) {
     menu.style.top = Math.max(4, y) + "px";
 
     const el = menu;
-    const rows = (): HTMLElement[] => Array.from(el.querySelectorAll<HTMLElement>(".im-ctx-item"));
+    // Disabled rows are excluded here rather than only from the click
+    // handler: this list is what the arrows walk, what Enter fires and what
+    // the letter accelerators match, so leaving them in would let the
+    // keyboard run a command the pointer refuses.
+    const rows = (): HTMLElement[] =>
+      Array.from(el.querySelectorAll<HTMLElement>(".im-ctx-item:not(.is-disabled)"));
     let sel = 0;
     const paint = () => rows().forEach((r, i) => r.classList.toggle("is-sel", i === sel));
     paint();

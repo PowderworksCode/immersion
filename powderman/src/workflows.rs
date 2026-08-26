@@ -418,6 +418,9 @@ pub fn commands() -> immersion::Commands {
             name: "open_run",
             description: "Open a run in a new area beside the list",
             navigational: false,
+            // Always: any area can be split to hold a run, and whether the run
+            // exists is the run function's business.
+            poll: immersion::always,
             run: open_run,
         })
         .with(immersion::Command {
@@ -427,12 +430,20 @@ pub fn commands() -> immersion::Commands {
             // on the undo stack per click would bury the splits and joins
             // that are.
             navigational: true,
+            // Always, deliberately. Selecting a file in a workspace with no
+            // viewer open writes nothing, and a click that reports an error
+            // for doing something reasonable is worse than one that quietly
+            // does nothing — see the test that pins this.
+            poll: immersion::always,
             run: select,
         })
         .with(immersion::Command {
             name: "set_pinned",
             description: "Freeze an area on what it is showing, or let it follow the selection",
             navigational: false,
+            // Always: poll answers about the workbench, not about params. A
+            // bad id is the run function's error, with its own message.
+            poll: immersion::always,
             run: set_pinned,
         })
 }
