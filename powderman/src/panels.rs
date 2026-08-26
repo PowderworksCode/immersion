@@ -60,7 +60,10 @@ pub(crate) fn TargetPicker(
     });
     let noun = crate::editors::target_noun(&editor);
     let mut chosen = use_signal(|| current.clone().unwrap_or_default());
-    let on_row = Callback::new(move |row: immersion::TreeRow| chosen.set(row.pointer));
+    // The picker chooses one thing; extending a selection means nothing in a
+    // modal whose whole job is to answer with a single value.
+    let on_row =
+        Callback::new(move |(row, _extend): (immersion::TreeRow, bool)| chosen.set(row.pointer));
     rsx! {
         div { class: "adjust-backdrop", onclick: move |_| on_cancel.call(()),
             div { class: "adjust-panel target-panel", onclick: move |e| e.stop_propagation(),

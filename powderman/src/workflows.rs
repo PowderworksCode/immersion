@@ -358,24 +358,46 @@ pub fn commands() -> immersion::Commands {
         }
         Ok(())
     }
-    /// Point every unpinned area of a kind at one thing.
+    /// Select a thing, and point every unpinned area of its kind at whichever
+    /// is now active.
     ///
-    /// The whole of linked targets. Selection is not resolved when an area is
-    /// drawn — it is written into the layout here, so the document keeps
-    /// saying exactly what each area shows and every reader of it, the target
-    /// chip and `get_state` and a saved workspace, needs no new concept.
+    /// Blender's distinction: many things selected, exactly one active. A
+    /// plain click replaces the selection, ctrl-click extends it, and the last
+    /// one picked is the active one — the thing a detail pane should show.
+    /// Selection is what an operation applies *across*; active is what you are
+    /// looking *at*.
     ///
-    /// Pinned areas are skipped; that is what pinning is.
+    /// The pointing is still a write into the layout rather than a lookup when
+    /// an area is drawn, so the document keeps saying exactly what each area
+    /// shows and every reader of it needs no new concept.
     fn select(ws: &mut immersion::Workspaces, p: &serde_json::Value) -> anyhow::Result<()> {
         let kind = p
             .get("kind")
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| anyhow::anyhow!("select needs a kind, e.g. \"file\""))?;
+            .ok_or_else(|| anyhow::anyhow!("select needs a kind, e.g. \"file\""))?
+            .to_string();
         let value = p
             .get("value")
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| anyhow::anyhow!("select needs a value"))?;
-        let layout = ws.current_layout_mut();
+            .ok_or_else(|| anyhow::anyhow!("select needs a value"))?
+            .to_string();
+        let how = immersion::Pick::parse(
+            p.get("mode")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("replace"),
+        );
+
+        let index = ws.active;
+        let active = ws.tabs[index].pick(&kind, &value, how);
+        // Toggling the last selected thing off leaves nothing active. The
+        // areas keep showing what they had rather than blanking: "nothing is
+        // selected" is not the same statement as "look at nothing", and a
+        // detail pane that empties itself when you deselect is a pane that
+        // loses your place.
+        let Some(active) = active else {
+            return Ok(());
+        };
+        let layout = &mut ws.tabs[index].layout;
         let followers: Vec<immersion::AreaId> = layout
             .root
             .leaves()
@@ -383,17 +405,17 @@ pub fn commands() -> immersion::Commands {
             .filter(|id| !layout.is_pinned(*id))
             .filter(|id| match layout.root.find(*id) {
                 Some(immersion::Area::Leaf { editor, .. }) => {
-                    crate::editors::target_kind(editor) == Some(kind)
+                    crate::editors::target_kind(editor) == Some(kind.as_str())
                 }
                 _ => false,
             })
             .collect();
         for id in &followers {
-            layout.set_target(*id, value);
+            layout.set_target(*id, &active);
         }
         // Nothing followed is not an error: selecting a file in a workspace
-        // with no viewer open is a reasonable thing to do, and the next
-        // viewer opened will be pointed at it. Saying so would be noise.
+        // with no viewer open is a reasonable thing to do, and saying so
+        // would be noise on an ordinary click.
         Ok(())
     }
 
@@ -626,5 +648,93 @@ mod linked_targets {
         let json = r#"{"root":{"kind":"leaf","id":1,"editor":"code","arg":"old.rs"},"next_id":2}"#;
         let layout: Layout = serde_json::from_str(json).expect("an old layout still loads");
         assert!(!layout.is_pinned(1), "an old layout came back pinned");
+    }
+}
+
+#[cfg(test)]
+mod multi_select {
+    use immersion::{Area, Dir, Layout, Workspaces};
+    use serde_json::json;
+
+    fn bench() -> Workspaces {
+        let mut l = Layout::single("runs");
+        let detail = l.split(1, Dir::Row, 0.5).expect("a second area");
+        l.set_editor(detail, "run");
+        Workspaces::new("test", l)
+    }
+
+    fn detail_id(ws: &Workspaces) -> u64 {
+        *ws.current()
+            .layout
+            .root
+            .leaves()
+            .iter()
+            .find(|id| {
+                matches!(ws.current().layout.root.find(**id),
+                    Some(Area::Leaf { editor, .. }) if editor == "run")
+            })
+            .expect("a run area")
+    }
+
+    /// Extending selects more without moving what the detail pane shows off
+    /// the thing you last touched. That is the point of active-vs-selected:
+    /// you can build a set of five while still looking at one of them.
+    #[test]
+    fn extending_the_selection_leaves_the_detail_pane_on_the_active_one() {
+        let commands = super::commands();
+        let mut ws = bench();
+        let detail = detail_id(&ws);
+        for (value, mode) in [("r1", "replace"), ("r2", "extend"), ("r3", "extend")] {
+            commands
+                .run(
+                    &mut ws,
+                    "select",
+                    &json!({ "kind": "run", "value": value, "mode": mode }),
+                )
+                .expect("select runs");
+        }
+        assert_eq!(ws.current().selection("run"), ["r1", "r2", "r3"]);
+        assert_eq!(
+            ws.current().layout.target_of(detail).as_deref(),
+            Some("r3"),
+            "the pane should show the active one"
+        );
+    }
+
+    /// Deselecting everything must not blank the areas. "Nothing is selected"
+    /// is not the same statement as "look at nothing", and a detail pane that
+    /// empties itself when you deselect is a pane that loses your place.
+    #[test]
+    fn clearing_the_selection_leaves_the_areas_where_they_were() {
+        let commands = super::commands();
+        let mut ws = bench();
+        let detail = detail_id(&ws);
+        commands
+            .run(&mut ws, "select", &json!({ "kind": "run", "value": "r1" }))
+            .expect("select runs");
+        commands
+            .run(
+                &mut ws,
+                "select",
+                &json!({ "kind": "run", "value": "r1", "mode": "toggle" }),
+            )
+            .expect("toggle runs");
+        assert!(ws.current().selection("run").is_empty());
+        assert_eq!(ws.current().layout.target_of(detail).as_deref(), Some("r1"));
+    }
+
+    /// A selection belongs to the workspace it was made in. Two arrangements
+    /// looking at different runs is the normal case, not a bug.
+    #[test]
+    fn a_selection_does_not_leak_between_workspaces() {
+        let commands = super::commands();
+        let mut ws = bench();
+        commands
+            .run(&mut ws, "select", &json!({ "kind": "run", "value": "r1" }))
+            .expect("select runs");
+        ws.add("other", Layout::single("runs"));
+        assert!(ws.current().selection("run").is_empty());
+        ws.switch(0);
+        assert_eq!(ws.current().selection("run"), ["r1"]);
     }
 }

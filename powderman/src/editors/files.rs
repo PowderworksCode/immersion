@@ -25,19 +25,26 @@ pub(crate) fn ed_files(d: &Draw) -> Element {
     // itself onto the folder you just expanded would collapse the tree you
     // expanded it in.
     let cmd = d.cmd;
-    let on_pick = Callback::new(move |row: immersion::TreeRow| {
+    let on_pick = Callback::new(move |(row, extend): (immersion::TreeRow, bool)| {
         if row.has_children {
             return;
         }
         cmd.call((
             "select".to_string(),
-            serde_json::json!({ "kind": "file", "value": row.pointer }),
+            serde_json::json!({
+                "kind": "file",
+                "value": row.pointer,
+                "mode": if extend { "extend" } else { "replace" },
+            }),
         ));
     });
+    // Whatever is selected anywhere shows here, so picking a file in one
+    // browser marks it in another, and ctrl-click can mark several.
+    let selected = d.selection.get("file").cloned().unwrap_or_default();
     rsx! {
         div { class: "files-editor im-filter-scope",
             div { class: "keymap-head", FilterBox { placeholder: "filter files\u{2026}" } }
-            TreeView { children_of, on_pick }
+            TreeView { children_of, on_pick, selected }
         }
     }
 }

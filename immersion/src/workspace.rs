@@ -11,6 +11,8 @@
 //! workspace and `active` always points at a real one, because the UI renders
 //! the active tree unconditionally and a screen must show something.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::area::Layout;
@@ -19,6 +21,87 @@ use crate::area::Layout;
 pub struct Workspace {
     pub name: String,
     pub layout: Layout,
+    /// What is selected in this workspace, by kind — `file`, `run`, `chart`.
+    ///
+    /// Blender's distinction, and the one that makes bulk work possible: many
+    /// things are *selected*, exactly one is *active*. The active one is the
+    /// last in the list, because the thing you touched most recently is the
+    /// one panels should follow; the rest are what an operation applies
+    /// across.
+    ///
+    /// The kinds are the host's — the library never reads what is in here,
+    /// only carries it — and `serde(default)` keeps every layout saved before
+    /// selections existed loading unchanged.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub selected: BTreeMap<String, Vec<String>>,
+}
+
+/// How a pick changes the selection. A plain click replaces, the usual
+/// modifiers do the usual things.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pick {
+    /// Just this one — a plain click.
+    Replace,
+    /// Add it and make it active, leaving the rest — ctrl/cmd-click.
+    Extend,
+    /// In if out, out if in — the other half of ctrl-click.
+    Toggle,
+}
+
+impl Pick {
+    /// From the wire. An unknown word is `Replace`, because the safe reading
+    /// of a mode nobody understands is the one a plain click would do.
+    ///
+    /// Not `FromStr`: that trait is fallible by contract and this is not —
+    /// there is no input it rejects, and a `Result` every caller unwraps is
+    /// a lie about the function.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "extend" => Pick::Extend,
+            "toggle" => Pick::Toggle,
+            _ => Pick::Replace,
+        }
+    }
+}
+
+impl Workspace {
+    /// Change what is selected for one kind, and hand back the active value —
+    /// what followers should now show. `None` means nothing is left selected.
+    pub fn pick(&mut self, kind: &str, value: &str, how: Pick) -> Option<String> {
+        let list = self.selected.entry(kind.to_string()).or_default();
+        match how {
+            Pick::Replace => {
+                list.clear();
+                list.push(value.to_string());
+            }
+            Pick::Extend => {
+                list.retain(|v| v != value);
+                list.push(value.to_string());
+            }
+            Pick::Toggle => {
+                if let Some(i) = list.iter().position(|v| v == value) {
+                    list.remove(i);
+                } else {
+                    list.push(value.to_string());
+                }
+            }
+        }
+        let active = list.last().cloned();
+        if list.is_empty() {
+            self.selected.remove(kind);
+        }
+        active
+    }
+
+    /// What is selected for a kind, oldest first. Empty when nothing is.
+    pub fn selection(&self, kind: &str) -> &[String] {
+        self.selected.get(kind).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// The one panels follow.
+    pub fn active_selection(&self, kind: &str) -> Option<&String> {
+        self.selected.get(kind).and_then(|v| v.last())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -34,6 +117,7 @@ impl Workspaces {
             tabs: vec![Workspace {
                 name: name.to_string(),
                 layout,
+                selected: BTreeMap::new(),
             }],
             active: 0,
         }
@@ -74,6 +158,10 @@ impl Workspaces {
         self.tabs.push(Workspace {
             name: name.to_string(),
             layout,
+            // A new workspace has selected nothing yet. Carrying the current
+            // one's selection over would point a fresh arrangement at things
+            // it has no areas to show.
+            selected: BTreeMap::new(),
         });
         self.active = self.tabs.len() - 1;
     }
@@ -250,5 +338,93 @@ mod move_tests {
         assert!(!w.move_tab(5, 0), "no such tab");
         assert!(!w.move_tab(0, 5), "no such position");
         assert_eq!(names(&w), ["0", "1", "2"], "and nothing changed");
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    fn ws() -> Workspace {
+        Workspace {
+            name: "t".into(),
+            layout: Layout::single("runs"),
+            selected: BTreeMap::new(),
+        }
+    }
+
+    /// Blender's distinction, and the reason both halves exist: the selection
+    /// is what an operation applies across, the active one is what a detail
+    /// pane shows. A model with only one of them cannot express "these five".
+    #[test]
+    fn many_are_selected_and_the_last_one_is_active() {
+        let mut w = ws();
+        assert_eq!(w.pick("run", "a", Pick::Replace).as_deref(), Some("a"));
+        assert_eq!(w.pick("run", "b", Pick::Extend).as_deref(), Some("b"));
+        assert_eq!(w.pick("run", "c", Pick::Extend).as_deref(), Some("c"));
+        assert_eq!(w.selection("run"), ["a", "b", "c"]);
+        assert_eq!(w.active_selection("run").map(String::as_str), Some("c"));
+
+        // A plain click after all that is still just a plain click.
+        assert_eq!(w.pick("run", "d", Pick::Replace).as_deref(), Some("d"));
+        assert_eq!(w.selection("run"), ["d"]);
+    }
+
+    /// Extending onto something already selected makes it active rather than
+    /// listing it twice — otherwise "copy the selected ids" repeats itself
+    /// and a count of the selection is wrong.
+    #[test]
+    fn extending_onto_a_selected_thing_promotes_it() {
+        let mut w = ws();
+        w.pick("run", "a", Pick::Replace);
+        w.pick("run", "b", Pick::Extend);
+        assert_eq!(w.pick("run", "a", Pick::Extend).as_deref(), Some("a"));
+        assert_eq!(
+            w.selection("run"),
+            ["b", "a"],
+            "no duplicate, and a is active"
+        );
+    }
+
+    /// Toggling the last one off leaves nothing selected, and the kind stops
+    /// being stored at all rather than sitting there as an empty list that
+    /// every reader has to treat as absent anyway.
+    #[test]
+    fn toggling_the_last_one_off_clears_the_kind() {
+        let mut w = ws();
+        w.pick("run", "a", Pick::Replace);
+        assert_eq!(w.pick("run", "a", Pick::Toggle), None);
+        assert!(w.selection("run").is_empty());
+        assert!(w.selected.is_empty(), "an empty kind should not be kept");
+    }
+
+    /// Kinds do not interfere. Selecting a file must not disturb which run is
+    /// active, or switching what you are looking at loses your place.
+    #[test]
+    fn kinds_are_independent() {
+        let mut w = ws();
+        w.pick("run", "r1", Pick::Replace);
+        w.pick("file", "src/main.rs", Pick::Replace);
+        assert_eq!(w.active_selection("run").map(String::as_str), Some("r1"));
+        assert_eq!(w.selection("file"), ["src/main.rs"]);
+    }
+
+    /// A mode nobody understands reads as a plain click, because that is the
+    /// least surprising thing a stale caller can do.
+    #[test]
+    fn an_unknown_mode_is_a_plain_click() {
+        assert_eq!(Pick::parse("extend"), Pick::Extend);
+        assert_eq!(Pick::parse("toggle"), Pick::Toggle);
+        assert_eq!(Pick::parse(""), Pick::Replace);
+        assert_eq!(Pick::parse("sideways"), Pick::Replace);
+    }
+
+    /// Every workspace saved before selections existed still loads, and loads
+    /// with nothing selected.
+    #[test]
+    fn a_workspace_saved_before_selections_still_loads() {
+        let json = r#"{"name":"old","layout":{"root":{"kind":"leaf","id":1,"editor":"runs"},"next_id":2}}"#;
+        let w: Workspace = serde_json::from_str(json).expect("an old workspace loads");
+        assert!(w.selected.is_empty());
     }
 }

@@ -11,6 +11,7 @@ use crate::ui::{hhmmss, short};
 pub(crate) fn ed_runs(d: &Draw, open_run: Callback<(AreaId, String)>) -> Element {
     let s = &d.state;
     let area = d.area;
+    let chosen = d.selection.get("run").cloned().unwrap_or_default();
     rsx! {
         div { class: "im-filter-scope runs-list",
             if s.runs.is_empty() {
@@ -19,7 +20,17 @@ pub(crate) fn ed_runs(d: &Draw, open_run: Callback<(AreaId, String)>) -> Element
                 div { class: "runs-filter", FilterBox { placeholder: "filter runs…" } }
             }
             for r in s.runs.iter().cloned() {
-                {run_row(r.clone(), area, open_run, d.cmd, d.targets.contains(&r.id))}
+                {run_row(RowCtx {
+                    area,
+                    open_run,
+                    cmd: d.cmd,
+                    // Many selected, one active: the whole list marks what is
+                    // selected, and the last one picked is drawn as the one
+                    // a detail pane is showing.
+                    selected: chosen.contains(&r.id),
+                    active: chosen.last() == Some(&r.id),
+                    all: chosen.to_vec(),
+                }, r)}
             }
         }
     }
@@ -27,28 +38,67 @@ pub(crate) fn ed_runs(d: &Draw, open_run: Callback<(AreaId, String)>) -> Element
 
 /// One expandable run. Pulled out of `ed_runs` so the view tree stays shallow
 /// — a nine-deep rsx block reads no better than a nine-deep function.
-fn run_row(
-    r: RunView,
+/// What a row needs beyond the run itself. One struct because the list is the
+/// only caller and its arguments were about to be six.
+struct RowCtx {
     area: AreaId,
     open_run: Callback<(AreaId, String)>,
     cmd: Callback<(String, serde_json::Value)>,
-    open_here: bool,
-) -> Element {
+    selected: bool,
+    active: bool,
+    /// Everything selected, so a row action can act across the selection
+    /// rather than only on the row it was clicked from.
+    all: Vec<String>,
+}
+
+fn run_row(ctx: RowCtx, r: RunView) -> Element {
+    let RowCtx {
+        area,
+        open_run,
+        cmd,
+        selected,
+        active,
+        all,
+    } = ctx;
     let open_id = r.id.clone();
     let pick_id = r.id.clone();
+    // Copying one id is the common case; copying the five you just selected
+    // is the reason multi-select is worth having, and it needs no new command.
+    let copy = if selected && all.len() > 1 {
+        all.join("\n")
+    } else {
+        r.id.clone()
+    };
+    let copy_label = if selected && all.len() > 1 {
+        format!("copy {} selected ids", all.len())
+    } else {
+        "copy this run's id".to_string()
+    };
     rsx! {
         details {
-            class: if open_here { "run is-sel" } else { "run" },
+            class: match (selected, active) {
+                (true, true) => "run is-sel is-active",
+                (true, false) => "run is-sel",
+                _ => "run",
+            },
             key: "{r.id}",
             "data-filter-text": "{r.workflow} {r.status} {r.note.clone().unwrap_or_default()} {r.error.clone().unwrap_or_default()}",
             // Clicking a row both expands it and selects it. The two do not
             // compete: expanding shows this run's steps here, selecting points
             // any unpinned run area at it. The arrow still means "open a new
             // area", which is the thing a click cannot say.
-            onclick: move |_| {
+            // Ctrl or Cmd extends the selection, the way it does in every
+            // list anyone has used. A plain click replaces it.
+            onclick: move |e: Event<MouseData>| {
+                let mods = e.modifiers();
+                let mode = if mods.ctrl() || mods.meta() {
+                    "extend"
+                } else {
+                    "replace"
+                };
                 cmd.call((
                     "select".to_string(),
-                    serde_json::json!({ "kind": "run", "value": pick_id.clone() }),
+                    serde_json::json!({ "kind": "run", "value": pick_id.clone(), "mode": mode }),
                 ));
             },
             summary {
@@ -70,8 +120,8 @@ fn run_row(
                         // never fully shown.
                         button {
                             class: "im-row-btn im-copy",
-                            title: "copy this run's id",
-                            "data-im-copy": "{r.id}",
+                            title: "{copy_label}",
+                            "data-im-copy": "{copy}",
                             onclick: move |e| e.stop_propagation(),
                             dangerous_inner_html: "{immersion::icon(\"copy\")}",
                         }
