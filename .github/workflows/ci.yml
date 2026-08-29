@@ -22,13 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install the toolchain
         run: rustup component add rustfmt clippy
 
       # The dependency build dominates the runtime; cache it on the lockfile.
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Format
         run: cargo fmt --all --check
@@ -43,14 +43,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # The org's own action. It fetches a prebuilt binary from the public
       # PowderworksCode release, so this job no longer compiles a tool to lint
       # with — no Rust toolchain, no cache, seconds instead of minutes. Pinned
       # to the release tag rather than `latest`, so a new rule lands when this
       # line is bumped and not on an unrelated pull request.
-      - uses: PowderworksCode/straitjacket@v0.1.1
+      - uses: PowderworksCode/straitjacket@f49d6239ff36e514f4faaba7bbe61f27a50efcca # v0.1.1
         with:
           version: v0.1.1
           # The install step fetches the release binary and its SHA256SUMS from
