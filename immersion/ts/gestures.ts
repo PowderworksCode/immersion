@@ -8,12 +8,10 @@
 // Ids are read from the DOM at gesture time, never cached: the server
 // re-renders areas with fresh ids after every commit.
 
-import { once, send, type GestureMsg } from "./types";
+import { type GestureMsg, once, send } from "./types";
 
 if (once("__imGestures")) {
-
   const SPLIT_THRESHOLD = 24;
-
 
   // One overlay for whatever preview the active gesture needs.
   let overlay: HTMLElement | null = null;
@@ -25,7 +23,12 @@ if (once("__imGestures")) {
     overlay.className = extra ? "im-overlay " + extra : "im-overlay";
     overlay.style.cssText = css;
   };
-  const hideOverlay = () => { if (overlay) { overlay.remove(); overlay = null; } };
+  const hideOverlay = () => {
+    if (overlay) {
+      overlay.remove();
+      overlay = null;
+    }
+  };
 
   // --- seam drag: resize -------------------------------------------------
   // The handle sits over the split's border. Preview adjusts the two sibling
@@ -62,7 +65,8 @@ if (once("__imGestures")) {
       const horiz = el.dataset.imDir === "row";
       const total = horiz ? r.width : r.height;
       seam.aStart = ((horiz ? ar.left - r.left : ar.top - r.top) || 0) / total;
-      seam.span = (((horiz ? ar.width + br.width : ar.height + br.height) || 0)) / total;
+      seam.span =
+        ((horiz ? ar.width + br.width : ar.height + br.height) || 0) / total;
     }
     el.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -70,9 +74,10 @@ if (once("__imGestures")) {
 
   const seamRatio = (e: PointerEvent): number => {
     const r = seam.rect;
-    const frac = seam.dir === "row"
-      ? (e.clientX - r.left) / r.width
-      : (e.clientY - r.top) / r.height;
+    const frac =
+      seam.dir === "row"
+        ? (e.clientX - r.left) / r.width
+        : (e.clientY - r.top) / r.height;
     return Math.min(0.95, Math.max(0.05, frac));
   };
 
@@ -82,7 +87,10 @@ if (once("__imGestures")) {
     // the neighbours outside it do not move.
     const aStart = seam.aStart as number;
     const span = seam.span as number;
-    const within = Math.min(Math.max(frac - aStart, 0.02 * span), span - 0.02 * span);
+    const within = Math.min(
+      Math.max(frac - aStart, 0.02 * span),
+      span - 0.02 * span,
+    );
     seam.a.style.flexBasis = within * 100 + "%";
     seam.b.style.flexBasis = (span - within) * 100 + "%";
     if (seam.dir === "row") seam.el.style.left = (aStart + within) * 100 + "%";
@@ -90,7 +98,12 @@ if (once("__imGestures")) {
   };
 
   const onSeamUp = (e: PointerEvent): void => {
-    send({ t: "ratio", id: seam.splitId, index: seam.index, ratio: seamRatio(e) } satisfies GestureMsg);
+    send({
+      t: "ratio",
+      id: seam.splitId,
+      index: seam.index,
+      ratio: seamRatio(e),
+    } satisfies GestureMsg);
     seam = null;
   };
 
@@ -125,8 +138,10 @@ if (once("__imGestures")) {
     const g = grip;
     const r = g.rect;
     const inside =
-      e.clientX >= r.left && e.clientX <= r.right &&
-      e.clientY >= r.top && e.clientY <= r.bottom;
+      e.clientX >= r.left &&
+      e.clientX <= r.right &&
+      e.clientY >= r.top &&
+      e.clientY <= r.bottom;
 
     if (inside) {
       g.mode = "split";
@@ -144,13 +159,13 @@ if (once("__imGestures")) {
         g.dir = "row";
         g.frac = (e.clientX - r.left) / r.width;
         showOverlay(
-          `left:${e.clientX}px;top:${r.top}px;width:2px;height:${r.height}px;`
+          `left:${e.clientX}px;top:${r.top}px;width:2px;height:${r.height}px;`,
         );
       } else {
         g.dir = "col";
         g.frac = (e.clientY - r.top) / r.height;
         showOverlay(
-          `left:${r.left}px;top:${e.clientY}px;width:${r.width}px;height:2px;`
+          `left:${r.left}px;top:${e.clientY}px;width:${r.width}px;height:2px;`,
         );
       }
       g.frac = Math.min(0.95, Math.max(0.05, g.frac));
@@ -168,7 +183,7 @@ if (once("__imGestures")) {
         // shim sets only geometry, so no literal leaks into JavaScript.
         showOverlay(
           `left:${tr.left}px;top:${tr.top}px;width:${tr.width}px;height:${tr.height}px;`,
-          swap ? "im-swap" : "im-join"
+          swap ? "im-swap" : "im-join",
         );
       } else {
         g.target = null;
@@ -183,11 +198,20 @@ if (once("__imGestures")) {
     grip = null;
     if (!g || !g.mode) return;
     if (g.mode === "split") {
-      send({ t: "split", id: g.areaId, dir: g.dir, frac: g.frac } satisfies GestureMsg);
+      send({
+        t: "split",
+        id: g.areaId,
+        dir: g.dir,
+        frac: g.frac,
+      } satisfies GestureMsg);
     } else if (g.mode === "join" && g.target !== null) {
       // The server validates siblinghood; an invalid join is silently a
       // no-op there, which the reverted overlay already communicated here.
-      send({ t: "join", survivor: g.areaId, victim: g.target } satisfies GestureMsg);
+      send({
+        t: "join",
+        survivor: g.areaId,
+        victim: g.target,
+      } satisfies GestureMsg);
     } else if (g.mode === "swap" && g.target !== null) {
       // Swap needs no siblinghood — any two areas can trade editors.
       send({ t: "swap", a: g.areaId, b: g.target } satisfies GestureMsg);
@@ -217,7 +241,8 @@ if (once("__imGestures")) {
 
   const regionWidth = (e: PointerEvent): number => {
     const dx = e.clientX - region.startX;
-    const w = region.which === "toolbar" ? region.startW + dx : region.startW - dx;
+    const w =
+      region.which === "toolbar" ? region.startW + dx : region.startW - dx;
     return Math.min(500, Math.max(32, w));
   };
 
@@ -238,11 +263,17 @@ if (once("__imGestures")) {
   // --- wiring, delegated so re-rendered areas need no re-binding ----------
 
   document.addEventListener("pointerdown", (e: PointerEvent) => {
-    const seamEl = (e.target as Element | null)?.closest?.<HTMLElement>(".im-seam-handle");
+    const seamEl = (e.target as Element | null)?.closest?.<HTMLElement>(
+      ".im-seam-handle",
+    );
     if (seamEl) return onSeamDown(e, seamEl);
-    const gripEl = (e.target as Element | null)?.closest?.<HTMLElement>(".im-grip");
+    const gripEl = (e.target as Element | null)?.closest?.<HTMLElement>(
+      ".im-grip",
+    );
     if (gripEl) return onGripDown(e, gripEl);
-    const regionEl = (e.target as Element | null)?.closest?.<HTMLElement>(".im-region-handle");
+    const regionEl = (e.target as Element | null)?.closest?.<HTMLElement>(
+      ".im-region-handle",
+    );
     if (regionEl) return onRegionDown(e, regionEl);
   });
   document.addEventListener("pointermove", (e: PointerEvent) => {

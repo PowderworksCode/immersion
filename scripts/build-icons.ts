@@ -13,7 +13,7 @@
 // takes the surrounding text colour, and the filled set would double the size
 // to supply a second look nothing in the workbench asks for.
 
-import { readdir, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const SRC = "node_modules/@tabler/icons/icons/outline";
@@ -36,4 +36,6 @@ for (const file of (await readdir(SRC)).sort()) {
 await mkdir(OUT, { recursive: true });
 const json = JSON.stringify(icons);
 await writeFile(join(OUT, "tabler-outline.json"), json);
-console.log(`vendored ${Object.keys(icons).length} icons, ${(json.length / 1048576).toFixed(2)} MB`);
+console.log(
+  `vendored ${Object.keys(icons).length} icons, ${(json.length / 1048576).toFixed(2)} MB`,
+);

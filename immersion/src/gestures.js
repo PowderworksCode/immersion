@@ -86,7 +86,12 @@
         seam.el.style.top = (aStart + within) * 100 + "%";
     };
     const onSeamUp = (e) => {
-      send({ t: "ratio", id: seam.splitId, index: seam.index, ratio: seamRatio(e) });
+      send({
+        t: "ratio",
+        id: seam.splitId,
+        index: seam.index,
+        ratio: seamRatio(e)
+      });
       seam = null;
     };
     let grip = null;
@@ -157,9 +162,18 @@
       if (!g || !g.mode)
         return;
       if (g.mode === "split") {
-        send({ t: "split", id: g.areaId, dir: g.dir, frac: g.frac });
+        send({
+          t: "split",
+          id: g.areaId,
+          dir: g.dir,
+          frac: g.frac
+        });
       } else if (g.mode === "join" && g.target !== null) {
-        send({ t: "join", survivor: g.areaId, victim: g.target });
+        send({
+          t: "join",
+          survivor: g.areaId,
+          victim: g.target
+        });
       } else if (g.mode === "swap" && g.target !== null) {
         send({ t: "swap", a: g.areaId, b: g.target });
       }

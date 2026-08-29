@@ -37,15 +37,21 @@ if (once("__imScrub")) {
   };
 
   document.addEventListener("pointerdown", (e) => {
-    const input = (e.target as Element | null)?.closest?.<HTMLInputElement>("[data-im-scrub]");
+    const input = (e.target as Element | null)?.closest?.<HTMLInputElement>(
+      "[data-im-scrub]",
+    );
     if (!input) return;
     s = {
       input,
       startX: e.clientX,
       startVal: num(input.value, 0),
       step: num(input.dataset.scrubStep, 1),
-      min: input.dataset.scrubMin ? num(input.dataset.scrubMin, -Infinity) : -Infinity,
-      max: input.dataset.scrubMax ? num(input.dataset.scrubMax, Infinity) : Infinity,
+      min: input.dataset.scrubMin
+        ? num(input.dataset.scrubMin, -Infinity)
+        : -Infinity,
+      max: input.dataset.scrubMax
+        ? num(input.dataset.scrubMax, Infinity)
+        : Infinity,
       pid: e.pointerId,
       scrubbing: false,
     };

@@ -15,7 +15,6 @@ interface TipContent {
 }
 
 if (once("__imClient")) {
-
   // --- shared helpers -------------------------------------------------------
   // (Chord prettifying used to live here, rewriting .im-hint-key text. That
   // detached the text nodes the renderer patches, so a chord that changed —
@@ -29,7 +28,8 @@ if (once("__imClient")) {
     "input",
     (e) => {
       const input = e.target as HTMLInputElement;
-      if (!input.classList || !input.classList.contains("im-slider-input")) return;
+      if (!input.classList || !input.classList.contains("im-slider-input"))
+        return;
       const min = parseFloat(input.min) || 0;
       const max = parseFloat(input.max);
       const val = parseFloat(input.value);
@@ -106,8 +106,15 @@ if (once("__imClient")) {
     if (!box.dataset || box.dataset.imFilter === undefined) return;
     const scope = box.closest(".im-filter-scope") || document;
     const q = box.value.toLowerCase().trim();
-    for (const row of scope.querySelectorAll<HTMLElement>("[data-filter-text]")) {
-      row.style.display = subseq(q, (row.dataset.filterText || "").toLowerCase()) ? "" : "none";
+    for (const row of scope.querySelectorAll<HTMLElement>(
+      "[data-filter-text]",
+    )) {
+      row.style.display = subseq(
+        q,
+        (row.dataset.filterText || "").toLowerCase(),
+      )
+        ? ""
+        : "none";
     }
   });
 
@@ -136,7 +143,11 @@ if (once("__imClient")) {
   const owner = (node: EventTarget | null): HTMLElement | null => {
     let n = node as HTMLElement | null;
     while (n && n !== document.body) {
-      if (n.nodeType === 1 && (n.hasAttribute("data-tip") || n.hasAttribute("title"))) return n;
+      if (
+        n.nodeType === 1 &&
+        (n.hasAttribute("data-tip") || n.hasAttribute("title"))
+      )
+        return n;
       n = n.parentElement;
     }
     return null;
@@ -144,7 +155,11 @@ if (once("__imClient")) {
   const content = (node: HTMLElement): TipContent | null => {
     const label = node.getAttribute("data-tip") || node.getAttribute("title");
     if (!label) return null;
-    return { label, key: node.getAttribute("data-tip-key"), desc: node.getAttribute("data-tip-desc") };
+    return {
+      label,
+      key: node.getAttribute("data-tip-key"),
+      desc: node.getAttribute("data-tip-desc"),
+    };
   };
   const render = (c: TipContent): void => {
     const t = tipEl();
@@ -179,7 +194,8 @@ if (once("__imClient")) {
     t.style.top = Math.max(4, y) + "px";
   };
   const release = () => {
-    if (active && stashedTitle != null) active.setAttribute("title", stashedTitle);
+    if (active && stashedTitle != null)
+      active.setAttribute("title", stashedTitle);
     active = null;
     stashedTitle = null;
   };

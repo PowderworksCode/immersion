@@ -12,7 +12,12 @@
 // highlighted rows. It never fetches, never talks to the server, and holds no
 // state the server needs.
 
-import { File, FileDiff, parsePatchFiles, preloadHighlighter } from "@pierre/diffs";
+import {
+  File,
+  FileDiff,
+  parsePatchFiles,
+  preloadHighlighter,
+} from "@pierre/diffs";
 // The grammar for a *specific* file resolves asynchronously; render() answers
 // false until it has. preloadFile/preloadFileDiff do that resolution, so the
 // render that follows draws on its first attempt instead of silently
@@ -23,8 +28,22 @@ import { preloadFile, preloadFileDiff } from "@pierre/diffs/ssr";
 /// text rather than requested, because its chunk is pruned from the vendored
 /// build and asking for it would 404 at the worst moment.
 const LANGS = [
-  "rust", "typescript", "javascript", "tsx", "jsx", "json", "toml", "yaml",
-  "markdown", "python", "shellscript", "html", "css", "sql", "go", "diff",
+  "rust",
+  "typescript",
+  "javascript",
+  "tsx",
+  "jsx",
+  "json",
+  "toml",
+  "yaml",
+  "markdown",
+  "python",
+  "shellscript",
+  "html",
+  "css",
+  "sql",
+  "go",
+  "diff",
 ] as const;
 
 const THEMES = ["pierre-dark", "pierre-light"] as const;
@@ -34,11 +53,27 @@ const THEMES = ["pierre-dark", "pierre-light"] as const;
 const HIGHLIGHTER = "shiki-js" as const;
 
 const EXT_LANG: Record<string, string> = {
-  rs: "rust", ts: "typescript", tsx: "tsx", js: "javascript", jsx: "jsx",
-  mjs: "javascript", cjs: "javascript", json: "json", toml: "toml",
-  yaml: "yaml", yml: "yaml", md: "markdown", py: "python", sh: "shellscript",
-  bash: "shellscript", html: "html", css: "css", sql: "sql", go: "go",
-  diff: "diff", patch: "diff",
+  rs: "rust",
+  ts: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  jsx: "jsx",
+  mjs: "javascript",
+  cjs: "javascript",
+  json: "json",
+  toml: "toml",
+  yaml: "yaml",
+  yml: "yaml",
+  md: "markdown",
+  py: "python",
+  sh: "shellscript",
+  bash: "shellscript",
+  html: "html",
+  css: "css",
+  sql: "sql",
+  go: "go",
+  diff: "diff",
+  patch: "diff",
 };
 
 const langOf = (path: string): string => {
@@ -52,7 +87,9 @@ const boot = (): Promise<void> => {
   // asset fetch and the difference is imperceptible on files this size.
   ready ??= preloadHighlighter({
     themes: [...THEMES],
-    langs: [...LANGS] as unknown as Parameters<typeof preloadHighlighter>[0]["langs"],
+    langs: [...LANGS] as unknown as Parameters<
+      typeof preloadHighlighter
+    >[0]["langs"],
     preferredHighlighter: HIGHLIGHTER,
   });
   return ready;
@@ -80,12 +117,15 @@ const drawn = new Map<string, Node>();
 /// Render every code host whose content the server has changed, and restore
 /// any whose content the framework has just wiped.
 const paint = async (): Promise<void> => {
-  const hosts = Array.from(document.querySelectorAll<CodeHost>("[data-im-code]"));
+  const hosts = Array.from(
+    document.querySelectorAll<CodeHost>("[data-im-code]"),
+  );
   if (!hosts.length) return;
   await boot();
   for (const host of hosts) {
     const stamp = host.dataset.imCode ?? "";
-    if (host.dataset.imCodeDone === stamp && host.childElementCount > 0) continue;
+    if (host.dataset.imCodeDone === stamp && host.childElementCount > 0)
+      continue;
     // Wiped by a re-render: the drawing is still good, it just needs putting
     // back. Rebuilding here would highlight the same file on every poll.
     const kept = drawn.get(stamp);
@@ -97,7 +137,9 @@ const paint = async (): Promise<void> => {
     // The server puts the payload in a sibling the renderer owns nothing of,
     // so the framework patching that node and this module drawing never
     // fight over the same children.
-    const src = document.querySelector<HTMLElement>(`[data-im-code-src="${stamp}"]`);
+    const src = document.querySelector<HTMLElement>(
+      `[data-im-code-src="${stamp}"]`,
+    );
     if (!src) continue;
     const text = src.textContent ?? "";
     const path = host.dataset.imCodePath ?? "";
@@ -117,7 +159,9 @@ const paint = async (): Promise<void> => {
         // sides itself.
         const options = {
           theme,
-          diffStyle: (host.dataset.imCodeLayout === "split" ? "split" : "unified") as "split" | "unified",
+          diffStyle: (host.dataset.imCodeLayout === "split"
+            ? "split"
+            : "unified") as "split" | "unified",
           preferredHighlighter: HIGHLIGHTER,
           disableFileHeader: true,
         };
@@ -126,15 +170,32 @@ const paint = async (): Promise<void> => {
         const [patch] = parsePatchFiles(text);
         const fileDiff = patch?.files?.[0];
         if (!fileDiff) throw new Error("no file in patch");
-        const ready = (await preloadFileDiff({ fileDiff, options })) as unknown as Ready;
+        const ready = (await preloadFileDiff({
+          fileDiff,
+          options,
+        })) as unknown as Ready;
         own.innerHTML = ready.prerenderedHTML ?? "";
-        new FileDiff(options).hydrate({ ...ready, fileContainer: own } as never);
+        new FileDiff(options).hydrate({
+          ...ready,
+          fileContainer: own,
+        } as never);
       } else {
         // The area header already names the file; the renderer's own header
         // would say it a second time.
-        const options = { theme, preferredHighlighter: HIGHLIGHTER, disableFileHeader: true };
-        const file = { name: path, contents: text, lang: langOf(path) as never };
-        const ready = (await preloadFile({ file, options })) as unknown as Ready;
+        const options = {
+          theme,
+          preferredHighlighter: HIGHLIGHTER,
+          disableFileHeader: true,
+        };
+        const file = {
+          name: path,
+          contents: text,
+          lang: langOf(path) as never,
+        };
+        const ready = (await preloadFile({
+          file,
+          options,
+        })) as unknown as Ready;
         // The preload *is* the render: it returns the markup. Injecting it and
         // then hydrating is the library's own server-rendering path, and it is
         // the one that draws — calling render() with a preloaded result
@@ -171,5 +232,8 @@ const schedule = (): void => {
   });
 };
 
-new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+new MutationObserver(schedule).observe(document.body, {
+  childList: true,
+  subtree: true,
+});
 schedule();

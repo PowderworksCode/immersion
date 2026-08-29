@@ -134,7 +134,11 @@
       const el = menu;
       const rows = () => Array.from(el.querySelectorAll(".im-ctx-item"));
       let sel = 0;
-      const paint = () => rows().forEach((r, i) => r.classList.toggle("is-sel", i === sel));
+      const paint = () => {
+        rows().forEach((r, i) => {
+          r.classList.toggle("is-sel", i === sel);
+        });
+      };
       paint();
       onKey = (ev) => {
         const rs = rows();

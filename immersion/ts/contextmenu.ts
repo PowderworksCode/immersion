@@ -7,16 +7,22 @@
 // raised by the host through __imOpenPie. Either way the shim draws and drives
 // the menu, and commits ONE message — the picked {action, params}.
 
-import { once, send, type MenuItem, type MenuPick } from "./types";
+import { type MenuItem, type MenuPick, once, send } from "./types";
 
 if (once("__imCtxMenu")) {
-
   let menu: HTMLElement | null = null;
   let onKey: ((e: KeyboardEvent) => void) | null = null;
   // Where the pointer last was — Blender's Q opens the favourites at the mouse.
   let lastX = 0;
   let lastY = 0;
-  document.addEventListener("pointermove", (e) => { lastX = e.clientX; lastY = e.clientY; }, true);
+  document.addEventListener(
+    "pointermove",
+    (e) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+    },
+    true,
+  );
   let openFor: HTMLElement | null = null; // the element whose dropdown is open, for toggle-off
 
   const close = () => {
@@ -41,7 +47,10 @@ if (once("__imCtxMenu")) {
   // sends the stashed value synchronously.
   let clipStash: string | null = null;
   const pick = (action: string, paramsStr: string | undefined): void => {
-    const params = JSON.parse(paramsStr || "null") as Record<string, unknown> | null;
+    const params = JSON.parse(paramsStr || "null") as Record<
+      string,
+      unknown
+    > | null;
     if (action === "copy_value") {
       const v = params?.["value"];
       navigator.clipboard
@@ -51,7 +60,9 @@ if (once("__imCtxMenu")) {
     }
     if (action === "paste_value") {
       if (clipStash == null) return;
-      let v;
+      // A stashed value is whatever was copied; the host is the one that
+      // knows what a setting at this pointer may be.
+      let v: unknown;
       try {
         v = JSON.parse(clipStash);
       } catch (_) {
@@ -65,10 +76,18 @@ if (once("__imCtxMenu")) {
 
   // Build and place the menu. `at` is either {x, y} (cursor) or {rect} (anchor
   // the menu under an element's box, the dropdown case).
-  const openMenu = (items: MenuItem[], at: { x?: number; y?: number; rect?: DOMRect }): void => {
+  const openMenu = (
+    items: MenuItem[],
+    at: { x?: number; y?: number; rect?: DOMRect },
+  ): void => {
     close();
     if (items.some((it) => it.action === "paste_value")) {
-      navigator.clipboard.readText().then((t) => { clipStash = t; }).catch(() => {});
+      navigator.clipboard
+        .readText()
+        .then((t) => {
+          clipStash = t;
+        })
+        .catch(() => {});
     }
 
     menu = document.createElement("div");
@@ -139,9 +158,14 @@ if (once("__imCtxMenu")) {
     menu.style.top = Math.max(4, y) + "px";
 
     const el = menu;
-    const rows = (): HTMLElement[] => Array.from(el.querySelectorAll<HTMLElement>(".im-ctx-item"));
+    const rows = (): HTMLElement[] =>
+      Array.from(el.querySelectorAll<HTMLElement>(".im-ctx-item"));
     let sel = 0;
-    const paint = () => rows().forEach((r, i) => r.classList.toggle("is-sel", i === sel));
+    const paint = () => {
+      rows().forEach((r, i) => {
+        r.classList.toggle("is-sel", i === sel);
+      });
+    };
     paint();
 
     onKey = (ev) => {
@@ -167,7 +191,9 @@ if (once("__imCtxMenu")) {
         // picks straight away when only one matches — the way a desktop menu
         // has always worked. Repeating the letter cycles the matches.
         const want = ev.key.toLowerCase();
-        const hits = rs.filter((r) => (r.textContent ?? "").trim().toLowerCase().startsWith(want));
+        const hits = rs.filter((r) =>
+          (r.textContent ?? "").trim().toLowerCase().startsWith(want),
+        );
         if (hits.length === 0) return;
         ev.preventDefault();
         if (hits.length === 1) {
@@ -197,7 +223,9 @@ if (once("__imCtxMenu")) {
 
   // Right-click: a context menu at the cursor.
   document.addEventListener("contextmenu", (e) => {
-    const host = (e.target as Element | null)?.closest?.<HTMLElement>("[data-im-menu]");
+    const host = (e.target as Element | null)?.closest?.<HTMLElement>(
+      "[data-im-menu]",
+    );
     if (!host) return;
     const items = parse(host.dataset.imMenu);
     if (!items) return;
@@ -208,7 +236,9 @@ if (once("__imCtxMenu")) {
   // Left-click: a dropdown anchored under the button. Clicking the open
   // button again closes it, the way a menu bar behaves.
   document.addEventListener("click", (e) => {
-    const host = (e.target as Element | null)?.closest?.<HTMLElement>("[data-im-menu-click]");
+    const host = (e.target as Element | null)?.closest?.<HTMLElement>(
+      "[data-im-menu-click]",
+    );
     if (!host) return;
     e.preventDefault();
     e.stopPropagation();
@@ -231,7 +261,6 @@ if (once("__imCtxMenu")) {
     openMenu(items, { x: lastX || 40, y: lastY || 40 });
   };
 
-
   // --- pie menu -------------------------------------------------------------
   // Blender's radial menu: slices arranged around the pointer, the one nearest
   // the cursor highlighted, picked by click (or by releasing a drag out onto
@@ -242,14 +271,26 @@ if (once("__imCtxMenu")) {
   // over.
   const PIE_ANGLES = [180, 0, 90, 270, 135, 45, 225, 315];
   const PIE_R = 92;
-  let pie: { el: HTMLElement; slices: { el: HTMLElement; x: number; y: number }[]; cx: number; cy: number } | null = null;
+  let pie: {
+    el: HTMLElement;
+    slices: { el: HTMLElement; x: number; y: number }[];
+    cx: number;
+    cy: number;
+  } | null = null;
 
   const resolveArea = (params: unknown, areaId: number | null): unknown => {
     if (params == null || typeof params !== "object") return params;
-    const out: Record<string, unknown> = Array.isArray(params) ? ([] as never) : {};
+    const out: Record<string, unknown> = Array.isArray(params)
+      ? ([] as never)
+      : {};
     for (const k of Object.keys(params as Record<string, unknown>)) {
       const v = (params as Record<string, unknown>)[k];
-      out[k] = v === "@area" ? areaId : (typeof v === "object" ? resolveArea(v, areaId) : v);
+      out[k] =
+        v === "@area"
+          ? areaId
+          : typeof v === "object"
+            ? resolveArea(v, areaId)
+            : v;
     }
     return out;
   };
@@ -273,8 +314,12 @@ if (once("__imCtxMenu")) {
     const cx = lastX || window.innerWidth / 2;
     const cy = lastY || window.innerHeight / 2;
     const under = document.elementFromPoint(cx, cy);
-    const areaEl = under?.closest ? under.closest<HTMLElement>(".im-area") : null;
-    const areaId = areaEl ? Number((areaEl as HTMLElement).dataset.imArea) : null;
+    const areaEl = under?.closest
+      ? under.closest<HTMLElement>(".im-area")
+      : null;
+    const areaId = areaEl
+      ? Number((areaEl as HTMLElement).dataset.imArea)
+      : null;
 
     const el = document.createElement("div");
     el.className = "im-pie";
@@ -289,7 +334,10 @@ if (once("__imCtxMenu")) {
       s.style.left = x + "px";
       s.style.top = y + "px";
       s.addEventListener("click", () => {
-        pick(it.action ?? "", JSON.stringify(resolveArea(it.params ?? null, areaId)));
+        pick(
+          it.action ?? "",
+          JSON.stringify(resolveArea(it.params ?? null, areaId)),
+        );
         closePie();
       });
       el.appendChild(s);
@@ -315,7 +363,8 @@ if (once("__imCtxMenu")) {
           best = s;
         }
       }
-      for (const s of pie.slices) s.el.classList.toggle("is-sel", s === best && bestD < 140);
+      for (const s of pie.slices)
+        s.el.classList.toggle("is-sel", s === best && bestD < 140);
     };
     el.addEventListener("pointermove", track);
     document.addEventListener("pointermove", track, true);
@@ -338,7 +387,12 @@ if (once("__imCtxMenu")) {
     "pointerdown",
     (e) => {
       const t = e.target as Element | null;
-      if (menu && t && !menu.contains(t) && !t.closest?.("[data-im-menu-click]")) {
+      if (
+        menu &&
+        t &&
+        !menu.contains(t) &&
+        !t.closest?.("[data-im-menu-click]")
+      ) {
         close();
       }
     },

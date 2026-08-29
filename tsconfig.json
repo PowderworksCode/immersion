@@ -1,24 +1,17 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // The compiler options are fleet policy and live in tsconfig.base.json,
+  // which conf writes here. Only what this repository needs on top belongs
+  // below.
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2020",
-    "lib": [
-      "ES2020",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "types": [
-      "bun"
-    ]
+    // The build scripts are Bun programs (Bun.build, Bun.file); the shims are
+    // browser code that the base already gives DOM to.
+    "types": ["bun"],
+    "noImplicitOverride": true
   },
-  "include": [
-    "immersion/ts/**/*.ts",
-    "scripts/**/*.ts"
-  ]
+  // The client shims and the scripts that compile and vendor them. Everything
+  // under immersion/vendor is third-party output, and immersion/src is the
+  // generated JavaScript the crate embeds.
+  "include": ["immersion/ts/**/*.ts", "scripts/**/*.ts"]
 }

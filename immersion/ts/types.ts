@@ -23,15 +23,15 @@ declare global {
   }
 }
 
+export type { Dir } from "./generated/Dir";
 // The wire is declared in Rust and generated from it — see the `TS` derives on
 // Gesture, Msg and Pick. A shape can no longer drift on one side only: change
 // the Rust and `cargo test` rewrites these, and CI fails if the checked-in
 // bindings are stale.
 export type { Gesture as GestureMsg } from "./generated/Gesture";
 export type { KeymapMsg } from "./generated/KeymapMsg";
-export type { MenuPick } from "./generated/MenuPick";
-export type { Dir } from "./generated/Dir";
 export type { MenuItem } from "./generated/MenuItem";
+export type { MenuPick } from "./generated/MenuPick";
 export type { Region } from "./generated/Region";
 
 /** Send a typed message over the shim's channel. The channel disappears when
@@ -59,5 +59,3 @@ export function once(flag: keyof Window & string): boolean {
 export function assertNever(x: never): never {
   throw new Error(`unhandled variant: ${JSON.stringify(x)}`);
 }
-
-export {};

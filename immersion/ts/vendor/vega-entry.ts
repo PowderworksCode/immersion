@@ -22,23 +22,31 @@ interface ChartHost extends HTMLElement {
 const drawn = new Map<string, Node>();
 
 const paint = async (): Promise<void> => {
-  const hosts = Array.from(document.querySelectorAll<ChartHost>("[data-im-chart]"));
+  const hosts = Array.from(
+    document.querySelectorAll<ChartHost>("[data-im-chart]"),
+  );
   for (const host of hosts) {
     const stamp = host.dataset.imChart ?? "";
-    if (host.dataset.imChartDone === stamp && host.childElementCount > 0) continue;
+    if (host.dataset.imChartDone === stamp && host.childElementCount > 0)
+      continue;
     const kept = drawn.get(stamp);
     if (kept) {
       host.replaceChildren(kept);
       host.dataset.imChartDone = stamp;
       continue;
     }
-    const payload = document.querySelector<HTMLElement>(`[data-im-chart-src="${stamp}"]`);
+    const payload = document.querySelector<HTMLElement>(
+      `[data-im-chart-src="${stamp}"]`,
+    );
     if (!payload) continue;
     const own = document.createElement("div");
     own.className = "im-chart-drawn";
     host.replaceChildren(own);
     try {
-      const spec = JSON.parse(payload.textContent ?? "{}") as Record<string, unknown>;
+      const spec = JSON.parse(payload.textContent ?? "{}") as Record<
+        string,
+        unknown
+      >;
       // The workbench owns its own chrome, so no embed menu. Sizing is the
       // spec's business ("container" width plus a fitting autosize, set
       // server-side) — passing it here instead silently does nothing.
@@ -68,5 +76,8 @@ const schedule = (): void => {
   });
 };
 
-new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+new MutationObserver(schedule).observe(document.body, {
+  childList: true,
+  subtree: true,
+});
 schedule();
