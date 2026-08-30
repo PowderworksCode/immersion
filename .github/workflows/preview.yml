@@ -31,7 +31,7 @@ jobs:
       name: pr-${{ github.event.number }}
       url: ${{ steps.url.outputs.url }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Fly's remote builder intermittently cannot reach its own registry
       # ("dial tcp [fdaa::3]:5000: connection refused" while pushing layers) —
@@ -127,7 +127,7 @@ jobs:
       - name: Comment the preview URL
         if: github.event.action != 'closed'
         continue-on-error: true
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PREVIEW_URL: ${{ steps.url.outputs.url }}
         with:
