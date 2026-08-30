@@ -147,7 +147,7 @@ body {
 
 /* Regions — Blender's toolbar (T, narrow left) and sidebar (N, wider right). */
 .im-toolbar {
-  flex: none; width: 2.6rem; overflow-y: auto; overflow-x: hidden;
+  flex: none; width: 2.6rem; overflow: hidden auto;
   border-right: 1px solid var(--im-seam); background: var(--im-panel);
 }
 .im-sidebar {
@@ -244,7 +244,7 @@ body {
 /* Startup splash — templates and recents over a dimmed backdrop. */
 .im-splash-backdrop {
   position: fixed; inset: 0; z-index: 100;
-  background: rgba(0, 0, 0, .55);
+  background: rgb(0 0 0 / 55%);
   display: flex; align-items: center; justify-content: center;
   outline: none;
 }
@@ -253,7 +253,7 @@ body {
   background: var(--im-surface);
   border: 1px solid var(--im-border);
   border-radius: 4px;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
+  box-shadow: 0 12px 48px rgb(0 0 0 / 50%);
   padding: 1.1rem 1.25rem 1rem;
 }
 .im-splash-head { margin-bottom: 1.1rem; }
@@ -294,7 +294,7 @@ body {
 }
 .im-splash-hint { font-size: .74rem; color: var(--im-text-muted); }
 .im-splash-empty { font-size: .78rem; color: var(--im-text-muted); padding: .4rem .5rem; }
-.im-dot { width: .5rem; height: .5rem; border-radius: 50%; display: inline-block; background: currentColor; }
+.im-dot { width: .5rem; height: .5rem; border-radius: 50%; display: inline-block; background: currentcolor; }
 .im-splash-foot {
   display: flex; align-items: center; gap: .4rem; margin-top: 1rem;
   font-size: .76rem; color: var(--im-text-muted); cursor: pointer;
@@ -370,7 +370,7 @@ body {
 .im-slider-val {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   pointer-events: none; font-size: .72rem; color: var(--im-text);
-  font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgb(0 0 0 / 40%);
 }
 .im-check { width: 1rem; height: 1rem; accent-color: var(--im-accent); }
 .im-color-row { display: flex; align-items: center; gap: .5rem; }
@@ -386,14 +386,14 @@ body {
   position: absolute; inset: 0; z-index: 40;
   display: flex; align-items: flex-start; justify-content: center;
   padding-top: 12vh;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgb(0 0 0 / 35%);
 }
 .im-palette {
   width: min(34rem, 90%); max-height: 60vh; display: flex; flex-direction: column;
   background: var(--im-panel);
   border: 1px solid var(--im-border);
   border-radius: 5px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 50%);
   overflow: hidden;
 }
 .im-palette-input {
@@ -431,7 +431,7 @@ body {
   background: var(--im-panel);
   border: 1px solid var(--im-border);
   border-radius: 4px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
   font-size: .76rem; line-height: 1.3;
 }
 .im-tooltip-name { color: var(--im-text); }
@@ -573,7 +573,7 @@ body {
   position: fixed; z-index: 65; min-width: 10rem; padding: .25rem;
   background: var(--im-panel);
   border: 1px solid var(--im-border); border-radius: 5px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); font-size: .8rem;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 50%); font-size: .8rem;
 }
 .im-ctx-item {
   padding: .3rem .55rem; border-radius: 3px; cursor: pointer;
@@ -603,13 +603,13 @@ body {
 .im-help-backdrop {
   position: absolute; inset: 0; z-index: 55; display: flex;
   align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgb(0 0 0 / 40%);
 }
 .im-help {
   min-width: 20rem; max-height: 70vh; overflow-y: auto; padding: .9rem 1.1rem;
   background: var(--im-panel);
   border: 1px solid var(--im-border); border-radius: 6px;
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 14px 44px rgb(0 0 0 / 55%);
 }
 .im-help-title { color: var(--im-text); font-size: .9rem; margin-bottom: .6rem; }
 .im-help-list { display: grid; grid-template-columns: auto 1fr; gap: .35rem .9rem; align-items: baseline; }
@@ -678,7 +678,7 @@ body {
   padding: .25rem .6rem; border-radius: 4px; white-space: nowrap;
   background: var(--im-panel); border: 1px solid var(--im-border);
   color: var(--im-text); font-size: .76rem; cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 45%);
 }
 .im-pie-slice.is-sel { background: var(--im-accent); color: #fff; border-color: var(--im-accent); }
 .im-pie-center {
@@ -707,7 +707,7 @@ body {
 .im-colorpop {
   position: fixed; z-index: 67; display: flex; gap: .4rem; padding: .4rem;
   background: var(--im-panel); border: 1px solid var(--im-border); border-radius: 5px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 50%);
 }
 .im-sv {
   position: relative; width: 10rem; height: 8rem; border-radius: 3px; cursor: crosshair;
@@ -717,7 +717,7 @@ body {
 }
 .im-sv-dot, .im-hue-dot {
   position: absolute; width: 9px; height: 9px; border-radius: 50%;
-  border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6);
+  border: 2px solid #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 60%);
   transform: translate(-50%, -50%); pointer-events: none;
 }
 .im-hue {

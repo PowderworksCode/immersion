@@ -9,7 +9,9 @@ const run = (): void => {
   const root = document.querySelector<HTMLElement>(".im-palette");
   if (!root) return;
   const input = root.querySelector<HTMLInputElement>(".im-palette-input");
-  const rows = Array.from(root.querySelectorAll<HTMLElement>(".im-palette-row"));
+  const rows = Array.from(
+    root.querySelectorAll<HTMLElement>(".im-palette-row"),
+  );
   if (!input) return;
 
   const subseq = (q: string, text: string): boolean => {
@@ -23,7 +25,8 @@ const run = (): void => {
   };
 
   let sel = 0;
-  const visible = (): HTMLElement[] => rows.filter((r) => r.style.display !== "none");
+  const visible = (): HTMLElement[] =>
+    rows.filter((r) => r.style.display !== "none");
   const paint = (): void => {
     const vis = visible();
     if (sel >= vis.length) sel = vis.length - 1;

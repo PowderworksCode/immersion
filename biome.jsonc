@@ -1,0 +1,41 @@
+{
+  // Biome only discovers biome.json or biome.jsonc, and the fleet's settings
+  // arrive next to them as biome.base.json. This file is the line that joins
+  // them; the rules themselves are conf's, and belong there.
+  //
+  // "root" has to be said out loud: biome.base.json declares itself nested, so
+  // a config extending it inherits that, looks for a parent it will never
+  // find, and silently falls back to Biome's defaults -- which format with
+  // tabs.
+  "root": true,
+  "extends": ["./biome.base.json"],
+  "files": {
+    "includes": [
+      // Generated: build-shims.ts writes these from immersion/ts, and they are
+      // committed so that `cargo build` needs no JavaScript toolchain.
+      // Formatting them would put the committed output permanently at odds
+      // with what the bundler emits, which is the one thing shims.yml exists
+      // to compare.
+      "!immersion/src",
+      // Also generated, by ts-rs out of the Rust types, and rewritten from
+      // scratch by `cargo test -p immersion export_bindings`. Anything a
+      // formatter does here is undone by the next Rust-side change.
+      // The bundler's inputs. build-vega.ts and build-diffs.ts bundle these
+      // into immersion/vendor, that output is committed, and shims.yml
+      // regenerates it and diffs. Reformatting an input changes the bundle,
+      // and the bundle is not byte-reproducible across platforms -- a rebuild
+      // on macOS and one on the runner disagree -- so the committed output
+      // would go permanently red for whitespace nobody reads.
+      "!immersion/ts/vendor",
+      "!immersion/ts/generated",
+      "!immersion/bindings",
+      // Third-party, minified, and committed for the same reason. The same
+      // paths straitjacket is told to leave alone in .ignore.
+      "!immersion/vendor",
+      // Stylesheets are the fleet's other tool's business: conf writes a
+      // .stylelintrc.json and fleet-js runs Stylelint over them. Two
+      // formatters over one file is a fight, not a gate.
+      "!**/*.css"
+    ]
+  }
+}

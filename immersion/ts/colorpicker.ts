@@ -8,10 +8,13 @@
 import { once } from "./types";
 
 if (once("__imColor")) {
-
   const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 
-  const hsv2rgb = (h: number, s: number, v: number): [number, number, number] => {
+  const hsv2rgb = (
+    h: number,
+    s: number,
+    v: number,
+  ): [number, number, number] => {
     const i = Math.floor(h * 6);
     const f = h * 6 - i;
     const p = v * (1 - s);
@@ -30,8 +33,14 @@ if (once("__imColor")) {
     ];
   };
 
-  const rgb2hsv = (r: number, g: number, b: number): [number, number, number] => {
-    r /= 255; g /= 255; b /= 255;
+  const rgb2hsv = (
+    r: number,
+    g: number,
+    b: number,
+  ): [number, number, number] => {
+    r /= 255;
+    g /= 255;
+    b /= 255;
     const mx = Math.max(r, g, b);
     const mn = Math.min(r, g, b);
     const d = mx - mn;
@@ -66,9 +75,12 @@ if (once("__imColor")) {
   };
 
   document.addEventListener("click", (e) => {
-    const swatch = (e.target as Element | null)?.closest?.<HTMLElement>("[data-im-color-open]");
+    const swatch = (e.target as Element | null)?.closest?.<HTMLElement>(
+      "[data-im-color-open]",
+    );
     if (!swatch) {
-      if (pop && !(e.target as Element | null)?.closest?.(".im-colorpop")) closePop();
+      if (pop && !(e.target as Element | null)?.closest?.(".im-colorpop"))
+        closePop();
       return;
     }
     e.preventDefault();
@@ -78,7 +90,9 @@ if (once("__imColor")) {
     }
     closePop();
 
-    const field = swatch.parentElement?.querySelector<HTMLInputElement>("[data-im-color-value]");
+    const field = swatch.parentElement?.querySelector<HTMLInputElement>(
+      "[data-im-color-value]",
+    );
     if (!field) return;
     let [h, s, v] = rgb2hsv(...hex2rgb(field.value));
 
@@ -89,9 +103,12 @@ if (once("__imColor")) {
       '<div class="im-hue"><span class="im-hue-dot"></span></div>';
     document.body.appendChild(el);
     const r = swatch.getBoundingClientRect();
-    el.style.left = Math.min(r.left, window.innerWidth - el.offsetWidth - 6) + "px";
+    el.style.left =
+      Math.min(r.left, window.innerWidth - el.offsetWidth - 6) + "px";
     el.style.top =
-      (r.bottom + el.offsetHeight > window.innerHeight - 6 ? r.top - el.offsetHeight - 4 : r.bottom + 4) + "px";
+      (r.bottom + el.offsetHeight > window.innerHeight - 6
+        ? r.top - el.offsetHeight - 4
+        : r.bottom + 4) + "px";
 
     const sv = el.querySelector<HTMLElement>(".im-sv")!;
     const svDot = el.querySelector<HTMLElement>(".im-sv-dot")!;
@@ -114,7 +131,8 @@ if (once("__imColor")) {
     paint();
 
     // Commit once: write the hex and let the widget's own onchange fire.
-    const commit = () => field.dispatchEvent(new Event("change", { bubbles: true }));
+    const commit = () =>
+      field.dispatchEvent(new Event("change", { bubbles: true }));
 
     const dragSv = (ev: PointerEvent): void => {
       const b = sv.getBoundingClientRect();
@@ -127,7 +145,10 @@ if (once("__imColor")) {
       h = clamp01((ev.clientY - b.top) / b.height);
       paint();
     };
-    const wire = (target: HTMLElement, move: (e: PointerEvent) => void): void => {
+    const wire = (
+      target: HTMLElement,
+      move: (e: PointerEvent) => void,
+    ): void => {
       target.addEventListener("pointerdown", (ev: PointerEvent) => {
         ev.preventDefault();
         target.setPointerCapture(ev.pointerId);

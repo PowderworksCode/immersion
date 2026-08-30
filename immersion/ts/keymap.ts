@@ -7,7 +7,7 @@
 // channel — the Rust side looks the binding up by that chord and fires its
 // action. Typing in a field is never intercepted unless a binding opts in.
 
-import { send, type KeymapMsg } from "./types";
+import { type KeymapMsg, send } from "./types";
 
 const isMac =
   /Mac|iPhone|iPad|iPod/.test(navigator.platform || "") ||
@@ -71,7 +71,8 @@ document.addEventListener("keydown", (e) => {
   // carries a real modifier (Ctrl/Cmd/Alt) — those are commands, not text.
   const t = e.target as HTMLElement | null;
   const typing =
-    !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+    !!t &&
+    (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
   const hasMod = e.ctrlKey || e.metaKey || e.altKey;
   if (typing && !hasMod) return;
   e.preventDefault();

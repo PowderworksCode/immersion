@@ -43,8 +43,18 @@ jobs:
       - name: Regenerate the wire bindings
         run: cargo test -p immersion export_bindings
 
+      # Every step below names a package script rather than the command behind
+      # it, so what runs here is what runs on a laptop — and so a reader (or
+      # ordnung, which reads workflows) can see the task list without running
+      # it.
       - name: Typecheck
-        run: bunx tsc --noEmit
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Format
+        run: bun run format
 
       # The vendored renderer is built from immersion/ts/vendor and committed.
       # Rebuilding here proves the committed bundle matches its source: a
@@ -57,8 +67,10 @@ jobs:
           git diff --exit-code -- immersion/vendor \
             || { echo "::error::a vendored renderer is stale — run 'bun run build:vendor' and commit"; exit 1; }
 
+      # The shims have no unit tests; what they have is this. `test` rebuilds
+      # immersion/src from immersion/ts and fails if the committed output has
+      # drifted from the source it is generated out of.
       - name: Generated shims are up to date
         run: |
-          bun run scripts/build-shims.ts
-          git diff --exit-code -- immersion/src/*.js immersion/ts/generated \
+          bun run test \
             || { echo "::error::generated output is stale — run 'cargo test -p immersion export_bindings && bun run build' and commit"; exit 1; }

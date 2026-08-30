@@ -108,7 +108,11 @@
       const label = node.getAttribute("data-tip") || node.getAttribute("title");
       if (!label)
         return null;
-      return { label, key: node.getAttribute("data-tip-key"), desc: node.getAttribute("data-tip-desc") };
+      return {
+        label,
+        key: node.getAttribute("data-tip-key"),
+        desc: node.getAttribute("data-tip-desc")
+      };
     };
     const render = (c) => {
       const t = tipEl();

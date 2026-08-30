@@ -5,7 +5,7 @@
 // simply large. Committing it keeps the Rust build free of a javascript
 // toolchain, the same bargain the shims and the diff renderer make.
 
-import { rm, readdir, stat } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 const OUT = "immersion/vendor/vega";
@@ -27,4 +27,6 @@ if (!built.success) {
 let total = 0;
 const files = await readdir(OUT);
 for (const f of files) total += (await stat(join(OUT, f))).size;
-console.log(`vendored ${files.length} file(s), ${(total / 1048576).toFixed(1)} MB`);
+console.log(
+  `vendored ${files.length} file(s), ${(total / 1048576).toFixed(1)} MB`,
+);

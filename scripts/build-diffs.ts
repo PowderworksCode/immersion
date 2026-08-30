@@ -10,7 +10,7 @@
 // languages it will ask for and maps everything else to plain text, so a
 // pruned chunk can never be requested. This trims ~10 MB to ~4.
 
-import { rm, readdir, stat, writeFile } from "node:fs/promises";
+import { readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const OUT = "immersion/vendor/diffs";
@@ -20,11 +20,40 @@ const OUT = "immersion/vendor/diffs";
 const THEMES = ["pierre-dark", "pierre-light"];
 const KEEP = new Set([
   ...THEMES,
-  "rust", "typescript", "javascript", "tsx", "jsx", "json", "toml", "yaml",
-  "markdown", "python", "shellscript", "html", "css", "sql", "go", "diff",
+  "rust",
+  "typescript",
+  "javascript",
+  "tsx",
+  "jsx",
+  "json",
+  "toml",
+  "yaml",
+  "markdown",
+  "python",
+  "shellscript",
+  "html",
+  "css",
+  "sql",
+  "go",
+  "diff",
   // Grammars the ones above embed; dropping these breaks their neighbours.
-  "cpp", "c", "java", "regexp", "xml", "scss", "less", "graphql", "wasm",
-  "sass", "stylus", "pug", "handlebars", "php", "ruby", "lua", "cmake",
+  "cpp",
+  "c",
+  "java",
+  "regexp",
+  "xml",
+  "scss",
+  "less",
+  "graphql",
+  "wasm",
+  "sass",
+  "stylus",
+  "pug",
+  "handlebars",
+  "php",
+  "ruby",
+  "lua",
+  "cmake",
 ]);
 
 await rm(OUT, { recursive: true, force: true });
@@ -67,7 +96,9 @@ const brokenStatic: string[] = [];
 for (const name of present) {
   if (!name.endsWith(".js")) continue;
   const text = await Bun.file(join(OUT, name)).text();
-  for (const m of text.matchAll(/(?<!import\()["\']\.\/([A-Za-z0-9+#._-]+\.js)["\']/g)) {
+  for (const m of text.matchAll(
+    /(?<!import\()["']\.\/([A-Za-z0-9+#._-]+\.js)["']/g,
+  )) {
     const ref = m[1] ?? "";
     if (!present.has(ref) && !text.includes(`import("./${ref}")`)) {
       brokenStatic.push(`${name} -> ${ref}`);
@@ -75,7 +106,10 @@ for (const name of present) {
   }
 }
 if (brokenStatic.length) {
-  console.error("pruning broke static imports:\n  " + brokenStatic.slice(0, 10).join("\n  "));
+  console.error(
+    "pruning broke static imports:\n  " +
+      brokenStatic.slice(0, 10).join("\n  "),
+  );
   process.exit(1);
 }
 
