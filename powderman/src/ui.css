@@ -22,7 +22,7 @@
   --ink-2: var(--im-text-muted);
   --ink-3: var(--im-text-muted);
   --series-1: var(--im-accent); /* Blender's widget blue */
-  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --mono: ui-monospace, sfmono-regular, menlo, monospace;
   --good: #6a9955;
   --warning: #d9a441;
   --serious: #d98a4a;
@@ -191,7 +191,7 @@ button:hover { border-color: var(--series-1); color: var(--series-1); }
 }
 .step code {
   font: 12px/1.5 var(--mono);
-  color: var(--ink-3); white-space: pre-wrap; word-break: break-word;
+  color: var(--ink-3); white-space: pre-wrap; overflow-wrap: break-word;
 }
 .k { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
 .err { color: var(--critical); }
@@ -277,8 +277,8 @@ footer { margin-top: 2.5rem; color: var(--ink-3); font-size: .76rem; }
 .log-row .k { font-family: var(--mono); color: var(--ink); }
 
 /* Adjust Last panel (F9). */
-.adjust-backdrop { position: absolute; inset: 0; z-index: 56; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.4); }
-.adjust-panel { min-width: 20rem; padding: .9rem 1rem; background: var(--surface); border: 1px solid var(--im-border); border-radius: 6px; box-shadow: 0 14px 44px rgba(0,0,0,.55); }
+.adjust-backdrop { position: absolute; inset: 0; z-index: 56; display: flex; align-items: center; justify-content: center; background: rgb(0 0 0 / 40%); }
+.adjust-panel { min-width: 20rem; padding: .9rem 1rem; background: var(--surface); border: 1px solid var(--im-border); border-radius: 6px; box-shadow: 0 14px 44px rgb(0 0 0 / 55%); }
 .adjust-title { color: var(--ink); font-size: .85rem; margin-bottom: .6rem; }
 .adjust-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
 .adjust-cancel, .adjust-apply { border: 1px solid var(--im-border); border-radius: 3px; padding: .25rem .7rem; cursor: pointer; font-size: .78rem; background: var(--im-input-bg); color: var(--ink-2); }

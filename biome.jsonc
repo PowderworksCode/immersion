@@ -20,6 +20,13 @@
       // Also generated, by ts-rs out of the Rust types, and rewritten from
       // scratch by `cargo test -p immersion export_bindings`. Anything a
       // formatter does here is undone by the next Rust-side change.
+      // The bundler's inputs. build-vega.ts and build-diffs.ts bundle these
+      // into immersion/vendor, that output is committed, and shims.yml
+      // regenerates it and diffs. Reformatting an input changes the bundle,
+      // and the bundle is not byte-reproducible across platforms -- a rebuild
+      // on macOS and one on the runner disagree -- so the committed output
+      // would go permanently red for whitespace nobody reads.
+      "!immersion/ts/vendor",
       "!immersion/ts/generated",
       "!immersion/bindings",
       // Third-party, minified, and committed for the same reason. The same
