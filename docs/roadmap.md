@@ -211,7 +211,7 @@ for its CodePane — precedent if we ever choose wrapping deliberately).
    cleaner and *unknown to every model* — wrong trade here. Concretely:
    - The chart document **is** a Vega-Lite spec (a serde value; `$schema`
      and all). Agents write specs over the MCP tools that already exist;
-     `set_setting`-style pointer edits are the chart-editing API for free.
+     `set_setting`-style pointer edits already are the chart-editing API.
    - Rendering is the vendored Vega stack served from the binary
      (vega 512 KB + vega-lite 248 KB + vega-embed 60 KB ≈ 274 KB gzip
      total, BSD-3) — a client shim mounts the spec, and re-renders on
@@ -253,7 +253,7 @@ Each step is a PR-sized unit; each leaves main coherent.
 
 1. **Parity made honest** — move the ui.rs `match` actions onto the command
    bus; add the equivalence test (every palette entry and default binding
-   resolves to a bus command); MCP gets undo/redo for free.
+   resolves to a bus command); MCP gets undo/redo as a by-product.
 2. **Errors surface** — `EditorError`, widget components with invalid state,
    report-slot wiring, command failures reported. The expression parser's
    messages become visible, which is why the parser got good messages.
