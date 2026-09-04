@@ -19,7 +19,7 @@ pub(crate) fn ed_runs(d: &Draw, open_run: Callback<(AreaId, String)>) -> Element
                 div { class: "runs-filter", FilterBox { placeholder: "filter runs…" } }
             }
             for r in s.runs.iter().cloned() {
-                {run_row(r.clone(), area, open_run, d.targets.contains(&r.id))}
+                {run_row(r.clone(), area, open_run, d.cmd, d.targets.contains(&r.id))}
             }
         }
     }
@@ -31,14 +31,26 @@ fn run_row(
     r: RunView,
     area: AreaId,
     open_run: Callback<(AreaId, String)>,
+    cmd: Callback<(String, serde_json::Value)>,
     open_here: bool,
 ) -> Element {
     let open_id = r.id.clone();
+    let pick_id = r.id.clone();
     rsx! {
         details {
             class: if open_here { "run is-sel" } else { "run" },
             key: "{r.id}",
             "data-filter-text": "{r.workflow} {r.status} {r.note.clone().unwrap_or_default()} {r.error.clone().unwrap_or_default()}",
+            // Clicking a row both expands it and selects it. The two do not
+            // compete: expanding shows this run's steps here, selecting points
+            // any unpinned run area at it. The arrow still means "open a new
+            // area", which is the thing a click cannot say.
+            onclick: move |_| {
+                cmd.call((
+                    "select".to_string(),
+                    serde_json::json!({ "kind": "run", "value": pick_id.clone() }),
+                ));
+            },
             summary {
                 class: "im-row",
                 span { class: "status {r.status}", "{r.status}" }

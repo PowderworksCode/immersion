@@ -9,8 +9,8 @@ use super::human_size;
 
 /// The file browser: the tree view over a directory. Lazily loaded — a
 /// directory reads only when its branch opens.
-pub(crate) fn ed_files(target: Option<String>) -> Element {
-    let root = target.unwrap_or_default();
+pub(crate) fn ed_files(d: &Draw) -> Element {
+    let root = d.arg.clone().unwrap_or_default();
     let children_of = Callback::new(move |pointer: String| {
         let at = if pointer.is_empty() {
             root.clone()
@@ -19,10 +19,25 @@ pub(crate) fn ed_files(target: Option<String>) -> Element {
         };
         file_children(&at)
     });
+    // Picking a file is the whole point of a file browser, and until now it
+    // did nothing: the tree selected its own row and no other area heard.
+    // Directories are left alone — they open, and a browser that re-rooted
+    // itself onto the folder you just expanded would collapse the tree you
+    // expanded it in.
+    let cmd = d.cmd;
+    let on_pick = Callback::new(move |row: immersion::TreeRow| {
+        if row.has_children {
+            return;
+        }
+        cmd.call((
+            "select".to_string(),
+            serde_json::json!({ "kind": "file", "value": row.pointer }),
+        ));
+    });
     rsx! {
         div { class: "files-editor im-filter-scope",
             div { class: "keymap-head", FilterBox { placeholder: "filter files\u{2026}" } }
-            TreeView { children_of }
+            TreeView { children_of, on_pick }
         }
     }
 }

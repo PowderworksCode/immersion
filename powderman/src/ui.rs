@@ -674,9 +674,36 @@ pub fn App() -> Element {
     // window, the browser's way back up. `None` leaves the header exactly as
     // it was.
     let render_header = use_callback(move |(id, editor): (AreaId, String)| -> Element {
-        match crate::editors::header(&draw_for(id, editor)) {
-            Some(items) => items,
-            None => rsx! {},
+        let own = crate::editors::header(&draw_for(id, editor.clone()));
+        // The pin belongs to every editor that points at something, not to
+        // any one of them, so it is composed here rather than declared
+        // fourteen times. Blender puts it in the same place for the same
+        // reason: it is a property of *looking at* a thing.
+        let follows = crate::editors::target_kind(&editor).is_some();
+        let pinned = ws.read().current().layout.is_pinned(id);
+        rsx! {
+            if let Some(items) = own {
+                {items}
+            }
+            if follows {
+                button {
+                    class: if pinned { "hdr-choice is-on" } else { "hdr-choice" },
+                    title: if pinned {
+                        "pinned — click to follow the selection again"
+                    } else {
+                        "following the selection — click to pin"
+                    },
+                    onclick: move |_| {
+                        cmd.call((
+                            "set_pinned".to_string(),
+                            serde_json::json!({ "id": id, "pinned": !pinned }),
+                        ));
+                    },
+                    // One glyph, state by colour — the same way the diff
+                    // editor's split toggle reads.
+                    dangerous_inner_html: "{immersion::icon(\"pin\")}",
+                }
+            }
         }
     });
     let render_toolbar = use_callback(move |(id, editor): (AreaId, String)| -> Element {

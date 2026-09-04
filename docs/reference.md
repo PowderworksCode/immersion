@@ -35,9 +35,17 @@ Open a run in a new area beside the list
 
 Move a seam between two areas
 
+### `select`
+
+Point every unpinned area of a kind (file, run, chart) at one thing
+
 ### `set_editor`
 
 Change what an area shows
+
+### `set_pinned`
+
+Freeze an area on what it is showing, or let it follow the selection
 
 ### `set_region_width`
 
@@ -175,6 +183,17 @@ Reapply an undone change
 
 Re-run the most recent layout-changing command (Blender's Repeat Last). Navigation and failed commands are skipped.
 
+### `select`
+
+Point every unpinned area of a kind at one thing — the file browser's click, as a command. Selecting a file moves both a code viewer and a diff viewer, since both point at a path. Pinned areas are left alone.
+
+| parameter | type | required | what it is |
+|---|---|---|---|
+| `kind` | string | yes | What sort of thing is being selected: `file`, `folder`, `run`,
+`chart` or `data`. Areas showing that sort follow it. |
+| `value` | string | yes | The thing itself — a path for `file`, a run id for `run`, a chart
+pointer for `chart`. |
+
 ### `set_editor`
 
 Change what an area shows
@@ -183,6 +202,15 @@ Change what an area shows
 |---|---|---|---|
 | `editor` | string | yes | The editor id to show (e.g. `runs`, `fleet`, `settings`). |
 | `id` | integer | yes | The area to repoint. |
+
+### `set_pinned`
+
+Freeze an area on what it is showing so the selection stops moving it, or let it follow again. Blender's pin.
+
+| parameter | type | required | what it is |
+|---|---|---|---|
+| `id` | integer | yes | The area id. |
+| `pinned` | boolean | yes | True freezes it on what it is showing; false lets it follow again. |
 
 ### `set_region_width`
 
